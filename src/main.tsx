@@ -8,10 +8,3 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <WorldScene />
   </React.StrictMode>
 );
-
-
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <WorldScene />
-  </React.StrictMode>
-);
