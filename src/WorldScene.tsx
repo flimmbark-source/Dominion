@@ -1,12 +1,13 @@
 // WorldScene.tsx — Tier 2 “Enchanted Realism” (No @react-three/postprocessing)
-// Realistic palette, golden-hour light, gold-green haze, clustered forests,
-// meadows, procedural dirt paths, night fireflies, and custom Bloom + Vignette.
+// Realistic palette, golden-hour light, clustered forests (merged for perf),
+// meadows, procedural dirt paths, night fireflies, and custom Bloom.
 
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import * as SimplexModule from "simplex-noise";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { EffectComposer as ThreeEffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
@@ -43,7 +44,6 @@ function makeSimplex(seed?: number): SimplexLike {
 // 🌅 Sky Dome
 // ---------------------------------------------------------------------------
 function SkyDome() {
-  const meshRef = useRef<THREE.Mesh>(null!);
   const material = useMemo(
     () =>
       new THREE.ShaderMaterial({
@@ -88,7 +88,7 @@ function SkyDome() {
     (material.uniforms.uMix as any).value = day;
   });
   return (
-    <mesh ref={meshRef}>
+    <mesh>
       <sphereGeometry args={[1200, 40, 24]} />
       <primitive attach="material" object={material} />
     </mesh>
@@ -96,7 +96,7 @@ function SkyDome() {
 }
 
 // ---------------------------------------------------------------------------
-// 🪨 Terrain — (same as before)
+// 🪨 Terrain
 // ---------------------------------------------------------------------------
 const Terrain = React.forwardRef(function Terrain(
   {
@@ -224,16 +224,13 @@ const Terrain = React.forwardRef(function Terrain(
 });
 
 // ---------------------------------------------------------------------------
-// 🌫️ Haze + Sun
+// ☀️ Lighting
 // ---------------------------------------------------------------------------
-// ☀️ Golden-Hour Lighting Only (no fog)
 function HazeAndSun() {
   const dirRef = useRef<THREE.DirectionalLight>(null!);
-
   useFrame(({ clock }) => {
     const t = clock.elapsedTime * 0.05;
     const day = THREE.MathUtils.clamp(0.6 + 0.4 * Math.sin(t), 0.15, 1.0);
-
     if (dirRef.current) {
       const sunHue = 0.1 + 0.06 * Math.sin(t);
       dirRef.current.color.setHSL(sunHue, 0.7, 0.6);
@@ -241,7 +238,6 @@ function HazeAndSun() {
       dirRef.current.position.set(Math.cos(t) * 80, 100, Math.sin(t) * 80);
     }
   });
-
   return (
     <>
       <ambientLight intensity={0.45} color={"#b7c49f"} />
@@ -250,32 +246,59 @@ function HazeAndSun() {
   );
 }
 
-
 // ---------------------------------------------------------------------------
 // 🧍 Player Controller
 // ---------------------------------------------------------------------------
-function PlayerController({ target, noise, playerRef, terrainRef }: any) {
+function PlayerController({
+  target,
+  noise,
+  playerRef,
+  terrainRef,
+}: {
+  target: THREE.Vector3 | null;
+  noise: SimplexLike;
+  playerRef: React.MutableRefObject<THREE.Mesh>;
+  terrainRef: React.MutableRefObject<THREE.Mesh>;
+}) {
   const speed = 20;
   const lerpSpeed = 4;
-  const getHeightAt = (x: number, z: number) => noise.noise2D(x / 40, z / 40) * 8 * 1.2;
+  const getHeightAt = (x: number, z: number) =>
+    noise.noise2D(x / 40, z / 40) * 8 * 1.2;
+
   const raycaster = new THREE.Raycaster();
   const down = new THREE.Vector3(0, -1, 0);
+
   useFrame((_, delta) => {
-    const mesh = playerRef.current, terrain = terrainRef.current;
+    const mesh = playerRef.current;
+    const terrain = terrainRef.current;
     if (!mesh || !terrain || !target) return;
+
     const pos = mesh.position;
     const dir = new THREE.Vector3(target.x - pos.x, 0, target.z - pos.z);
     const dist = dir.length();
-    if (dist > 0.1) { dir.normalize(); pos.x += dir.x * speed * delta; pos.z += dir.z * speed * delta; }
+
+    if (dist > 0.1) {
+      dir.normalize();
+      pos.x += dir.x * speed * delta;
+      pos.z += dir.z * speed * delta;
+    }
+
     raycaster.set(new THREE.Vector3(pos.x, 100, pos.z), down);
     const hits = raycaster.intersectObject(terrain, true);
-    const groundY = hits.length > 0 ? hits[0].point.y : getHeightAt(pos.x, pos.z);
+    const groundY =
+      hits.length > 0 ? hits[0].point.y : getHeightAt(pos.x, pos.z);
     pos.y = THREE.MathUtils.lerp(pos.y, groundY + 1.5, delta * 10);
+
     if (dist > 0.1) {
       const angle = Math.atan2(dir.x, dir.z);
-      mesh.rotation.y = THREE.MathUtils.lerp(mesh.rotation.y, angle, delta * lerpSpeed);
+      mesh.rotation.y = THREE.MathUtils.lerp(
+        mesh.rotation.y,
+        angle,
+        delta * lerpSpeed
+      );
     }
   });
+
   return (
     <mesh ref={playerRef} position={[0, 5, 0]}>
       <sphereGeometry args={[0.8, 16, 16]} />
@@ -287,7 +310,11 @@ function PlayerController({ target, noise, playerRef, terrainRef }: any) {
 // ---------------------------------------------------------------------------
 // 🎥 Camera Follow
 // ---------------------------------------------------------------------------
-function FollowCamera({ playerRef }: any) {
+function FollowCamera({
+  playerRef,
+}: {
+  playerRef: React.MutableRefObject<THREE.Mesh>;
+}) {
   const { camera } = useThree();
   useFrame(() => {
     if (!playerRef.current) return;
@@ -301,44 +328,70 @@ function FollowCamera({ playerRef }: any) {
 }
 
 // ---------------------------------------------------------------------------
-// 🌳 Forest Clusters
+// 🌲 Forest (merged geometry)
 // ---------------------------------------------------------------------------
 function useForestLayout(noise: SimplexLike) {
   return useMemo(() => {
-    const trees: THREE.Vector3[] = [], centers: { x: number; y: number }[] = [];
-    for (let i = 0; i < 18; i++) centers.push({ x: (Math.random() - 0.5) * 160, y: (Math.random() - 0.5) * 160 });
-    for (const c of centers) {
-      const count = 20 + Math.floor(Math.random() * 30);
+    const trees: { pos: THREE.Vector3; scale: number }[] = [];
+    const clusters = Array.from({ length: 10 }, () => ({
+      x: (Math.random() - 0.5) * 160,
+      y: (Math.random() - 0.5) * 160,
+      radius: 25 + Math.random() * 20,
+    }));
+    for (const c of clusters) {
+      const count = 200 + Math.floor(Math.random() * 100);
       for (let i = 0; i < count; i++) {
         const ang = Math.random() * Math.PI * 2;
-        const rad = (Math.random() ** 1.6) * 14 + 2;
-        const x = c.x + Math.cos(ang) * rad, y = c.y + Math.sin(ang) * rad;
+        const rad = Math.sqrt(Math.random()) * c.radius;
+        const x = c.x + Math.cos(ang) * rad;
+        const y = c.y + Math.sin(ang) * rad;
         const h = noise.noise2D(x / 40, y / 40) * 8 + noise.noise2D(x / 120, y / 120) * 5;
-        if (h > -3.5) trees.push(new THREE.Vector3(x, h, y));
+        if (h < -4) continue;
+        trees.push({ pos: new THREE.Vector3(x, h + Math.random() * 0.3, y), scale: 0.9 + Math.random() * 0.4 });
       }
     }
     return trees;
   }, [noise]);
 }
 
-function Trees({ positions }: any) {
+const Trees = React.memo(({ trees }: { trees: { pos: THREE.Vector3; scale: number }[] }) => {
+  const forestRef = useRef<THREE.Mesh>(null!);
+
+  useEffect(() => {
+    const trunkGeo = new THREE.CylinderGeometry(0.15, 0.22, 1.2, 5);
+    const canopyGeo = new THREE.ConeGeometry(1.3, 2.3, 6);
+    const instances: THREE.BufferGeometry[] = [];
+
+    for (const t of trees) {
+      const mat = new THREE.Matrix4()
+        .makeTranslation(t.pos.x, t.pos.y + 1.6, t.pos.z)
+        .multiply(new THREE.Matrix4().makeScale(t.scale, t.scale, t.scale));
+      const trunk = trunkGeo.clone();
+      trunk.applyMatrix4(mat);
+      const canopy = canopyGeo.clone();
+      canopy.translate(0, 1.6, 0);
+      canopy.applyMatrix4(mat);
+      instances.push(trunk, canopy);
+    }
+
+    const merged = mergeGeometries(instances, false)!;
+    merged.computeBoundingSphere();
+    merged.computeBoundingBox();
+    forestRef.current.geometry.dispose();
+    forestRef.current.geometry = merged;
+    forestRef.current.frustumCulled = false;
+
+    trunkGeo.dispose();
+    canopyGeo.dispose();
+    instances.forEach((g) => g.dispose());
+  }, []); // only once
+
   return (
-    <>
-      {positions.map((p: THREE.Vector3, i: number) => (
-        <group key={i} position={p}>
-          <mesh position={[0, 1.2, 0]}>
-            <cylinderGeometry args={[0.18, 0.24, 1.2, 6]} />
-            <meshStandardMaterial color={"#6b4a2e"} />
-          </mesh>
-          <mesh position={[0, 2.0, 0]} rotation={[0, Math.random() * Math.PI, 0]}>
-            <coneGeometry args={[1.25 + Math.random() * 0.3, 2.4 + Math.random() * 0.4, 8]} />
-            <meshStandardMaterial color={`hsl(${95 + Math.random() * 20}, ${35 + Math.random() * 20}%, ${28 + Math.random() * 18}%)`} roughness={0.9} metalness={0.0} />
-          </mesh>
-        </group>
-      ))}
-    </>
+    <mesh ref={forestRef}>
+      <meshStandardMaterial color="#3a5f2e" roughness={0.95} metalness={0.0} />
+    </mesh>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // ✨ Fireflies
@@ -346,32 +399,59 @@ function Trees({ positions }: any) {
 function Fireflies() {
   const pointsRef = useRef<THREE.Points>(null!);
   const geom = useMemo(() => {
-    const g = new THREE.BufferGeometry(); const c = 120, pos = new Float32Array(c * 3);
-    for (let i = 0; i < c; i++) { pos[i * 3] = (Math.random() - 0.5) * 180; pos[i * 3 + 1] = Math.random() * 6 + 2; pos[i * 3 + 2] = (Math.random() - 0.5) * 180; }
-    g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); return g;
+    const g = new THREE.BufferGeometry();
+    const c = 120;
+    const pos = new Float32Array(c * 3);
+    for (let i = 0; i < c; i++) {
+      pos[i * 3] = (Math.random() - 0.5) * 180;
+      pos[i * 3 + 1] = Math.random() * 6 + 2;
+      pos[i * 3 + 2] = (Math.random() - 0.5) * 180;
+    }
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    return g;
   }, []);
-  const mat = useMemo(() => new THREE.PointsMaterial({ size: 0.7, color: "#ffd37a", transparent: true, opacity: 0.0 }), []);
+  const mat = useMemo(
+    () =>
+      new THREE.PointsMaterial({
+        size: 0.7,
+        color: "#ffd37a",
+        transparent: true,
+        opacity: 0.0,
+      }),
+    []
+  );
   useFrame(({ clock }) => {
     const t = clock.elapsedTime * 0.05;
     const night = 1.0 - THREE.MathUtils.clamp(0.6 + 0.4 * Math.sin(t), 0.0, 1.0);
     mat.opacity = THREE.MathUtils.lerp(mat.opacity, 0.6 * night, 0.1);
-    if (pointsRef.current) pointsRef.current.rotation.y += Math.sin(clock.elapsedTime * 0.7) * 0.002;
+    if (pointsRef.current)
+      pointsRef.current.rotation.y += Math.sin(clock.elapsedTime * 0.7) * 0.002;
   });
   return <points ref={pointsRef} geometry={geom} material={mat} />;
 }
 
 // ---------------------------------------------------------------------------
-// 💡 Custom Bloom + Vignette
+// 💡 Custom Bloom
 // ---------------------------------------------------------------------------
-function FXBloom({ strength = 0.35, radius = 0.35, threshold = 0.6 }: any) {
+function FXBloom({
+  strength = 0.35,
+  radius = 0.35,
+  threshold = 0.6,
+}: {
+  strength?: number;
+  radius?: number;
+  threshold?: number;
+}) {
   const { gl, scene, camera, size } = useThree();
   const composerRef = useRef<ThreeEffectComposer | null>(null);
 
   useEffect(() => {
-    // ✅ guard: don't start until renderer & camera exist
     if (!gl || !scene || !camera) return;
 
     const composer = new ThreeEffectComposer(gl);
+    composer.setSize(size.width, size.height);
+    (composer as any).setPixelRatio?.(gl.getPixelRatio?.() ?? 1);
+
     const renderPass = new RenderPass(scene, camera);
     const bloomPass = new UnrealBloomPass(
       new THREE.Vector2(size.width, size.height),
@@ -382,24 +462,26 @@ function FXBloom({ strength = 0.35, radius = 0.35, threshold = 0.6 }: any) {
 
     composer.addPass(renderPass);
     composer.addPass(bloomPass);
-    composer.setSize(size.width, size.height);
     composerRef.current = composer;
 
     return () => {
       composer.dispose();
       composerRef.current = null;
     };
-  }, [gl, scene, camera, size, strength, radius, threshold]);
+  }, [gl, scene, camera, size.width, size.height, strength, radius, threshold]);
+
+  useEffect(() => {
+    if (composerRef.current) {
+      composerRef.current.setSize(size.width, size.height);
+    }
+  }, [size.width, size.height]);
 
   useFrame(() => {
-    if (composerRef.current) {
-      composerRef.current.render();
-    }
+    composerRef.current?.render();
   }, 1);
 
   return null;
 }
-
 
 // ---------------------------------------------------------------------------
 // 🌍 Main Scene
@@ -412,15 +494,37 @@ export default function WorldScene() {
   const forestPositions = useForestLayout(simplex);
 
   return (
-    <Canvas orthographic camera={{ zoom: 40, position: [60, 80, 60] }} shadows style={{ width: "100vw", height: "100vh" }}>
+    <Canvas
+      orthographic
+      camera={{ zoom: 40, position: [60, 80, 60] }}
+      shadows
+      style={{ width: "100vw", height: "100vh" }}
+    >
       <SkyDome />
       <HazeAndSun />
-      <Terrain ref={terrainRef} width={200} height={200} scale={1.0} noise={simplex} onSurfaceClick={(p) => setTarget(p)} />
-      <Trees positions={forestPositions} />
-      <PlayerController target={target} noise={simplex} playerRef={playerRef} terrainRef={terrainRef} />
+
+      <Terrain
+        ref={terrainRef}
+        width={200}
+        height={200}
+        scale={1.0}
+        noise={simplex}
+        onSurfaceClick={(p) => setTarget(p)}
+      />
+
+      <Trees trees={forestPositions} />
+
+      <PlayerController
+        target={target}
+        noise={simplex}
+        playerRef={playerRef}
+        terrainRef={terrainRef}
+      />
       <FollowCamera playerRef={playerRef} />
+
       <Fireflies />
       <FXBloom strength={0.35} radius={0.35} threshold={0.6} />
+
       <OrbitControls enableRotate={false} enableZoom />
     </Canvas>
   );
