@@ -670,8 +670,12 @@ function PlayerController({
 
     if (dist > 0.1) {
       dir.normalize();
-      pos.x += dir.x * speed * delta;
-      pos.z += dir.z * speed * delta;
+      const step = Math.min(speed * delta, dist);
+      pos.x += dir.x * step;
+      pos.z += dir.z * step;
+    } else {
+      pos.x = target.x;
+      pos.z = target.z;
     }
 
     raycaster.set(new THREE.Vector3(pos.x, 100, pos.z), down);
@@ -680,7 +684,7 @@ function PlayerController({
       hits.length > 0 ? hits[0].point.y : getHeightAt(pos.x, pos.z);
     pos.y = THREE.MathUtils.lerp(pos.y, groundY + 1.5, delta * 10);
 
-    if (dist > 0.1) {
+    if (dist > 0.05) {
       const angle = Math.atan2(dir.x, dir.z);
       mesh.rotation.y = THREE.MathUtils.lerp(
         mesh.rotation.y,
