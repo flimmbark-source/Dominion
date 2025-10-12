@@ -98,6 +98,17 @@ function SkyDome() {
 // ---------------------------------------------------------------------------
 // 🪨 Terrain
 // ---------------------------------------------------------------------------
+function terrainHeight(
+  noise: SimplexLike,
+  x: number,
+  z: number,
+  scale = 1
+) {
+  const primary = noise.noise2D(x / 40, z / 40) * 7.5;
+  const secondary = noise.noise2D(x / 120, z / 120) * 5.0;
+  return (primary + secondary) * scale;
+}
+
 const Terrain = React.forwardRef(function Terrain(
   {
     width,
@@ -123,10 +134,8 @@ const Terrain = React.forwardRef(function Terrain(
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
       const y = pos.getY(i);
-      const h =
-        noise.noise2D(x / 40, y / 40) * 7.5 +
-        noise.noise2D(x / 120, y / 120) * 5.0;
-      pos.setZ(i, h * scale);
+      const h = terrainHeight(noise, x, y, scale);
+      pos.setZ(i, h);
     }
     pos.needsUpdate = true;
     geom.computeVertexNormals();
@@ -262,8 +271,7 @@ function PlayerController({
 }) {
   const speed = 20;
   const lerpSpeed = 4;
-  const getHeightAt = (x: number, z: number) =>
-    noise.noise2D(x / 40, z / 40) * 8 * 1.2;
+  const getHeightAt = (x: number, z: number) => terrainHeight(noise, x, z);
 
   const raycaster = new THREE.Raycaster();
   const down = new THREE.Vector3(0, -1, 0);
