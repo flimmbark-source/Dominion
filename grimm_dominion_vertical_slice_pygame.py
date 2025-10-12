@@ -2,13 +2,13 @@
 """
 Pygame prototype of Grimm Dominion vertical slice (Prompts 1–7).
 Run: python grimm_dominion_vertical_slice.py
-Requires: pygame
+Install deps: pip install pygame
 """
 
 import math
 import random
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple
 
 import pygame
@@ -18,27 +18,32 @@ import pygame
 WIDTH, HEIGHT = 960, 640
 FPS = 60
 
-# World layout
 VILLAGE_BOUNDS = pygame.Rect(40, 40, WIDTH - 80, HEIGHT - 160)
 HUD_HEIGHT = 120
 
-# FOV & detection
-DETECTION_FILL_RATE = 0.7  # per second baseline when fully exposed
-DETECTION_DECAY_RATE = 0.35  # per second when unseen
+# Detection tuning
+DETECTION_FILL_RATE = 0.7      # per second when exposed
+DETECTION_DECAY_RATE = 0.35    # per second when unseen
 NOISE_RADIUS_SPRINT = 120
-NOISE_SPRINT_POWER = 0.35  # fraction/sec if within radius
-NOISE_CHEST_POWER = 0.55    # one-shot fraction bump
-NOISE_CHEST_RADIUS = 200
+NOISE_SPRINT_POWER = 0.35      # fraction/sec if within radius
+NOISE_CHEST_POWER = 0.55       # instant bump
+NOISE_CHEST_RADIUS = 200       # informational; we use global bump for simplicity
 
-# Threat
+# Threat tuning
 THREAT_LOOT_DELTA = 7
 THREAT_SPOTTED_DELTA = 25
-THREAT_SPAWN_THRESHOLDS = [50, 100, 160]  # up to 3 reinforcements
+THREAT_SPAWN_THRESHOLDS = [50, 100, 160]
 THREAT_MAX_EXTRA_SCOUTS = 3
 
 # Colors
 C_BG = (14, 18, 28)
 C_DARK = (8, 10, 16)
+C_PANEL = (25, 25, 35)
+C_PANEL_BORDER = (80, 80, 110)
+C_WHITE = (240, 240, 240)
+C_GOLD = (240, 200, 40)
+C_HEALTH = (60, 200, 90)
+C_DETECT = (60, 140, 220)
 C_HOUSE = (70, 60, 50)
 C_HOUSE_BORDER = (40, 35, 30)
 C_GOBLIN = (80, 200, 80)
@@ -49,12 +54,6 @@ C_CHEST = (180, 140, 60)
 C_CHEST_OPEN = (90, 75, 35)
 C_TAVERN = (50, 110, 60)
 C_CASTLE = (60, 50, 80)
-C_WHITE = (240, 240, 240)
-C_GOLD = (240, 200, 40)
-C_HEALTH = (60, 200, 90)
-C_DETECT = (60, 140, 220)
-C_PANEL = (25, 25, 35)
-C_PANEL_BORDER = (80, 80, 110)
 C_SHOP_BG = (20, 22, 30)
 C_SHOP_ACCENT = (170, 150, 90)
 
@@ -66,7 +65,7 @@ FONT = pygame.font.SysFont("verdana", 16)
 FONT_SMALL = pygame.font.SysFont("verdana", 12)
 FONT_TITLE = pygame.font.SysFont("georgia", 22, bold=True)
 
-# ---------------------------- Utility Functions ---------------------------- #
+# ---------------------------- Utility ---------------------------- #
 
 def clamp(v: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, v))
@@ -79,7 +78,6 @@ def angle_to(a: pygame.Vector2, b: pygame.Vector2) -> float:
     return math.atan2(d.y, d.x)
 
 def line_intersects_rect(p1: Tuple[float, float], p2: Tuple[float, float], rect: pygame.Rect) -> bool:
-    """Cohen–Sutherland-like quick checks using pygame's clipline."""
     return rect.clipline(p1, p2)
 
 def draw_bar(surface, rect: pygame.Rect, frac: float, fg_color, bg_color=(30, 30, 40), border=(80, 80, 110)):
@@ -104,17 +102,28 @@ class Stats:
     def speed(self) -> float:
         return self.base_speed
 
-@dataclass
 class Item:
-    id: str
-    name: str
-    price: int
-    desc: str
-    apply_fn: Optional[Callable[['Stats'], None]] = None
-    remove_fn: Optional[Callable[['Stats'], None]] = None
-    consumable: bool = False
-    use_fn: Optional[Callable[['Stats'], None]] = None
-    short: str = "?"
+    def __init__(
+        self,
+        id: str,
+        name: str,
+        price: int,
+        desc: str,
+        apply_fn: Optional[Callable[['Stats'], None]] = None,
+        remove_fn: Optional[Callable[['Stats'], None]] = None,
+        consumable: bool = False,
+        use_fn: Optional[Callable[['Stats'], None]] = None,
+        short: str = "?"
+    ):
+        self.id = id
+        self.name = name
+        self.price = price
+        self.desc = desc
+        self.apply_fn = apply_fn
+        self.remove_fn = remove_fn
+        self.consumable = consumable
+        self.use_fn = use_fn
+        self.short = short
 
     def apply(self, stats: 'Stats'):
         if self.apply_fn:
@@ -154,12 +163,10 @@ class Inventory:
                 it.use(stats)
                 self.slots[idx] = None
                 return True
-            else:
-                # non-consumable: do nothing on use
-                return False
+            return False
         return False
 
-# ---------------------------- World Entities ---------------------------- #
+# ---------------------------- Entities ---------------------------- #
 
 class Entity:
     def __init__(self, x: float, y: float, w: int, h: int):
@@ -182,20 +189,14 @@ class Goblin(Entity):
         self.facing = 0.0
         self.sprinting = False
         self.in_tavern = False
-        self.collider = pygame.Rect(0, 0, 20, 20)
 
     def update(self, dt: float, houses: List[pygame.Rect]):
         keys = pygame.key.get_pressed()
         move = pygame.Vector2(0, 0)
-        if keys[pygame.K_w] or keys[pygame.K_UP]:
-            move.y -= 1
-        if keys[pygame.K_s] or keys[pygame.K_DOWN]:
-            move.y += 1
-        if keys[pygame.K_a] or keys[pygame.K_LEFT]:
-            move.x -= 1
-        if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
-            move.x += 1
-
+        if keys[pygame.K_w] or keys[pygame.K_UP]: move.y -= 1
+        if keys[pygame.K_s] or keys[pygame.K_DOWN]: move.y += 1
+        if keys[pygame.K_a] or keys[pygame.K_LEFT]: move.x -= 1
+        if keys[pygame.K_d] or keys[pygame.K_RIGHT]: move.x += 1
         self.sprinting = keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
         speed = self.stats.speed() * (self.stats.sprint_mult if self.sprinting else 1.0)
         if move.length_squared() > 0:
@@ -203,29 +204,28 @@ class Goblin(Entity):
             self.facing = math.atan2(move.y, move.x)
         delta = move * speed * dt
 
-        # movement with simple collision against houses and world bounds
+        # horizontal
         new_pos = self.pos + pygame.Vector2(delta.x, 0)
-        trial_rect = self.rect.copy()
-        trial_rect.centerx = int(new_pos.x)
-        if VILLAGE_BOUNDS.contains(trial_rect) and not any(trial_rect.colliderect(h) for h in houses):
+        trial = self.rect.copy()
+        trial.centerx = int(new_pos.x)
+        if VILLAGE_BOUNDS.contains(trial) and not any(trial.colliderect(h) for h in houses):
             self.pos.x = new_pos.x
-
+        # vertical
         new_pos = self.pos + pygame.Vector2(0, delta.y)
-        trial_rect = self.rect.copy()
-        trial_rect.centery = int(new_pos.y)
-        if VILLAGE_BOUNDS.contains(trial_rect) and not any(trial_rect.colliderect(h) for h in houses):
+        trial = self.rect.copy()
+        trial.centery = int(new_pos.y)
+        if VILLAGE_BOUNDS.contains(trial) and not any(trial.colliderect(h) for h in houses):
             self.pos.y = new_pos.y
 
         self.update_rect()
 
-        # invisibility timer tick
+        # invis timer
         if self.stats.invis_timer > 0:
             self.stats.invis_timer = max(0.0, self.stats.invis_timer - dt)
 
     def draw(self, surface):
         color = C_GOBLIN if self.stats.invis_timer <= 0 else (120, 180, 140)
         pygame.draw.rect(surface, color, self.rect, border_radius=4)
-        # eye/facing indicator
         eye = pygame.Vector2(self.rect.center) + vec_from_angle(self.facing) * 10
         pygame.draw.circle(surface, (0, 0, 0), eye, 2)
 
@@ -241,7 +241,7 @@ class NPC(Entity):
 
     def sees(self, target: Goblin, houses: List[pygame.Rect]) -> bool:
         if target.stats.invis_timer > 0:
-            return False  # invisible overrides
+            return False
         to_t = pygame.Vector2(target.rect.center) - pygame.Vector2(self.rect.center)
         dist = to_t.length()
         if dist > self.view_distance or dist <= 1e-4:
@@ -250,7 +250,6 @@ class NPC(Entity):
         dtheta = (ang - self.facing + math.pi) % (2 * math.pi) - math.pi
         if abs(dtheta) > self.fov * 0.5:
             return False
-        # obstacle check
         p1 = self.rect.center
         p2 = target.rect.center
         for h in houses:
@@ -259,9 +258,7 @@ class NPC(Entity):
         return True
 
     def draw_fov(self, surface):
-        if not self.vision_debug:
-            return
-        # triangular vision cone for debug
+        if not self.vision_debug: return
         origin = pygame.Vector2(self.rect.center)
         left = self.facing - self.fov * 0.5
         right = self.facing + self.fov * 0.5
@@ -333,9 +330,7 @@ class Scout(NPC):
 # ---------------------------- Environment ---------------------------- #
 
 class House:
-    def __init__(self, rect: pygame.Rect):
-        self.rect = rect
-
+    def __init__(self, rect: pygame.Rect): self.rect = rect
     def draw(self, surface):
         pygame.draw.rect(surface, C_HOUSE, self.rect, border_radius=4)
         pygame.draw.rect(surface, C_HOUSE_BORDER, self.rect, 2, border_radius=4)
@@ -351,16 +346,14 @@ class Chest:
         pygame.draw.rect(surface, c, self.rect, border_radius=3)
         pygame.draw.rect(surface, (30, 20, 10), self.rect, 1, border_radius=3)
 
-    def try_loot(self, goblin: Goblin) -> Optional[int]:
-        if not self.opened and self.rect.colliderect(goblin.rect):
+    def try_loot(self, goblin_rect: pygame.Rect) -> Optional[int]:
+        if not self.opened and self.rect.colliderect(goblin_rect):
             self.opened = True
             return self.gold
         return None
 
 class Tavern:
-    def __init__(self, rect: pygame.Rect):
-        self.rect = rect
-
+    def __init__(self, rect: pygame.Rect): self.rect = rect
     def draw(self, surface):
         pygame.draw.rect(surface, C_TAVERN, self.rect, border_radius=6)
         pygame.draw.rect(surface, (30, 60, 35), self.rect, 2, border_radius=6)
@@ -369,10 +362,8 @@ class Castle:
     def __init__(self, rect: pygame.Rect, spawn_point: Tuple[int, int]):
         self.rect = rect
         self.spawn_point = spawn_point
-
     def draw(self, surface):
         pygame.draw.rect(surface, C_CASTLE, self.rect)
-        # simple crenellations
         for i in range(self.rect.left, self.rect.right, 14):
             pygame.draw.rect(surface, (40, 35, 60), (i, self.rect.top - 6, 10, 6))
 
@@ -380,14 +371,12 @@ class Castle:
 
 class DetectionMeter:
     def __init__(self):
-        self.value = 0.0  # 0..1
+        self.value = 0.0
         self.spotted = False
 
-    def reset_spotted(self):
-        self.spotted = False
+    def reset_spotted(self): self.spotted = False
 
     def update(self, dt: float, exposure_power: float, resist: float):
-        """exposure_power is [0..1+] combined visual+audio this frame."""
         if exposure_power > 0:
             inc = exposure_power * DETECTION_FILL_RATE * dt
             inc *= (1.0 - clamp(resist, 0.0, 0.8))
@@ -402,7 +391,6 @@ class ThreatSystem:
     def __init__(self):
         self.value = 0
         self.spawned_levels = 0
-
     def add(self, delta: int):
         self.value = max(0, self.value + delta)
 
@@ -410,10 +398,9 @@ class ThreatSystem:
 
 def make_items() -> List[Item]:
     def boots_apply(s: Stats): s.base_speed += 40
-    def cloak_apply(s: Stats): s.stealth_resist += 0.25  # 25% slower detection
+    def cloak_apply(s: Stats): s.stealth_resist += 0.25   # why: ease stealth learning curve
     def dagger_apply(s: Stats): s.attack += 15
     def potion_use(s: Stats): s.invis_timer = max(s.invis_timer, 6.0)
-
     return [
         Item("boots", "Boots of Skittering", 100, "Fleet goblin steps. +Speed",
              apply_fn=boots_apply, short="B"),
@@ -439,7 +426,7 @@ class Shop:
         self.open = False
         self.message = ""
 
-    def try_buy(self, idx: int, goblin: Goblin):
+    def try_buy(self, idx: int, goblin: 'Goblin'):
         if 0 <= idx < len(self.items):
             item = self.items[idx]
             if goblin.gold >= item.price:
@@ -492,7 +479,6 @@ class Game:
         self.debug_vision = True
 
     def _build_houses(self) -> List[House]:
-        # simple blocks that create alleys
         blocks = [
             pygame.Rect(140, 140, 120, 90),
             pygame.Rect(320, 120, 130, 110),
@@ -514,7 +500,6 @@ class Game:
         return [Chest(r, gold=random.choice([40, 50, 60, 80])) for r in spots]
 
     def _populate_villagers_and_scouts(self):
-        # villagers roam near houses
         roam_areas = [
             pygame.Rect(120, 120, 200, 160),
             pygame.Rect(300, 110, 220, 160),
@@ -524,14 +509,12 @@ class Game:
         ]
         for r in roam_areas[:3]:
             self.npcs.append(Villager(r.centerx, r.centery, r))
-        # scouts patrol along a road
         patrol1 = [(80, 260), (300, 260), (560, 260), (860, 260)]
         self.npcs.append(Scout(patrol1))
-        # a second scout along south edge
         patrol2 = [(120, HEIGHT - HUD_HEIGHT - 200), (860, HEIGHT - HUD_HEIGHT - 200)]
         self.npcs.append(Scout(patrol2, speed=100))
 
-    def _noise_from_sprint(self, dt: float) -> float:
+    def _noise_from_sprint(self) -> float:
         if not self.goblin.sprinting:
             return 0.0
         power = 0.0
@@ -542,8 +525,7 @@ class Game:
                 power = max(power, NOISE_SPRINT_POWER * falloff)
         return power
 
-    def _noise_from_chest(self, chest: Chest):
-        # Immediate meter spike; also increases threat
+    def _noise_from_chest(self):
         print("[NOISE] Chest clatter echoes!")
         self.detection.value = clamp(self.detection.value + NOISE_CHEST_POWER, 0, 1)
         self.threat.add(THREAT_LOOT_DELTA)
@@ -554,13 +536,12 @@ class Game:
             npc.vision_debug = self.debug_vision
             if npc.sees(self.goblin, self.houses_rects):
                 exposure += npc.detect_power
-        return clamp(exposure, 0.0, 3.0)  # cap stacking
+        return clamp(exposure, 0.0, 3.0)
 
     def _maybe_spawn_reinforcements(self):
         while self.threat.spawned_levels < min(len(THREAT_SPAWN_THRESHOLDS), THREAT_MAX_EXTRA_SCOUTS):
             need = THREAT_SPAWN_THRESHOLDS[self.threat.spawned_levels]
             if self.threat.value >= need:
-                # spawn a scout from castle into main road
                 sx, sy = self.castle.spawn_point
                 patrol = [(sx, sy), (sx, sy + 60), (sx, 260), (860, 260)]
                 self.npcs.append(Scout(patrol, speed=105 + 5 * self.threat.spawned_levels))
@@ -587,15 +568,13 @@ class Game:
                     if e.key == pygame.K_TAB and self.tavern.rect.colliderect(self.goblin.rect):
                         self.shop.open_shop()
                     if e.key == pygame.K_e:
-                        # loot if colliding with chest
                         for ch in self.chests:
                             if not ch.opened and ch.rect.colliderect(self.goblin.rect):
-                                gold = ch.try_loot(self.goblin)
+                                gold = ch.try_loot(self.goblin.rect)
                                 if gold:
                                     self.goblin.gold += gold
                                     print(f"[LOOT] +{gold} gold (Total {self.goblin.gold})")
-                                    self._noise_from_chest(ch)
-                    # inventory use 1-6
+                                    self._noise_from_chest()
                     if pygame.K_1 <= e.key <= pygame.K_6:
                         idx = e.key - pygame.K_1
                         used = self.goblin.inventory.use_slot(idx, self.goblin.stats)
@@ -604,14 +583,13 @@ class Game:
 
     def update(self, dt: float):
         if self.shop.open:
-            return  # paused world
+            return
         self.goblin.update(dt, self.houses_rects)
         for npc in self.npcs:
             npc.update(dt, self.houses_rects)
 
-        # detection meter update
         sight = self._exposure_from_sight()
-        noise = self._noise_from_sprint(dt)
+        noise = self._noise_from_sprint()
         exposure_power = clamp(sight + noise, 0.0, 2.0)
         self.detection.update(dt, exposure_power, self.goblin.stats.stealth_resist)
 
@@ -619,51 +597,37 @@ class Game:
             self.threat.add(THREAT_SPOTTED_DELTA)
             self.detection.reset_spotted()
 
-        # tavern presence for UX hint
         self.goblin.in_tavern = self.tavern.rect.colliderect(self.goblin.rect)
-
-        # threat spawning
         self._maybe_spawn_reinforcements()
 
     def draw_world(self):
         screen.fill(C_BG)
-        # night vignette
         pygame.draw.rect(screen, C_DARK, VILLAGE_BOUNDS, 3)
 
-        # castle
         self.castle.draw(screen)
 
-        # houses + torch halos
         for h in self.houses:
             h.draw(screen)
-            # torch light visual around scouts (simple circles)
         for npc in self.npcs:
             if isinstance(npc, Scout):
                 pygame.draw.circle(screen, C_TORCH, npc.rect.center, 40, width=1)
 
-        # chests
         for ch in self.chests:
             ch.draw(screen)
-
-        # tavern
         self.tavern.draw(screen)
 
-        # NPCs & player
         for npc in self.npcs:
             npc.draw(screen)
         self.goblin.draw(screen)
 
-        # detection bar (top)
         top_bar = pygame.Rect(20, 10, WIDTH - 40, 16)
         draw_bar(screen, top_bar, self.detection.value, C_DETECT)
         label = FONT_SMALL.render("Detection", True, C_WHITE)
         screen.blit(label, (top_bar.x, top_bar.y - 14))
 
-        # threat display
         ttxt = FONT_SMALL.render(f"Threat: {self.threat.value}", True, (220, 120, 140))
         screen.blit(ttxt, (WIDTH - 140, 28))
 
-        # tavern hint
         if self.goblin.in_tavern and not self.shop.open:
             hint = FONT.render("Press [TAB] to enter Goblin Tavern (Shop)", True, C_GOLD)
             screen.blit(hint, (self.tavern.rect.x - 200, self.tavern.rect.y - 24))
@@ -673,28 +637,26 @@ class Game:
         pygame.draw.rect(screen, C_PANEL, panel)
         pygame.draw.rect(screen, C_PANEL_BORDER, panel, 2)
 
-        # Health bar
         hb = pygame.Rect(16, HEIGHT - HUD_HEIGHT + 16, 200, 18)
         draw_bar(screen, hb, self.goblin.stats.health / 100.0, C_HEALTH)
         screen.blit(FONT_SMALL.render("Health", True, C_WHITE), (hb.x, hb.y - 14))
 
-        # Detection bar mirrored in HUD
         db = pygame.Rect(16, HEIGHT - HUD_HEIGHT + 46, 200, 18)
         draw_bar(screen, db, self.detection.value, C_DETECT)
         screen.blit(FONT_SMALL.render("Stealth (Detection)", True, C_WHITE), (db.x, db.y - 14))
 
-        # Gold
         gold_txt = FONT.render(f"Gold: {self.goblin.gold}", True, C_GOLD)
         screen.blit(gold_txt, (16, HEIGHT - HUD_HEIGHT + 78))
 
-        # Stats
         stats_x = 260
         stats_y = HEIGHT - HUD_HEIGHT + 16
         s = self.goblin.stats
-        stats_line1 = FONT.render(f"Speed: {int(s.speed())}   Attack: {s.attack}   StealthResist: {int(s.stealth_resist*100)}%", True, C_WHITE)
+        stats_line1 = FONT.render(
+            f"Speed: {int(s.speed())}   Attack: {s.attack}   StealthResist: {int(s.stealth_resist*100)}%",
+            True, C_WHITE
+        )
         screen.blit(stats_line1, (stats_x, stats_y))
 
-        # Inventory slots
         slot_w, slot_h = 46, 46
         inv_x = WIDTH - (slot_w + 10) * 6 - 16
         inv_y = HEIGHT - HUD_HEIGHT + 16
@@ -705,13 +667,10 @@ class Game:
             it = self.goblin.inventory.slots[i]
             if it:
                 initial = FONT_TITLE.render(it.short, True, (220, 220, 240))
-                txt_rect = initial.get_rect(center=r.center)
-                screen.blit(initial, txt_rect)
-            # hotkey label
+                screen.blit(initial, initial.get_rect(center=r.center))
             hk = FONT_SMALL.render(str(i + 1), True, (180, 180, 200))
             screen.blit(hk, (r.x + 4, r.y + 2))
 
-        # Invis indicator
         if s.invis_timer > 0:
             invtxt = FONT.render(f"Invisible: {s.invis_timer:0.1f}s", True, (160, 200, 200))
             screen.blit(invtxt, (stats_x, stats_y + 30))
@@ -730,21 +689,19 @@ class Game:
 # ---------------------------- Bootstrap ---------------------------- #
 
 def seed_inventory_for_demo(g: Goblin):
-    """Seed with one cheap potion for quick test."""
-    items = make_items()
-    potion = next(i for i in items if i.id == "potion")
+    """Seed with one potion for quick test; why: ensures consumable path can be verified immediately."""
+    potion = next(i for i in make_items() if i.id == "potion")
     g.inventory.add(potion)
 
 def main():
     game = Game()
     seed_inventory_for_demo(game.goblin)
-    # Place initial gold for shop testing
-    game.goblin.gold = 120
+    game.goblin.gold = 120  # starter gold for shop testing
     game.run()
 
 if __name__ == "__main__":
     try:
         main()
-    except ImportError as e:
+    except ImportError:
         print("This demo requires pygame. Install with: pip install pygame")
         raise
