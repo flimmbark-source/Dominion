@@ -25,6 +25,8 @@ This repository includes a ready-to-use [GitHub Codespaces](https://github.com/f
 
    When a real video driver is selected, the script automatically wraps the game with `xvfb-run` so that a virtual display is available.
 
+   Outside of Codespaces, the script bootstraps a local virtual environment on first launch and installs the dependencies defined in `requirements.txt`.
+
 ## Updating Dependencies
 
 Add new Python dependencies to `requirements.txt`. Rebuild the devcontainer (or restart the Codespace) to bake the updates into `/opt/venv`.
