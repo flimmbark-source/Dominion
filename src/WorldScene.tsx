@@ -251,6 +251,13 @@ function isLineBlocked(
 }
 
 function createVillageLayout(noise: SimplexLike) {
+  const HOUSE_SCALE = {
+    width: 1.6,
+    depth: 1.6,
+    height: 1.3,
+    roof: 1.15,
+  };
+
   const makeHouse = (
     id: string,
     x: number,
@@ -262,12 +269,16 @@ function createVillageLayout(noise: SimplexLike) {
     roofHeight: number
   ): HouseData => {
     const y = terrainHeight(noise, x, z);
+    const scaledWidth = width * HOUSE_SCALE.width;
+    const scaledDepth = depth * HOUSE_SCALE.depth;
+    const scaledHeight = height * HOUSE_SCALE.height;
+    const scaledRoof = roofHeight * HOUSE_SCALE.roof;
     return {
       id,
-      position: new THREE.Vector3(x, y + height / 2, z),
+      position: new THREE.Vector3(x, y + scaledHeight / 2, z),
       rotation,
-      size: { width, depth, height },
-      roofHeight,
+      size: { width: scaledWidth, depth: scaledDepth, height: scaledHeight },
+      roofHeight: scaledRoof,
     };
   };
 
@@ -521,8 +532,8 @@ function PlayerController({
 }: {
   target: THREE.Vector3 | null;
   noise: SimplexLike;
-  playerRef: React.MutableRefObject<THREE.Mesh>;
-  terrainRef: React.MutableRefObject<THREE.Mesh>;
+  playerRef: React.MutableRefObject<THREE.Mesh | null>;
+  terrainRef: React.MutableRefObject<THREE.Mesh | null>;
 }) {
   const speed = 20;
   const lerpSpeed = 4;
@@ -576,7 +587,7 @@ function PlayerController({
 function FollowCamera({
   playerRef,
 }: {
-  playerRef: React.MutableRefObject<THREE.Mesh>;
+  playerRef: React.MutableRefObject<THREE.Mesh | null>;
 }) {
   const { camera } = useThree();
   useFrame(() => {
@@ -736,44 +747,187 @@ const Trees = React.memo(({ trees }: { trees: { pos: THREE.Vector3; scale: numbe
   );
 });
 
-const Houses = React.memo(({ houses }: { houses: HouseData[] }) => {
+function HouseStructure({
+  house,
+  registerRoof,
+}: {
+  house: HouseData;
+  registerRoof: (id: string, material: THREE.MeshStandardMaterial | null) => void;
+}) {
+  const roofMaterial = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: "#5d2e1d",
+        roughness: 0.6,
+        transparent: true,
+        opacity: 1,
+      }),
+    []
+  );
+
+  useEffect(() => {
+    registerRoof(house.id, roofMaterial);
+    return () => {
+      registerRoof(house.id, null);
+      roofMaterial.dispose();
+    };
+  }, [house.id, registerRoof, roofMaterial]);
+
+  const halfWidth = house.size.width / 2;
+  const halfDepth = house.size.depth / 2;
+  const wallThickness = Math.max(0.45, Math.min(0.8, Math.min(house.size.width, house.size.depth) * 0.08));
+  const usableWidth = Math.max(house.size.width - wallThickness * 2, wallThickness * 2);
+  const doorWidth = THREE.MathUtils.clamp(usableWidth * 0.45, 2.4, usableWidth);
+  const maxDoorHeight = Math.max(1.5, house.size.height - 0.4);
+  const doorHeight = THREE.MathUtils.clamp(house.size.height * 0.85, 3.0, maxDoorHeight);
+  const lintelHeight = Math.max(0.4, house.size.height - doorHeight);
+  const sideWidth = Math.max(wallThickness, (house.size.width - doorWidth) / 2);
+  const frontZ = halfDepth - wallThickness / 2;
+  const doorY = -house.size.height / 2 + doorHeight / 2;
+  const lintelY = -house.size.height / 2 + doorHeight + lintelHeight / 2;
+
+  const doorPanelWidth = doorWidth * 0.9;
+  const doorPanelHeight = doorHeight * 0.95;
+
   return (
-    <group>
-      {houses.map((house) => (
-        <group
-          key={house.id}
-          position={[house.position.x, house.position.y, house.position.z]}
-          rotation={[0, house.rotation, 0]}
-        >
-          <mesh castShadow receiveShadow position={[0, 0, 0]}>
-            <boxGeometry
-              args={[house.size.width, house.size.height, house.size.depth]}
-            />
-            <meshStandardMaterial color="#a17c4c" roughness={0.85} />
-          </mesh>
-          <mesh position={[0, house.size.height / 2 + house.roofHeight / 2, 0]} castShadow>
-            <coneGeometry
-              args={[Math.max(house.size.width, house.size.depth) * 0.75, house.roofHeight, 4]}
-            />
-            <meshStandardMaterial color="#5d2e1d" roughness={0.6} />
-          </mesh>
-          <mesh
-            position={[0, -house.size.height / 2 + 1.1, house.size.depth / 2 + 0.01]}
-          >
-            <planeGeometry args={[1.8, 3]} />
-            <meshStandardMaterial color="#3b2a1a" />
-          </mesh>
-          <mesh
-            position={[-house.size.width / 2 + 0.6, house.size.height / 2 + 0.4, 0]}
-          >
-            <boxGeometry args={[0.4, 0.9, 0.4]} />
-            <meshStandardMaterial color="#4d4d4d" />
-          </mesh>
-        </group>
-      ))}
+    <group
+      position={[house.position.x, house.position.y, house.position.z]}
+      rotation={[0, house.rotation, 0]}
+    >
+      <mesh receiveShadow position={[0, -house.size.height / 2 + 0.05, 0]}>
+        <boxGeometry args={[house.size.width, 0.1, house.size.depth]} />
+        <meshStandardMaterial color="#8a683d" roughness={0.9} />
+      </mesh>
+
+      <mesh castShadow receiveShadow position={[-halfWidth + wallThickness / 2, 0, 0]}>
+        <boxGeometry args={[wallThickness, house.size.height, house.size.depth]} />
+        <meshStandardMaterial color="#a17c4c" roughness={0.85} />
+      </mesh>
+
+      <mesh castShadow receiveShadow position={[halfWidth - wallThickness / 2, 0, 0]}>
+        <boxGeometry args={[wallThickness, house.size.height, house.size.depth]} />
+        <meshStandardMaterial color="#a17c4c" roughness={0.85} />
+      </mesh>
+
+      <mesh castShadow receiveShadow position={[0, 0, -halfDepth + wallThickness / 2]}>
+        <boxGeometry args={[house.size.width, house.size.height, wallThickness]} />
+        <meshStandardMaterial color="#a17c4c" roughness={0.85} />
+      </mesh>
+
+      <mesh
+        castShadow
+        receiveShadow
+        position={[-halfWidth + sideWidth / 2, 0, frontZ]}
+      >
+        <boxGeometry args={[sideWidth, house.size.height, wallThickness]} />
+        <meshStandardMaterial color="#a17c4c" roughness={0.85} />
+      </mesh>
+
+      <mesh
+        castShadow
+        receiveShadow
+        position={[halfWidth - sideWidth / 2, 0, frontZ]}
+      >
+        <boxGeometry args={[sideWidth, house.size.height, wallThickness]} />
+        <meshStandardMaterial color="#a17c4c" roughness={0.85} />
+      </mesh>
+
+      <mesh
+        castShadow
+        receiveShadow
+        position={[0, lintelY, frontZ]}
+      >
+        <boxGeometry args={[doorWidth, lintelHeight, wallThickness]} />
+        <meshStandardMaterial color="#a17c4c" roughness={0.85} />
+      </mesh>
+
+      <mesh position={[0, doorY, frontZ + 0.02]}>
+        <planeGeometry args={[doorPanelWidth, doorPanelHeight]} />
+        <meshStandardMaterial color="#3b2a1a" />
+      </mesh>
+
+      <mesh
+        position={[-halfWidth + wallThickness * 0.8, house.size.height / 2 + 0.6, 0]}
+      >
+        <boxGeometry args={[0.5, 1.1, 0.5]} />
+        <meshStandardMaterial color="#4d4d4d" />
+      </mesh>
+
+      <mesh
+        position={[0, house.size.height / 2 + house.roofHeight / 2, 0]}
+        castShadow
+      >
+        <coneGeometry
+          args={[Math.max(house.size.width, house.size.depth) * 0.78, house.roofHeight, 4]}
+        />
+        <primitive attach="material" object={roofMaterial} />
+      </mesh>
     </group>
   );
-});
+}
+
+const Houses = React.memo(
+  ({
+    houses,
+    playerRef,
+  }: {
+    houses: HouseData[];
+    playerRef: React.MutableRefObject<THREE.Mesh | null>;
+  }) => {
+    const roofMaterialsRef = useRef(new Map<string, THREE.MeshStandardMaterial>());
+    const playerPosition = useMemo(() => new THREE.Vector3(), []);
+
+    const registerRoof = useCallback(
+      (id: string, material: THREE.MeshStandardMaterial | null) => {
+        const map = roofMaterialsRef.current;
+        if (material) {
+          map.set(id, material);
+        } else {
+          map.delete(id);
+        }
+      },
+      []
+    );
+
+    useFrame((_, delta) => {
+      const player = playerRef.current;
+      if (!player) return;
+
+      player.getWorldPosition(playerPosition);
+      const lerpFactor = Math.min(1, delta * 6);
+
+      houses.forEach((house) => {
+        const material = roofMaterialsRef.current.get(house.id);
+        if (!material) return;
+
+        const inside = isPointInsideHouseXZ(playerPosition, house);
+        const targetOpacity = inside ? 0.18 : 1;
+        material.opacity = THREE.MathUtils.lerp(
+          material.opacity,
+          targetOpacity,
+          lerpFactor
+        );
+
+        if (!inside && material.opacity > 0.995) {
+          material.opacity = 1;
+        }
+
+        const isTransparent = material.opacity < 0.995;
+        material.transparent = isTransparent;
+        material.depthWrite = !isTransparent;
+        material.needsUpdate = true;
+      });
+    });
+
+    return (
+      <group>
+        {houses.map((house) => (
+          <HouseStructure key={house.id} house={house} registerRoof={registerRoof} />
+        ))}
+      </group>
+    );
+  }
+);
 
 const VillagePaths = React.memo(({ paths }: { paths: PathData[] }) => {
   return (
@@ -811,7 +965,7 @@ function Villager({
 }: {
   id: string;
   zone: VillagerZone;
-  playerRef: React.MutableRefObject<THREE.Mesh>;
+  playerRef: React.MutableRefObject<THREE.Mesh | null>;
   noise: SimplexLike;
   houses: HouseData[];
   phase?: number;
@@ -1036,7 +1190,7 @@ function Scout({
 }: {
   id: string;
   route: ScoutRoute;
-  playerRef: React.MutableRefObject<THREE.Mesh>;
+  playerRef: React.MutableRefObject<THREE.Mesh | null>;
   noise: SimplexLike;
   houses: HouseData[];
   onDetectionUpdate: (report: DetectionReport) => void;
@@ -1316,8 +1470,8 @@ function FXBloom({
 // ---------------------------------------------------------------------------
 export default function WorldScene() {
   const [target, setTarget] = useState<THREE.Vector3 | null>(null);
-  const playerRef = useRef<THREE.Mesh>(null!);
-  const terrainRef = useRef<THREE.Mesh>(null!);
+  const playerRef = useRef<THREE.Mesh | null>(null);
+  const terrainRef = useRef<THREE.Mesh | null>(null);
   const simplex = useMemo(() => makeSimplex(1337), []);
   const forestPositions = useForestLayout(simplex);
   const villageLayout = useMemo(() => createVillageLayout(simplex), [simplex]);
@@ -1414,7 +1568,7 @@ export default function WorldScene() {
         />
 
         <VillagePaths paths={paths} />
-        <Houses houses={houses} />
+        <Houses houses={houses} playerRef={playerRef} />
         <Trees trees={forestPositions} />
 
         <PlayerController
