@@ -1,8 +1,14 @@
 {
   "$schema": "https://raw.githubusercontent.com/devcontainers/spec/main/schemas/devcontainer.json",
   "name": "Dominion",
-  "image": "mcr.microsoft.com/devcontainers/python:3.11",
-  "postCreateCommand": "bash .devcontainer/postCreate.sh",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".",
+    "args": {
+      "VARIANT": "3.11"
+    }
+  },
+  "postCreateCommand": "ln -snf /opt/venv .venv",
   "customizations": {
     "vscode": {
       "settings": {

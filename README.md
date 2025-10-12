@@ -1,14 +1,13 @@
 # Dominion Codespace Setup
 
-This repository includes a ready-to-use [GitHub Codespaces](https://github.com/features/codespaces) environment for running the
-`grimm_dominion_vertical_slice_pygame.py` prototype. The devcontainer pulls the official Python 3.11 image and bootstraps a
-workspace-local virtual environment after the container is created.
+This repository includes a ready-to-use [GitHub Codespaces](https://github.com/features/codespaces) environment for running the `grimm_dominion_vertical_slice_pygame.py` prototype. The devcontainer image now preinstalls the required system and Python packages so new Codespaces start significantly faster.
 
 ## Getting Started
 
-1. Open the repository in a Codespace. The post-create setup script automatically:
-   - ensures the `xvfb` system dependency is installed,
-   - creates (or reuses) a `.venv` virtual environment inside the workspace, and
+1. Open the repository in a Codespace. The devcontainer automatically:
+   - provisions a lightweight Python 3.11 base image,
+   - installs the minimal system dependency (`xvfb`) during image build,
+   - pre-creates a reusable virtual environment at `/opt/venv` and links it to `${workspaceFolder}/.venv`, and
    - installs the Python requirements defined in `requirements.txt`.
 
 2. Once the Codespace has finished provisioning, launch the vertical slice using:
@@ -27,10 +26,8 @@ workspace-local virtual environment after the container is created.
 
    When a real video driver is selected, the script automatically wraps the game with `xvfb-run` so that a virtual display is available.
 
-   Outside of Codespaces, the script bootstraps a local virtual environment on first launch and installs the dependencies defined
-   in `requirements.txt`.
+   Outside of Codespaces, the script bootstraps a local virtual environment on first launch and installs the dependencies defined in `requirements.txt`.
 
 ## Updating Dependencies
 
-Add new Python dependencies to `requirements.txt`. Restart the Codespace (or re-run `.devcontainer/postCreate.sh`) to reinstall them
-inside the workspace virtual environment.
+Add new Python dependencies to `requirements.txt`. Rebuild the devcontainer (or restart the Codespace) to bake the updates into `/opt/venv`.
