@@ -3,8 +3,27 @@ set -euo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_ROOT=$(cd -- "${SCRIPT_DIR}/.." && pwd)
 cd "$PROJECT_ROOT"
+
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON_BIN="python3"
+elif command -v python >/dev/null 2>&1; then
+  PYTHON_BIN="python"
+else
+  echo "Error: python3 or python must be installed" >&2
+  exit 1
+fi
+
+if [ ! -d ".venv" ]; then
+  "$PYTHON_BIN" -m venv .venv
+fi
+
 if [ -d ".venv" ]; then
+  # shellcheck source=/dev/null
   source .venv/bin/activate
+  if ! python -c "import pygame" >/dev/null 2>&1; then
+    python -m pip install --upgrade pip
+    pip install -r requirements.txt
+  fi
 fi
 DRIVER=${SDL_VIDEODRIVER:-dummy}
 export SDL_VIDEODRIVER="$DRIVER"
