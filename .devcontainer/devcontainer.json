@@ -3,7 +3,7 @@
   "name": "Dominion",
   "build": {
     "dockerfile": "Dockerfile",
-    "context": ".",
+    "context": "..",
     "args": {
       "VARIANT": "3.11"
     }
