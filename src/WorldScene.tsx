@@ -486,12 +486,10 @@ const Trees = React.memo(({ trees }: { trees: { pos: THREE.Vector3; scale: numbe
 // ---------------------------------------------------------------------------
 function Scout({
   playerRef,
-  terrainRef,
   noise,
   onDetectionUpdate,
 }: {
   playerRef: React.MutableRefObject<THREE.Mesh>;
-  terrainRef: React.MutableRefObject<THREE.Mesh>;
   noise: SimplexLike;
   onDetectionUpdate: (value: number, inCone: boolean, detected: boolean) => void;
 }) {
@@ -510,26 +508,21 @@ function Scout({
   const up = useMemo(() => new THREE.Vector3(0, 1, 0), []);
   const quat = useMemo(() => new THREE.Quaternion(), []);
   const scanQuat = useMemo(() => new THREE.Quaternion(), []);
-  const raycaster = useMemo(() => new THREE.Raycaster(), []);
-  const down = useMemo(() => new THREE.Vector3(0, -1, 0), []);
 
   const sampleHeight = useCallback(
-    (x: number, z: number) => terrainHeight(noise, x, z),
+    (x: number, z: number) => noise.noise2D(x / 40, z / 40) * 8 * 1.2,
     [noise]
   );
 
   useFrame(({ clock }, delta) => {
     const scout = scoutRef.current;
     const player = playerRef.current;
-    const terrain = terrainRef.current;
-    if (!scout || !player || !terrain) return;
+    if (!scout || !player) return;
 
     const t = clock.elapsedTime * 0.18;
     const alpha = (Math.sin(t) * 0.5 + 0.5) ** 1.2;
     tmpPos.copy(patrolStart).lerp(patrolEnd, alpha);
-    raycaster.set(new THREE.Vector3(tmpPos.x, 200, tmpPos.z), down);
-    const hit = raycaster.intersectObject(terrain, true)[0];
-    const terrainY = hit ? hit.point.y : sampleHeight(tmpPos.x, tmpPos.z);
+    const terrainY = sampleHeight(tmpPos.x, tmpPos.z);
     scout.position.set(tmpPos.x, terrainY + 1.6, tmpPos.z);
 
     const offset = 0.05;
@@ -764,7 +757,6 @@ export default function WorldScene() {
 
         <Scout
           playerRef={playerRef}
-          terrainRef={terrainRef}
           noise={simplex}
           onDetectionUpdate={handleDetectionUpdate}
         />
