@@ -1,0 +1,573 @@
+<!-- /index.html -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Grimm Dominion – Vertical Slice (Codespaces/Browser)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    html, body { margin:0; height:100%; background:#0b0f17; font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
+    #wrap { display:grid; place-items:center; height:100%; }
+    canvas { background:#0a0e14; width: 960px; height: 600px; image-rendering: pixelated; border:1px solid #1c2736; }
+    #hint { position:fixed; left:10px; bottom:10px; color:#9fb3c8; font-size:12px; opacity:.85; }
+  </style>
+</head>
+<body>
+  <div id="wrap"><canvas id="game" width="960" height="600"></canvas></div>
+  <div id="hint">
+    WASD move · Shift sprint · E loot · 1–6 use items · Enter tavern to open shop · 0/Esc close shop · F toggle cones
+  </div>
+  <script>
+    // Minimal doc-style notes (why): single-file, no deps, works in Codespaces Preview; Canvas for portability.
+
+    /** ---------- Math/Utils ---------- */
+    const TAU = Math.PI * 2;
+    const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+    const lerp  = (a,b,t) => a + (b-a)*t;
+    const dist2 = (a,b) => (a.x-b.x)**2+(a.y-b.y)**2;
+    const lineIntersectsRect = (x1,y1,x2,y2, rx,ry,rw,rh) => {
+      // Liang–Barsky (efficient + robust)
+      let p = [-(x2-x1), (x2-x1), -(y2-y1), (y2-y1)];
+      let q = [x1 - rx, rx+rw - x1, y1 - ry, ry+rh - y1];
+      let u1 = 0, u2 = 1;
+      for (let i=0;i<4;i++){
+        if (p[i] === 0) { if (q[i] < 0) return false; }
+        else {
+          let t = q[i] / p[i];
+          if (p[i] < 0) { if (t > u2) return false; if (t > u1) u1 = t; }
+          else { if (t < u1) return false; if (t < u2) u2 = t; }
+        }
+      }
+      return true;
+    };
+    const segBlockedByAnyRect = (x1,y1,x2,y2, rects) => rects.some(r => lineIntersectsRect(x1,y1,x2,y2, r.x, r.y, r.w, r.h));
+
+    /** ---------- Input ---------- */
+    const keys = new Set();
+    window.addEventListener('keydown', e => { keys.add(e.key.toLowerCase()); });
+    window.addEventListener('keyup',   e => { keys.delete(e.key.toLowerCase()); });
+
+    /** ---------- Game State ---------- */
+    const ctx = document.getElementById('game').getContext('2d');
+    const W = ctx.canvas.width, H = ctx.canvas.height;
+
+    const state = {
+      time: 0,
+      pausedForShop: false,
+      debugCones: false,
+      message: '',
+      messageUntil: 0,
+      player: {
+        x: 140, y: 460, r: 10, facing: 0,
+        vx: 0, vy: 0, sprinting: false,
+        gold: 0, health: 100,
+        detection: 0,
+        invisUntil: 0,
+        stats: { speed: 120, attack: 10, stealthMult: 1.0 },
+        inventory: Array(6).fill(null),
+      },
+      houses: [],
+      chests: [],
+      tavern: { x: 20, y: 490, w: 110, h: 70 },
+      npcs: [],
+      castle: { x: 860, y: 80 },
+      threat: 0,
+      threatSpawns: [50, 100],
+      spawnCount: 0,
+      lastSeen: false,
+    };
+
+    /** ---------- World Setup ---------- */
+    function addHouse(x,y,w,h){ state.houses.push({x,y,w,h}); }
+    // Village blocks: alleys encourage weaving
+    addHouse(280, 360, 120, 100);
+    addHouse(120, 260, 140, 100);
+    addHouse(420, 260, 160, 120);
+    addHouse(620, 340, 160, 120);
+    addHouse(680, 170, 150, 100);
+    addHouse(260, 120, 120, 80);
+    // Chests near/inside houses
+    function addChest(x,y, amount=50){ state.chests.push({x, y, w:18, h:12, amount, looted:false}); }
+    addChest(320, 410, 50);
+    addChest(190, 300, 70);
+    addChest(470, 300, 60);
+    addChest(720, 370, 80);
+    // NPCs
+    function makeNPC(type, x,y, waypoints=null){
+      const isScout = type === 'scout';
+      return {
+        type, x, y, facing: 0, speed: isScout? 60: 35,
+        fovAngle: isScout? (Math.PI/3): (Math.PI/2), // scouts narrower but sharper
+        fovRange: isScout? 220: 120,
+        waypoints: waypoints || [{x,y}], wpIndex: 0,
+      };
+    }
+    // Villagers meander locally
+    state.npcs.push(makeNPC('villager', 220, 520, [{x:220,y:520},{x:180,y:520},{x:220,y:520},{x:240,y:500}]));
+    state.npcs.push(makeNPC('villager', 560, 450, [{x:560,y:450},{x:540,y:470},{x:560,y:450},{x:580,y:430}]));
+    // Scouts patrol routes
+    state.npcs.push(makeNPC('scout', 800, 480, [{x:800,y:480},{x:740,y:420},{x:680,y:480},{x:740,y:540}])); // square
+    state.npcs.push(makeNPC('scout', 500, 180, [{x:500,y:180},{x:420,y:180},{x:360,y:220},{x:420,y:260},{x:500,y:260}])); // perimeter
+
+    /** ---------- Items / Shop ---------- */
+    const ITEMS = [
+      { key:'1', name:'Boots of Speed',   price:100, type:'passive', apply:(p)=>{ p.stats.speed += 40; } },
+      { key:'2', name:'Cloak of Shadows', price:150, type:'passive', apply:(p)=>{ p.stats.stealthMult *= 0.6; } },
+      { key:'3', name:'Poison Dagger',    price:120, type:'passive', apply:(p)=>{ p.stats.attack += 10; } },
+      { key:'4', name:'Invisibility Potion', price:80, type:'consumable', apply:(p)=>{/* effect when used */} },
+      { key:'5', name:'Moonleaf Draught', price:90, type:'consumable', apply:(p)=>{/* small heal on use */} },
+    ];
+    function inventoryAdd(item){
+      const idx = state.player.inventory.findIndex(x=>x===null);
+      if (idx === -1) return false;
+      state.player.inventory[idx] = {...item, stacks:1};
+      return true;
+    }
+    function useInventorySlot(slotIdx){
+      const it = state.player.inventory[slotIdx];
+      if (!it) return;
+      if (it.name === 'Invisibility Potion'){
+        const now = state.time;
+        if (now < state.player.invisUntil) return;
+        state.player.invisUntil = now + 6; // why: strong, but limited; enables stealth tests
+        state.player.inventory[slotIdx] = null;
+        toast('You fade from sight...');
+      } else if (it.name === 'Moonleaf Draught'){
+        state.player.health = clamp(state.player.health + 30, 0, 100);
+        state.player.inventory[slotIdx] = null;
+        toast('You feel restored (+30 HP).');
+      } // passives need not be used
+    }
+
+    /** ---------- Helpers ---------- */
+    function toast(msg, dur=2){ state.message = msg; state.messageUntil = state.time + dur; console.log(msg); }
+    function inRect(px,py, r){ return px>=r.x && px<=r.x+r.w && py>=r.y && py<=r.y+r.h; }
+    function circleRectCollideResolve(cx,cy,cr, r){
+      const nx = clamp(cx, r.x, r.x+r.w), ny = clamp(cy, r.y, r.y+r.h);
+      const dx = cx - nx, dy = cy - ny; const d2 = dx*dx + dy*dy;
+      if (d2 > cr*cr) return {x:cx, y:cy};
+      const d = Math.max(0.0001, Math.sqrt(d2));
+      const ux = dx/d, uy = dy/d;
+      const overlap = cr - d + 0.1;
+      return { x: cx + ux*overlap, y: cy + uy*overlap };
+    }
+
+    /** ---------- FOV / Detection ---------- */
+    function npcSeesPlayer(npc, player){
+      const dx = player.x - npc.x, dy = player.y - npc.y;
+      const d = Math.hypot(dx,dy);
+      if (d > npc.fovRange) return false;
+      const ang = Math.atan2(dy,dx);
+      let delta = ang - npc.facing; while (delta > Math.PI) delta -= TAU; while (delta < -Math.PI) delta += TAU;
+      if (Math.abs(delta) > npc.fovAngle/2) return false;
+      // LOS blocked by houses?
+      if (segBlockedByAnyRect(npc.x, npc.y, player.x, player.y, state.houses)) return false;
+      // Invisible?
+      if (state.time < player.invisUntil) return false;
+      return true;
+    }
+
+    /** ---------- Update ---------- */
+    let lastT = performance.now();
+    function loop(nowMs){
+      const now = nowMs/1000;
+      const dt = Math.min(0.033, now - lastT/1000);
+      lastT = nowMs;
+
+      if (!state.pausedForShop) update(dt);
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    function update(dt){
+      state.time += dt;
+
+      // Player movement
+      const p = state.player;
+      let ix = 0, iy = 0;
+      if (keys.has('w')) iy -= 1;
+      if (keys.has('s')) iy += 1;
+      if (keys.has('a')) ix -= 1;
+      if (keys.has('d')) ix += 1;
+      const m = Math.hypot(ix,iy) || 1;
+      const wantSpeed = p.stats.speed * (keys.has('shift') ? 1.7 : 1.0);
+      p.sprinting = keys.has('shift') && (ix||iy);
+      p.vx = (ix/m) * wantSpeed;
+      p.vy = (iy/m) * wantSpeed;
+      if (ix||iy) p.facing = Math.atan2(p.vy, p.vx);
+
+      // Integrate
+      let nx = p.x + p.vx*dt, ny = p.y + p.vy*dt;
+      // World bounds
+      nx = clamp(nx, p.r+2, W - p.r - 2);
+      ny = clamp(ny, p.r+2, H - p.r - 2);
+      // Collide with houses
+      for (const h of state.houses){
+        const fixed = circleRectCollideResolve(nx,ny,p.r, h);
+        nx = fixed.x; ny = fixed.y;
+      }
+      p.x = nx; p.y = ny;
+
+      // Tavern trigger -> open shop
+      if (inRect(p.x, p.y, state.tavern) && !state.pausedForShop){
+        openShop();
+      }
+
+      // NPCs update: simple patrol/wander
+      for (const npc of state.npcs){
+        const wp = npc.waypoints[npc.wpIndex];
+        const dx = wp.x - npc.x, dy = wp.y - npc.y;
+        const d = Math.hypot(dx,dy);
+        if (d < 4) {
+          npc.wpIndex = (npc.wpIndex + 1) % npc.waypoints.length;
+        } else {
+          const vx = dx/d * npc.speed, vy = dy/d * npc.speed;
+          // Move + collide with houses
+          let nx = npc.x + vx*dt, ny = npc.y + vy*dt;
+          for (const h of state.houses){
+            const fixed = circleRectCollideResolve(nx,ny,8, h);
+            nx = fixed.x; ny = fixed.y;
+          }
+          npc.x = nx; npc.y = ny;
+          npc.facing = Math.atan2(vy, vx);
+        }
+      }
+
+      // Detection logic
+      let seenBy = 0;
+      for (const npc of state.npcs) if (npcSeesPlayer(npc, p)) seenBy++;
+      const seen = seenBy > 0;
+      state.lastSeen = seen;
+
+      const baseInc = seen ? (18 * seenBy) : 0;
+      let inc = baseInc;
+      // Distance scaling (closer fills faster)
+      if (seen){
+        // pick nearest seeing npc for distance factor
+        let minD = Infinity;
+        for (const npc of state.npcs) if (npcSeesPlayer(npc,p)) {
+          const d = Math.hypot(npc.x-p.x, npc.y-p.y);
+          if (d < minD) minD = d;
+        }
+        const distFactor = clamp(1.6 - (minD / 260), 0.3, 1.6);
+        inc *= distFactor;
+      }
+      // Sprint noise (hearing) even when unseen
+      if (p.sprinting){
+        for (const npc of state.npcs){
+          const hearR = (npc.type === 'scout') ? 180 : 120;
+          const d = Math.hypot(npc.x-p.x, npc.y-p.y);
+          if (d < hearR && !segBlockedByAnyRect(npc.x,npc.y,p.x,p.y,state.houses)) {
+            inc += (npc.type==='scout'? 10: 6) * (1 - d/hearR);
+          }
+        }
+      }
+      // Invisibility nullifies gains
+      if (state.time < p.invisUntil) inc = 0;
+
+      // Apply stealth multiplier (lower is better)
+      inc *= p.stats.stealthMult;
+
+      // Update meter
+      if (inc > 0) p.detection = clamp(p.detection + inc*dt, 0, 100);
+      else p.detection = clamp(p.detection - 10*dt, 0, 100);
+
+      if (p.detection >= 100){
+        toast('⚠️ Spotted! The village is on alert.', 2.5);
+        p.detection = 60; // back off a bit to continue play
+        addThreat(30);
+      }
+
+      // Threat escalation optional ambient gain on near-miss
+      if (seen && p.detection > 70) addThreat(5*dt);
+
+      // Threat spawns
+      while (state.spawnCount < state.threatSpawns.length && state.threat >= state.threatSpawns[state.spawnCount]){
+        spawnReinforcement();
+        state.spawnCount++;
+      }
+
+      // Interactions: Looting (E)
+      if (pressOnce('e')){
+        const c = state.chests.find(c => !c.looted && Math.hypot(c.x - p.x, c.y - p.y) < 26);
+        if (c){
+          c.looted = true;
+          p.gold += c.amount;
+          toast(`Looted ${c.amount} gold.`);
+          // Noise spike + threat
+          p.detection = clamp(p.detection + 25, 0, 100);
+          addThreat(12);
+        }
+      }
+
+      // Item use (1-6)
+      for (let i=0;i<6;i++){
+        if (pressOnce(String(i+1))) useInventorySlot(i);
+      }
+
+      // Debug toggle cones
+      if (pressOnce('f')) state.debugCones = !state.debugCones;
+
+      // Close shop if open with 0/Esc handled in openShop handler
+    }
+
+    /** ---------- Threat & Spawns ---------- */
+    function addThreat(v){ state.threat = Math.max(0, Math.min(999, state.threat + v)); }
+    function spawnReinforcement(){
+      // Spawn a tougher scout at the castle, push into a village route
+      const c = state.castle;
+      const entry = { x:c.x, y:c.y + 10 };
+      const patrol = [
+        entry,
+        {x:760,y:140},
+        {x:720,y:240},
+        {x:680,y:340},
+        {x:640,y:440},
+        {x:720,y:240},
+      ];
+      const npc = makeNPC('scout', entry.x, entry.y, patrol);
+      npc.speed += 10;
+      npc.fovRange += 30;
+      state.npcs.push(npc);
+      toast('Reinforcement scout arrives from the castle!');
+    }
+
+    /** ---------- Shop Overlay ---------- */
+    let justPressed = new Set();
+    function pressOnce(k){
+      if (keys.has(k)){
+        if (justPressed.has(k)) return false;
+        justPressed.add(k);
+        return true;
+      } else {
+        justPressed.delete(k);
+        return false;
+      }
+    }
+
+    function openShop(){
+      state.pausedForShop = true;
+      toast("Goblin Merchant: What are ya buyin'?", 2);
+    }
+
+    window.addEventListener('keydown', (e)=>{
+      if (!state.pausedForShop) return;
+      const k = e.key.toLowerCase();
+      if (k === '0' || k === 'escape'){ state.pausedForShop = false; return; }
+      // Purchase by number keys matching ITEMS key
+      const item = ITEMS.find(it => it.key === k);
+      if (!item) return;
+      const p = state.player;
+      if (p.gold < item.price){ toast('Not enough gold!'); return; }
+      if (!inventoryAdd(item)){ toast('Inventory full!'); return; }
+      p.gold -= item.price;
+      // Apply passives immediately
+      if (item.type === 'passive') item.apply(p);
+      toast(`Purchased ${item.name}.`);
+    });
+
+    /** ---------- Rendering ---------- */
+    function draw(){
+      const p = state.player;
+
+      // Night sky + moon haze
+      ctx.clearRect(0,0,W,H);
+      ctx.fillStyle = '#0a0e14';
+      ctx.fillRect(0,0,W,H);
+
+      // Distant Dark Lord's Castle (symbolic)
+      drawCastle();
+
+      // Ground roads
+      ctx.fillStyle = '#121826';
+      ctx.fillRect(0, 440, W, 160);
+      ctx.fillRect(120, 220, 680, 40);
+
+      // Houses
+      for (const h of state.houses){
+        ctx.fillStyle = '#1b2638';
+        ctx.fillRect(h.x, h.y, h.w, h.h);
+        ctx.strokeStyle = '#2a3b57';
+        ctx.strokeRect(h.x+0.5, h.y+0.5, h.w-1, h.h-1);
+      }
+
+      // Tavern area
+      ctx.fillStyle = 'rgba(30,80,40,.25)';
+      ctx.fillRect(state.tavern.x, state.tavern.y, state.tavern.w, state.tavern.h);
+      ctx.strokeStyle = '#3a7a4a';
+      ctx.strokeRect(state.tavern.x+0.5, state.tavern.y+0.5, state.tavern.w-1, state.tavern.h-1);
+
+      // Chests
+      for (const c of state.chests){
+        if (c.looted) continue;
+        ctx.fillStyle = '#8b5a2b';
+        ctx.fillRect(c.x-9, c.y-6, c.w, c.h);
+        ctx.fillStyle = '#d9a441'; ctx.fillRect(c.x-9, c.y-1, c.w, 2);
+      }
+
+      // NPCs + vision cones
+      for (const npc of state.npcs){
+        if (state.debugCones) drawFOV(npc);
+        // body
+        ctx.beginPath();
+        ctx.arc(npc.x, npc.y, 8, 0, TAU);
+        ctx.fillStyle = npc.type==='scout' ? '#6fa8dc' : '#9aa5b1';
+        ctx.fill();
+        // facing tick
+        ctx.beginPath();
+        ctx.moveTo(npc.x, npc.y);
+        ctx.lineTo(npc.x + Math.cos(npc.facing)*12, npc.y + Math.sin(npc.facing)*12);
+        ctx.strokeStyle = '#a3b9d6'; ctx.stroke();
+      }
+
+      // Player (goblin)
+      const invisible = state.time < p.invisUntil;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, TAU);
+      ctx.fillStyle = invisible ? 'rgba(120,220,180,0.35)' : '#5cc16d';
+      ctx.fill();
+      // Torch light from scouts (atmosphere)
+      drawTorchlight();
+
+      // HUD + UI
+      drawHUD();
+
+      // Shop overlay
+      if (state.pausedForShop) drawShop();
+
+      // Top message
+      if (state.time < state.messageUntil){
+        ctx.fillStyle = '#d1e7ff';
+        ctx.font = 'bold 16px system-ui';
+        ctx.fillText(state.message, 16, 24);
+      }
+    }
+
+    function drawCastle(){
+      const {x,y} = state.castle;
+      ctx.save();
+      ctx.translate(x,y);
+      ctx.fillStyle = '#151b2b';
+      ctx.fillRect(-26,-22, 52, 44);
+      ctx.fillRect(-16,-38, 32, 16);
+      for (let i=-24;i<=24;i+=12){ ctx.fillRect(i,-38, 6, 8); }
+      ctx.restore();
+      ctx.fillStyle = '#9fb3c8';
+      ctx.font = '12px system-ui';
+      ctx.fillText('Dark Lord’s Castle', x-48, y-46);
+    }
+
+    function drawFOV(npc){
+      ctx.save();
+      ctx.translate(npc.x, npc.y);
+      ctx.rotate(npc.facing);
+      ctx.beginPath();
+      ctx.moveTo(0,0);
+      ctx.arc(0,0, npc.fovRange, -npc.fovAngle/2, npc.fovAngle/2);
+      ctx.closePath();
+      ctx.fillStyle = npc.type==='scout' ? 'rgba(120,160,255,.10)' : 'rgba(200,200,200,.08)';
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawTorchlight(){
+      if (!state.debugCones){
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        for (const npc of state.npcs.filter(n=>n.type==='scout')){
+          const grad = ctx.createRadialGradient(npc.x, npc.y, 10, npc.x, npc.y, 70);
+          grad.addColorStop(0, 'rgba(255,220,120,0.12)');
+          grad.addColorStop(1, 'rgba(255,220,120,0)');
+          ctx.fillStyle = grad;
+          ctx.beginPath(); ctx.arc(npc.x, npc.y, 70, 0, TAU); ctx.fill();
+        }
+        ctx.restore();
+      }
+    }
+
+    function bar(x,y,w,h, frac, fg, bg, border='#1a2636'){
+      ctx.fillStyle = bg; ctx.fillRect(x,y,w,h);
+      ctx.fillStyle = fg; ctx.fillRect(x,y, w*clamp(frac,0,1), h);
+      ctx.strokeStyle = border; ctx.strokeRect(x+.5,y+.5,w-1,h-1);
+    }
+
+    function drawHUD(){
+      // Bottom panel
+      ctx.fillStyle = 'rgba(10,14,22,0.9)';
+      ctx.fillRect(0, H-100, W, 100);
+      ctx.strokeStyle = '#1f2b3e';
+      ctx.strokeRect(0.5, H-100.5, W-1, 100);
+
+      const p = state.player;
+      // Health
+      bar(16, H-84, 220, 18, p.health/100, '#35c46a', '#233645');
+      ctx.fillStyle = '#d4ffe6'; ctx.font = '12px system-ui'; ctx.fillText('Health', 20, H-70);
+
+      // Detection (Stealth)
+      bar(16, H-52, 220, 14, p.detection/100, '#f0c94c', '#233645');
+      ctx.fillStyle = '#fff2c7'; ctx.font = '12px system-ui'; ctx.fillText('Detection', 20, H-38);
+
+      // Gold
+      ctx.fillStyle = '#ffd25a';
+      ctx.font = '14px system-ui';
+      ctx.fillText(`Gold: ${p.gold}`, 260, H-68);
+
+      // Stats
+      ctx.fillStyle = '#cfe1ff';
+      ctx.font = '12px system-ui';
+      ctx.fillText(`Speed: ${Math.round(p.stats.speed)}  Damage: ${p.stats.attack}  Stealth x${p.stats.stealthMult.toFixed(2)}`, 260, H-44);
+
+      // Threat
+      ctx.fillStyle = '#cfe1ff';
+      ctx.font = '12px system-ui';
+      ctx.fillText(`Threat: ${Math.floor(state.threat)}`, 16, 20);
+
+      // Inventory slots
+      const slotsX = W - 16 - (6*48);
+      for (let i=0;i<6;i++){
+        const x = slotsX + i*48, y = H - 84;
+        ctx.fillStyle = 'rgba(24,34,52,0.9)';
+        ctx.fillRect(x, y, 44, 44);
+        ctx.strokeStyle = '#2a3a56'; ctx.strokeRect(x+.5,y+.5,44-1,44-1);
+        ctx.fillStyle = '#6e8bb6'; ctx.font = '10px system-ui'; ctx.fillText(String(i+1), x+2, y+12);
+        const it = state.player.inventory[i];
+        if (it){
+          ctx.fillStyle = '#d7e6ff';
+          ctx.font = '11px system-ui';
+          const label = it.name.split(' ').map(w=>w[0]).join('').slice(0,3);
+          ctx.fillText(label, x+16, y+26);
+        }
+      }
+    }
+
+    function drawShop(){
+      ctx.save();
+      ctx.fillStyle = 'rgba(8,10,16,.8)'; ctx.fillRect(0,0,W,H);
+      // Parchment panel
+      const pw=560, ph=280, px=(W-pw)/2, py=(H-ph)/2;
+      ctx.fillStyle = '#2b2a24'; ctx.fillRect(px,py,pw,ph);
+      ctx.strokeStyle = '#4a3d2b'; ctx.strokeRect(px+.5,py+.5,pw-1,ph-1);
+      ctx.fillStyle = '#f4e1b5'; ctx.font = '20px ui-sans-serif';
+      ctx.fillText('Goblin Tavern – Wares', px+20, py+34);
+      ctx.fillStyle = '#ead6a0'; ctx.font = '14px ui-sans-serif';
+      const lines = [
+        'Press number to purchase. 0/Esc to leave.',
+        `Your Gold: ${state.player.gold}`,
+        '',
+        '1) Boots of Speed (100) – Move faster.',
+        '2) Cloak of Shadows (150) – Detect slower.',
+        '3) Poison Dagger (120) – +Damage.',
+        '4) Invisibility Potion (80) – 6s invisible (consumable).',
+        '5) Moonleaf Draught (90) – Heal 30 HP (consumable).',
+      ];
+      lines.forEach((t,i)=> ctx.fillText(t, px+20, py+64 + i*24));
+      ctx.restore();
+    }
+
+    /** ---------- Start ---------- */
+    requestAnimationFrame((t)=>{ lastT = t; loop(t); });
+
+    // Credits: You’re the dark lord now.
+  </script>
+</body>
+</html>
