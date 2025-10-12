@@ -62,3 +62,128 @@ canvas {
     height: 100dvh; /* keeps behavior consistent when rotating */
   }
 }
+
+/* ----------------------------------------------------------------------- */
+/* Heads-up display and detection feedback                                 */
+/* ----------------------------------------------------------------------- */
+.world-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+.hud {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(90vw, 640px);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.hud__detection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: #f0f6ff;
+  text-shadow: 0 0 8px rgba(0, 0, 0, 0.65);
+}
+
+.detection-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  backdrop-filter: blur(6px);
+  background: rgba(12, 18, 28, 0.55);
+  border: 1px solid rgba(120, 160, 200, 0.2);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+}
+
+.detection-bar__track {
+  position: relative;
+  width: clamp(220px, 40vw, 360px);
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(22, 36, 52, 0.8), rgba(32, 42, 58, 0.8));
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(180, 210, 240, 0.1);
+}
+
+.detection-bar__fill {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  border-radius: 999px;
+  transition: width 0.25s ease-out, background 0.25s ease-out;
+  box-shadow: 0 0 12px rgba(255, 90, 90, 0.4);
+}
+
+.detection-bar__label {
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.detected-text {
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #ff6262;
+  text-shadow: 0 0 22px rgba(255, 45, 45, 0.65);
+  animation: detectedFlash 1s ease-in-out infinite;
+}
+
+@keyframes detectedFlash {
+  0%,
+  100% {
+    opacity: 0.75;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.danger-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at center,
+    rgba(220, 30, 30, 0) 55%,
+    rgba(130, 0, 0, 0.6) 100%
+  );
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  will-change: opacity, transform;
+}
+
+.danger-vignette--tracking {
+  opacity: 0.25;
+  background: radial-gradient(
+    circle at center,
+    rgba(255, 180, 64, 0) 52%,
+    rgba(120, 30, 0, 0.45) 100%
+  );
+}
+
+.danger-vignette--active {
+  opacity: 0.9;
+  animation: dangerPulse 0.8s ease-in-out infinite;
+}
+
+@keyframes dangerPulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.01);
+  }
+}
