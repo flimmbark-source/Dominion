@@ -50,14 +50,29 @@
     const ctx = document.getElementById('game').getContext('2d');
     const W = ctx.canvas.width, H = ctx.canvas.height;
 
+    const WORLD = { W: 8000, H: 8000 };
+    const VILLAGES = [
+      { name:'Moonfen',   x: 3600, y: 3400, w: 960, h: 600 },
+      { name:'Brackenreach', x: 900,  y: 1200, w: 960, h: 600 },
+      { name:'Duskhaven', x: 5900, y: 1200, w: 960, h: 600 },
+      { name:'Miregate',  x: 980,  y: 5900, w: 960, h: 600 },
+      { name:'Thornfall', x: 5840, y: 5840, w: 960, h: 600 }
+    ];
+    const mainVillage = VILLAGES[0];
+    const pathSegments = [];
+    const PATH_WIDTH_MAIN = 48;
+    const PATH_WIDTH_RING = 38;
+    const PATH_CLEAR_RADIUS = 44;
+
     const state = {
       time: 0,
       pausedForShop: false,
       debugCones: true, // show sight cones by default (toggle with F)
       message: '',
       messageUntil: 0,
+      camera: { x: mainVillage.x + mainVillage.w/2 - W/2, y: mainVillage.y + mainVillage.h/2 - H/2 },
       player: {
-        x: 140, y: 460, r: 10, facing: 0,
+        x: mainVillage.x + 180, y: mainVillage.y + 460, r: 10, facing: 0,
         vx: 0, vy: 0, sprinting: false,
         gold: 0, health: 100,
         detection: 0,
@@ -69,9 +84,9 @@
       doors: [],
       houseSolids: [],
       chests: [],
-      tavern: { x: 20, y: 490, w: 110, h: 70 },
+      tavern: { x: mainVillage.x + 60, y: mainVillage.y + mainVillage.h - 160, w: 170, h: 120 },
       npcs: [],
-      castle: { x: 860, y: 80 },
+      castle: { x: WORLD.W - 320, y: 360 },
       threat: 0, // meter still used to spawn scouts but no HUD text
       threatSpawns: [50, 100],
       spawnCount: 0,
@@ -86,48 +101,80 @@
     // ----- Large world + terrain (forests and roads) -----
     const roads = [];
     let forestSolids = [];
-    const VILLAGE = { x: 1200, y: 1200, w: 960, h: 600 };
 
     function addRoad(x,y,w,h){ roads.push({x,y,w,h}); }
     function pointInRect(px,py, r){ return px>=r.x && px<=r.x+r.w && py>=r.y && py<=r.y+r.h; }
+    function rectsOverlap(a,b){ return !(a.x+a.w < b.x || b.x+b.w < a.x || a.y+a.h < b.y || b.y+b.h < a.y); }
     function distToSegment(px,py, ax,ay,bx,by){
       const vx = bx-ax, vy = by-ay; const wx = px-ax, wy = py-ay;
       const c1 = vx*wx + vy*wy; const c2 = vx*vx + vy*vy; const t = c2 ? clamp(c1/c2,0,1):0;
       const dx = ax + t*vx - px, dy = ay + t*vy - py; return Math.hypot(dx,dy);
     }
+    function centerOf(rect){ return { x: rect.x + rect.w/2, y: rect.y + rect.h/2 }; }
+
     function generateWorld(){
-      roads.length = 0; forestSolids = [];
-      // Main village roads (same sizes as before but offset to VILLAGE)
-      addRoad(VILLAGE.x, VILLAGE.y + 440, VILLAGE.w, 160);
-      addRoad(VILLAGE.x + 120, VILLAGE.y + 220, 680, 40);
-      // Path polylines radiating out of the village
-      const paths = [
-        [{x:VILLAGE.x, y:VILLAGE.y+300},{x:VILLAGE.x-600, y:VILLAGE.y+260},{x:200, y:VILLAGE.y+200}],
-        [{x:VILLAGE.x+480, y:VILLAGE.y},{x:VILLAGE.x+520, y:VILLAGE.y-500},{x:VILLAGE.x+520, y:200}],
-        [{x:VILLAGE.x+VILLAGE.w, y:VILLAGE.y+320},{x:VILLAGE.x+VILLAGE.w+600, y:VILLAGE.y+360},{x:WORLD.W-200, y:VILLAGE.y+420}],
-        [{x:VILLAGE.x+420, y:VILLAGE.y+VILLAGE.h},{x:VILLAGE.x+420, y:VILLAGE.y+VILLAGE.h+600},{x:VILLAGE.x+420, y:WORLD.H-200}]
-      ];
-      const corridor = 90; // path half-width
+      roads.length = 0; forestSolids = []; pathSegments.length = 0;
+
+      // Lay out village main roads
+      for (const village of VILLAGES){
+        addRoad(village.x, village.y + village.h - 180, village.w, 180);
+        addRoad(village.x + 160, village.y + village.h/2 - 20, village.w - 320, 40);
+      }
+
+      // Build dirt paths between the major settlements
+      const heart = centerOf(mainVillage);
+      for (let i=1;i<VILLAGES.length;i++){
+        const other = centerOf(VILLAGES[i]);
+        const dir = { x: other.x - heart.x, y: other.y - heart.y };
+        const dist = Math.hypot(dir.x, dir.y) || 1;
+        const nx = -dir.y / dist;
+        const ny = dir.x / dist;
+        const bend = (i % 2 === 0) ? 1 : -1;
+        const first = {
+          x: heart.x + dir.x * 0.33 + nx * 220 * bend,
+          y: heart.y + dir.y * 0.33 + ny * 220 * bend
+        };
+        const second = {
+          x: heart.x + dir.x * 0.66 - nx * 180 * bend,
+          y: heart.y + dir.y * 0.66 - ny * 180 * bend
+        };
+        const segments = [heart, first, second, other];
+        for (let s=0;s<segments.length-1;s++){
+          const a = segments[s], b = segments[s+1];
+          pathSegments.push({ a, b, width: PATH_WIDTH_MAIN });
+        }
+      }
+
+      // Add a ring path linking the frontier villages
+      const frontier = VILLAGES.slice(1);
+      for (let i=0;i<frontier.length;i++){
+        const a = centerOf(frontier[i]);
+        const b = centerOf(frontier[(i+1)%frontier.length]);
+        pathSegments.push({ a, b, width: PATH_WIDTH_RING });
+      }
+
+      // Populate forests everywhere that is not a road, village, or path corridor
+      const corridor = PATH_CLEAR_RADIUS;
       for (let y=0; y<WORLD.H; y+=64){
         for (let x=0; x<WORLD.W; x+=64){
           const cx = x+24, cy = y+24;
-          if (pointInRect(cx,cy,VILLAGE)) continue; // keep village clear
+          let skip = false;
+          for (const v of VILLAGES){ if (pointInRect(cx,cy,v)) { skip = true; break; } }
+          if (skip) continue;
+          for (const r of roads){ if (pointInRect(cx,cy,r)) { skip = true; break; } }
+          if (skip) continue;
           let nearPath = false;
-          for (const poly of paths){
-            for (let i=0;i<poly.length-1;i++){
-              const a=poly[i], b=poly[i+1];
-              if (distToSegment(cx,cy, a.x,a.y,b.x,b.y) < corridor){ nearPath = true; break; }
-            }
-            if (nearPath) break;
+          for (const seg of pathSegments){
+            if (distToSegment(cx,cy, seg.a.x,seg.a.y, seg.b.x,seg.b.y) < Math.max(corridor, seg.width/2)) { nearPath = true; break; }
           }
           if (!nearPath) forestSolids.push({x:x+8, y:y+8, w:48, h:48});
         }
       }
     }
-    function addHouseWithDoor(x, y, w, h, side /* 'north' | 'south' */, doorOffset=0.5, doorW=22){
+    function addHouseWithDoor(x, y, w, h, side /* 'north' | 'south' */, doorOffset=0.5, doorW=22, villageId=0){
       const doorX = x + Math.round((w - doorW) * clamp(doorOffset, 0.05, 0.95));
       const doorY = side === 'north' ? (y + h - WALL) : y;
-      const house = { x, y, w, h, side, door: { x: doorX, y: doorY, w: doorW, h: WALL }, hasUpstairs: false };
+      const house = { x, y, w, h, side, villageId, door: { x: doorX, y: doorY, w: doorW, h: WALL }, hasUpstairs: false };
       state.houses.push(house);
     }
 
@@ -213,13 +260,27 @@
       const down = { houseId, level:1, x:bbox.x, y:bbox.y, w:bbox.w, h:bbox.h, targetLevel:0, treads };
       return {up, down};
     }
-    function getActiveSolids(){
+    function gatherForestSolidsAround(x,y,radius=280){
+      const results = [];
+      const r2 = radius*radius;
+      for (const tile of forestSolids){
+        const cx = tile.x + tile.w/2, cy = tile.y + tile.h/2;
+        const dx = cx - x, dy = cy - y;
+        if (dx*dx + dy*dy <= r2) results.push(tile);
+      }
+      return results;
+    }
+
+    function getActiveSolids(anchor = state.player){
       const solids = state.houseSolids.slice();
       // When upstairs, block the doorway so you can't exit to street
       if (state.interior && state.interior.level === 1){
         const h = state.houses[state.interior.houseId];
         const doorBlock = { x: h.door.x, y: h.side === 'north' ? (h.y + h.h - WALL) : h.y, w: h.door.w, h: WALL };
         solids.push(doorBlock);
+      }
+      if (!state.interior && anchor){
+        solids.push(...gatherForestSolidsAround(anchor.x, anchor.y, 360));
       }
       return solids;
     }
@@ -239,31 +300,36 @@
       ctx.fillRect(h.x + WALL, h.y + WALL, h.w - 2*WALL, h.h - 2*WALL);
     }
 
+    const BASE_HOUSE_LAYOUT = [
+      { x:120, y:120, w:140, h:90, side:'north', doorOffset:0.50 },
+      { x:320, y:100, w:160, h:110, side:'north', doorOffset:0.30 },
+      { x:540, y:110, w:150, h:100, side:'north', doorOffset:0.70 },
+      { x:160, y:320, w:150, h:110, side:'south', doorOffset:0.40 },
+      { x:380, y:340, w:160, h:110, side:'south', doorOffset:0.60 },
+      { x:620, y:330, w:170, h:120, side:'south', doorOffset:0.50 }
+    ];
+
     function initHouses(){
       state.houses = []; state.doors = []; state.houseSolids = []; state.chests = []; state.stairs = [];
-      // North side (above street band y=220..260)
-      addHouseWithDoor(120, 120, 140, 90, 'north', 0.50);
-      addHouseWithDoor(320, 100, 160, 110, 'north', 0.30);
-      addHouseWithDoor(540, 110, 150, 100, 'north', 0.70);
-      // South side (below street)
-      addHouseWithDoor(160, 320, 150, 110, 'south', 0.40);
-      addHouseWithDoor(380, 340, 160, 110, 'south', 0.60);
-      addHouseWithDoor(620, 330, 170, 120, 'south', 0.50);
+      VILLAGES.forEach((village, vIndex) => {
+        for (const spec of BASE_HOUSE_LAYOUT){
+          addHouseWithDoor(village.x + spec.x, village.y + spec.y, spec.w, spec.h, spec.side, spec.doorOffset, 22, vIndex);
+        }
+      });
 
       rebuildHouseSolids();
       state.doors = state.houses.map(h => ({ x: h.door.x, y: h.door.y, w: h.door.w, h: h.door.h, side: h.side }));
 
-      // Place exactly ONE chest per house (ground floor) and ALWAYS add stairs for each house
       state.houses.forEach((h, i) => {
-        // One chest total per house (level 0)
         const p = randomInHouseInterior(h, 16);
         state.chests.push({ x:p.x, y:p.y, w:18, h:12, amount: 40 + Math.floor(Math.random()*60), looted:false, houseId:i, level:0 });
 
-        // Always give upstairs for every house
         h.hasUpstairs = true;
         const {up, down} = createEdgeStairs(h, i);
         state.stairs.push(up, down);
       });
+
+      generateWorld();
     }
     initHouses();
 
@@ -278,12 +344,31 @@
         waypoints: waypoints || [{x,y}], wpIndex: 0
       };
     }
-    // Villagers meander locally on sidewalks
-    state.npcs.push(makeNPC('villager', 220, 520, [{x:220,y:520},{x:180,y:520},{x:220,y:520},{x:240,y:500}]));
-    state.npcs.push(makeNPC('villager', 560, 450, [{x:560,y:450},{x:540,y:470},{x:560,y:450},{x:580,y:430}]));
-    // Scouts patrol along street and between houses
-    state.npcs.push(makeNPC('scout', 780, 480, [{x:780,y:480},{x:720,y:420},{x:660,y:480},{x:720,y:540}]));
-    state.npcs.push(makeNPC('scout', 500, 200, [{x:500,y:200},{x:420,y:220},{x:360,y:240},{x:420,y:260},{x:500,y:240}]));
+    function offsetPoint(villageIndex, x, y){ const v = VILLAGES[villageIndex]; return { x: v.x + x, y: v.y + y }; }
+    function offsetWaypoints(villageIndex, pts){ return pts.map(pt => offsetPoint(villageIndex, pt.x, pt.y)); }
+    function addVillageNPC(type, villageIndex, x, y, localWaypoints){
+      const origin = offsetPoint(villageIndex, x, y);
+      const worldWaypoints = localWaypoints ? offsetWaypoints(villageIndex, localWaypoints) : null;
+      state.npcs.push(makeNPC(type, origin.x, origin.y, worldWaypoints));
+    }
+
+    state.npcs = [];
+    // Central village population
+    addVillageNPC('villager', 0, 220, 520, [{x:220,y:520},{x:180,y:520},{x:220,y:520},{x:240,y:500}]);
+    addVillageNPC('villager', 0, 560, 450, [{x:560,y:450},{x:540,y:470},{x:560,y:450},{x:580,y:430}]);
+    addVillageNPC('scout',    0, 780, 480, [{x:780,y:480},{x:720,y:420},{x:660,y:480},{x:720,y:540}]);
+    addVillageNPC('scout',    0, 500, 200, [{x:500,y:200},{x:420,y:220},{x:360,y:240},{x:420,y:260},{x:500,y:240}]);
+
+    // Outlying villages: sleepy villagers and scouts keeping watch on forest paths
+    addVillageNPC('villager', 1, 300, 520, [{x:300,y:520},{x:340,y:560},{x:320,y:520}]);
+    addVillageNPC('villager', 2, 640, 520, [{x:640,y:520},{x:600,y:560},{x:660,y:540}]);
+    addVillageNPC('villager', 3, 420, 500, [{x:420,y:500},{x:460,y:540},{x:400,y:520}]);
+    addVillageNPC('villager', 4, 540, 520, [{x:540,y:520},{x:580,y:500},{x:520,y:500}]);
+
+    addVillageNPC('scout', 1, 700, 420, [{x:700,y:420},{x:620,y:420},{x:620,y:500},{x:700,y:500}]);
+    addVillageNPC('scout', 2, 760, 420, [{x:760,y:420},{x:680,y:420},{x:680,y:500},{x:760,y:500}]);
+    addVillageNPC('scout', 3, 760, 460, [{x:760,y:460},{x:700,y:420},{x:640,y:500},{x:700,y:540}]);
+    addVillageNPC('scout', 4, 720, 420, [{x:720,y:420},{x:640,y:420},{x:640,y:500},{x:720,y:500}]);
     // Patrol pathing patcher
     function patchPatrolRoutes(){
       for (const npc of state.npcs){
@@ -353,8 +438,11 @@
       const ang = Math.atan2(dy,dx);
       let delta = ang - npc.facing; while (delta > Math.PI) delta -= TAU; while (delta < -Math.PI) delta += TAU;
       if (Math.abs(delta) > npc.fovAngle/2) return false;
-      // LOS blocked by houses?
-      if (segBlockedByAnyRect(npc.x, npc.y, player.x, player.y, state.houseSolids)) return false;
+      // LOS blocked by terrain?
+      const midx = (npc.x + player.x) / 2, midy = (npc.y + player.y) / 2;
+      const losRadius = Math.hypot(player.x - npc.x, player.y - npc.y) / 2 + 200;
+      const blockers = state.interior ? state.houseSolids : state.houseSolids.concat(gatherForestSolidsAround(midx, midy, losRadius));
+      if (segBlockedByAnyRect(npc.x, npc.y, player.x, player.y, blockers)) return false;
       // Invisible?
       if (state.time < player.invisUntil) return false;
       return true;
@@ -392,10 +480,10 @@
       // Integrate
       let nx = p.x + p.vx*dt, ny = p.y + p.vy*dt;
       // World bounds
-      nx = clamp(nx, p.r+2, W - p.r - 2);
-      ny = clamp(ny, p.r+2, H - p.r - 2);
+      nx = clamp(nx, p.r+2, WORLD.W - p.r - 2);
+      ny = clamp(ny, p.r+2, WORLD.H - p.r - 2);
       // Collide with active solids (outside walls + upstairs door block)
-      const solids = getActiveSolids();
+      const solids = getActiveSolids(p);
       for (const h of solids){
         const fixed = circleRectCollideResolve(nx,ny,p.r, h);
         nx = fixed.x; ny = fixed.y;
@@ -413,6 +501,10 @@
         state.interior = { houseId: insideId, level: 0 };
       }
 
+      // Camera follow
+      state.camera.x = clamp(p.x - W/2, 0, Math.max(0, WORLD.W - W));
+      state.camera.y = clamp(p.y - H/2, 0, Math.max(0, WORLD.H - H));
+
       // Tavern trigger -> open shop
       if (inRect(p.x, p.y, state.tavern) && !state.pausedForShop){
         openShop();
@@ -429,7 +521,7 @@
           const vx = dx/d * npc.speed, vy = dy/d * npc.speed;
           // Move + collide with houses
           let nnx = npc.x + vx*dt, nny = npc.y + vy*dt;
-          const ns = getActiveSolids();
+          const ns = getActiveSolids(npc);
           for (const h of ns){
             const fixed = circleRectCollideResolve(nnx,nny,8, h);
             nnx = fixed.x; nny = fixed.y;
@@ -534,14 +626,13 @@
     function spawnReinforcement(){
       // Spawn a tougher scout at the castle, push into a village route
       const c = state.castle;
-      const entry = { x:c.x, y:c.y + 10 };
+      const entry = { x:c.x - 20, y:c.y + 80 };
       const patrol = [
         entry,
-        {x:760,y:140},
-        {x:720,y:240},
-        {x:680,y:340},
-        {x:640,y:440},
-        {x:720,y:240}
+        {x: mainVillage.x + mainVillage.w - 140, y: mainVillage.y + 160},
+        {x: mainVillage.x + mainVillage.w - 200, y: mainVillage.y + 320},
+        {x: mainVillage.x + mainVillage.w - 260, y: mainVillage.y + 480},
+        {x: mainVillage.x + mainVillage.w - 200, y: mainVillage.y + 320}
       ];
       const npc = makeNPC('scout', entry.x, entry.y, patrol);
       npc.speed += 10;
@@ -585,21 +676,57 @@
     });
 
     /** ---------- Rendering ---------- */
+    function drawTerrain(){
+      const view = { x: state.camera.x - 120, y: state.camera.y - 120, w: W + 240, h: H + 240 };
+
+      // Forest canopy
+      ctx.fillStyle = '#0f2014';
+      for (const tile of forestSolids){
+        if (!rectsOverlap(tile, view)) continue;
+        ctx.fillRect(tile.x, tile.y, tile.w, tile.h);
+      }
+
+      // Dirt paths connecting villages
+      ctx.strokeStyle = '#3a2a1c';
+      ctx.lineCap = 'round';
+      for (const seg of pathSegments){
+        ctx.lineWidth = seg.width;
+        ctx.beginPath();
+        ctx.moveTo(seg.a.x, seg.a.y);
+        ctx.lineTo(seg.b.x, seg.b.y);
+        ctx.stroke();
+      }
+      ctx.lineWidth = 1;
+      ctx.lineCap = 'butt';
+
+      // Village plazas / roads
+      ctx.fillStyle = '#1a2536';
+      for (const road of roads){
+        if (!rectsOverlap(road, view)) continue;
+        ctx.fillRect(road.x, road.y, road.w, road.h);
+      }
+
+      // Village boundaries for atmosphere
+      ctx.fillStyle = 'rgba(18,24,36,0.4)';
+      for (const village of VILLAGES){
+        if (!rectsOverlap(village, view)) continue;
+        ctx.fillRect(village.x-18, village.y-18, village.w+36, village.h+36);
+      }
+    }
+
     function draw(){
       const p = state.player;
 
       // Night sky + moon haze
       ctx.clearRect(0,0,W,H);
-      ctx.fillStyle = '#0a0e14';
+      ctx.fillStyle = '#05080e';
       ctx.fillRect(0,0,W,H);
 
-      // Distant Dark Lord's Castle (symbolic)
-      drawCastle();
+      ctx.save();
+      ctx.translate(-state.camera.x, -state.camera.y);
 
-      // Ground roads
-      ctx.fillStyle = '#121826';
-      ctx.fillRect(0, 440, W, 160);
-      ctx.fillRect(120, 220, 680, 40);
+      drawTerrain();
+      drawCastle();
 
       // Houses (draw)
       for (const h of state.houses){
@@ -646,13 +773,12 @@
       ctx.strokeStyle = '#3a7a4a';
       ctx.strokeRect(state.tavern.x+0.5, state.tavern.y+0.5, state.tavern.w-1, state.tavern.h-1);
 
-      // Chests
+      // Chests (only when interior and on same level)
       for (const c of state.chests){
         if (c.looted) continue;
         if (state.interior){
           if (c.houseId !== state.interior.houseId || c.level !== state.interior.level) continue;
         } else {
-          // Only show chests when inside houses (ground level)
           continue;
         }
         ctx.fillStyle = '#8b5a2b';
@@ -663,12 +789,10 @@
       // NPCs + vision cones
       for (const npc of state.npcs){
         if (state.debugCones) drawFOV(npc);
-        // body
         ctx.beginPath();
         ctx.arc(npc.x, npc.y, 8, 0, TAU);
         ctx.fillStyle = npc.type==='scout' ? '#6fa8dc' : '#9aa5b1';
         ctx.fill();
-        // facing tick
         ctx.beginPath();
         ctx.moveTo(npc.x, npc.y);
         ctx.lineTo(npc.x + Math.cos(npc.facing)*12, npc.y + Math.sin(npc.facing)*12);
@@ -683,6 +807,8 @@
       ctx.fill();
       // Torch light from scouts (atmosphere)
       drawTorchlight();
+
+      ctx.restore();
 
       // HUD + UI
       drawHUD();
@@ -773,7 +899,9 @@
       ctx.font = '12px system-ui';
       ctx.fillText(`Speed: ${Math.round(p.stats.speed)}  Damage: ${p.stats.attack}  Stealth x${p.stats.stealthMult.toFixed(2)}`, 260, H-44);
 
-      // (Threat intentionally hidden on HUD per request)
+      ctx.fillStyle = '#ffb347';
+      ctx.font = '12px system-ui';
+      ctx.fillText(`Threat: ${Math.round(state.threat)}`, 260, H-20);
 
       // Inventory slots
       const slotsX = W - 16 - (6*48);
