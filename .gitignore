@@ -1,0 +1,17 @@
+# Python virtual environments
+.venv/
+venv/
+
+# Editor settings
+.vscode/
+.idea/
+
+# Bytecode
+__pycache__/
+*.py[cod]
+
+# OS files
+.DS_Store
+
+# Node modules (if generated locally)
+node_modules/
