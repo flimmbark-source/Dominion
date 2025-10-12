@@ -486,19 +486,16 @@ const Trees = React.memo(({ trees }: { trees: { pos: THREE.Vector3; scale: numbe
 // ---------------------------------------------------------------------------
 function Scout({
   playerRef,
-  terrainRef,
   noise,
   onDetectionUpdate,
 }: {
   playerRef: React.MutableRefObject<THREE.Mesh>;
-  terrainRef: React.MutableRefObject<THREE.Mesh>;
   noise: SimplexLike;
   onDetectionUpdate: (value: number, inCone: boolean, detected: boolean) => void;
 }) {
   const scoutRef = useRef<THREE.Group>(null!);
   const detectionRef = useRef(0);
   const prevReportRef = useRef({ value: -1, inCone: false, detected: false });
-  const heightInitRef = useRef(false);
 
   const patrolStart = useMemo(() => new THREE.Vector3(-45, 0, -35), []);
   const patrolEnd = useMemo(() => new THREE.Vector3(45, 0, 35), []);
@@ -511,57 +508,22 @@ function Scout({
   const up = useMemo(() => new THREE.Vector3(0, 1, 0), []);
   const quat = useMemo(() => new THREE.Quaternion(), []);
   const scanQuat = useMemo(() => new THREE.Quaternion(), []);
-  const raycaster = useMemo(() => new THREE.Raycaster(), []);
-  const down = useMemo(() => new THREE.Vector3(0, -1, 0), []);
-  const footOffsets = useMemo(
-    () => [
-      new THREE.Vector2(0, 0),
-      new THREE.Vector2(0.9, 0),
-      new THREE.Vector2(-0.9, 0),
-      new THREE.Vector2(0, 0.9),
-      new THREE.Vector2(0, -0.9),
-    ],
-    []
-  );
 
   const sampleHeight = useCallback(
-    (x: number, z: number) => terrainHeight(noise, x, z),
+    (x: number, z: number) => noise.noise2D(x / 40, z / 40) * 8 * 1.2,
     [noise]
   );
 
   useFrame(({ clock }, delta) => {
     const scout = scoutRef.current;
     const player = playerRef.current;
-    const terrain = terrainRef.current;
-    if (!scout || !player || !terrain) return;
+    if (!scout || !player) return;
 
     const t = clock.elapsedTime * 0.18;
     const alpha = (Math.sin(t) * 0.5 + 0.5) ** 1.2;
     tmpPos.copy(patrolStart).lerp(patrolEnd, alpha);
-    raycaster.set(new THREE.Vector3(tmpPos.x, 200, tmpPos.z), down);
-    const hit = raycaster.intersectObject(terrain, true)[0];
-    let maxGround = hit ? hit.point.y : sampleHeight(tmpPos.x, tmpPos.z);
-
-    for (let i = 1; i < footOffsets.length; i++) {
-      const offset = footOffsets[i];
-      const probeHeight = sampleHeight(tmpPos.x + offset.x, tmpPos.z + offset.y);
-      if (probeHeight > maxGround) maxGround = probeHeight;
-    }
-
-    const hoverHeight = maxGround + 1.6;
-    scout.position.x = tmpPos.x;
-    scout.position.z = tmpPos.z;
-    if (!heightInitRef.current) {
-      scout.position.y = hoverHeight;
-      heightInitRef.current = true;
-    } else {
-      const smoothing = 1 - Math.exp(-delta * 12);
-      scout.position.y = THREE.MathUtils.lerp(
-        scout.position.y,
-        hoverHeight,
-        smoothing
-      );
-    }
+    const terrainY = sampleHeight(tmpPos.x, tmpPos.z);
+    scout.position.set(tmpPos.x, terrainY + 1.6, tmpPos.z);
 
     const offset = 0.05;
     const alphaNext = (Math.sin((clock.elapsedTime + offset) * 0.18) * 0.5 + 0.5) ** 1.2;
@@ -795,7 +757,6 @@ export default function WorldScene() {
 
         <Scout
           playerRef={playerRef}
-          terrainRef={terrainRef}
           noise={simplex}
           onDetectionUpdate={handleDetectionUpdate}
         />
