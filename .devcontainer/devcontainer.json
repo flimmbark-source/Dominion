@@ -1,0 +1,16 @@
+    {
+      "image": "mcr.microsoft.com/devcontainers/universal:latest",
+      "features": {
+        "ghcr.io/devcontainers/features/node:1": {
+          "version": "20"
+        }
+      },
+      "customizations": {
+        "vscode": {
+          "extensions": [
+            // Add any VS Code extensions you need here
+          ]
+        }
+      },
+      "postCreateCommand": "npm install" // Example: Run npm install after creation
+    }

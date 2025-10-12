@@ -486,141 +486,58 @@ const Trees = React.memo(({ trees }: { trees: { pos: THREE.Vector3; scale: numbe
 // ---------------------------------------------------------------------------
 function Scout({
   playerRef,
-  terrainRef,
   noise,
   onDetectionUpdate,
 }: {
   playerRef: React.MutableRefObject<THREE.Mesh>;
-  terrainRef: React.MutableRefObject<THREE.Mesh>;
   noise: SimplexLike;
   onDetectionUpdate: (value: number, inCone: boolean, detected: boolean) => void;
 }) {
   const scoutRef = useRef<THREE.Group>(null!);
   const detectionRef = useRef(0);
   const prevReportRef = useRef({ value: -1, inCone: false, detected: false });
-  const heightInitRef = useRef(false);
 
-  const pathPoints = useMemo(
-    () => [
-      new THREE.Vector3(-38, 0, -28),
-      new THREE.Vector3(-12, 0, -46),
-      new THREE.Vector3(24, 0, -40),
-      new THREE.Vector3(44, 0, -12),
-      new THREE.Vector3(32, 0, 28),
-      new THREE.Vector3(2, 0, 44),
-      new THREE.Vector3(-34, 0, 18),
-    ],
-    []
-  );
-  const pathIndexRef = useRef(0);
+  const patrolStart = useMemo(() => new THREE.Vector3(-45, 0, -35), []);
+  const patrolEnd = useMemo(() => new THREE.Vector3(45, 0, 35), []);
+  const nextPos = useMemo(() => new THREE.Vector3(), []);
+  const prevPos = useMemo(() => new THREE.Vector3(), []);
   const tmpPos = useMemo(() => new THREE.Vector3(), []);
-  const moveDir = useMemo(() => new THREE.Vector3(), []);
-  const desiredDir = useMemo(() => new THREE.Vector3(), []);
-  const travelDir = useMemo(() => new THREE.Vector3(0, 0, 1), []);
   const toPlayer = useMemo(() => new THREE.Vector3(), []);
   const flatPlayer = useMemo(() => new THREE.Vector3(), []);
   const forward = useMemo(() => new THREE.Vector3(), []);
   const up = useMemo(() => new THREE.Vector3(0, 1, 0), []);
-  const zAxis = useMemo(() => new THREE.Vector3(0, 0, 1), []);
   const quat = useMemo(() => new THREE.Quaternion(), []);
   const scanQuat = useMemo(() => new THREE.Quaternion(), []);
-  const raycaster = useMemo(() => new THREE.Raycaster(), []);
-  const rayOrigin = useMemo(() => new THREE.Vector3(), []);
-  const down = useMemo(() => new THREE.Vector3(0, -1, 0), []);
-  const pathInitRef = useRef(false);
 
   const sampleHeight = useCallback(
-    (x: number, z: number) => terrainHeight(noise, x, z),
+    (x: number, z: number) => noise.noise2D(x / 40, z / 40) * 8 * 1.2,
     [noise]
   );
 
   useFrame(({ clock }, delta) => {
     const scout = scoutRef.current;
     const player = playerRef.current;
-    const terrain = terrainRef.current;
-    if (!scout || !player || !terrain || pathPoints.length < 2) return;
+    if (!scout || !player) return;
 
-    if (!pathInitRef.current) {
-      const start = pathPoints[pathIndexRef.current];
-      scout.position.set(start.x, 0, start.z);
-      const firstNext = pathPoints[(pathIndexRef.current + 1) % pathPoints.length];
-      moveDir.subVectors(firstNext, start).setY(0);
-      if (moveDir.lengthSq() > 0.0001) {
-        moveDir.normalize();
-        travelDir.copy(moveDir);
-      } else {
-        travelDir.set(0, 0, 1);
-      }
-      pathInitRef.current = true;
-    }
+    const t = clock.elapsedTime * 0.18;
+    const alpha = (Math.sin(t) * 0.5 + 0.5) ** 1.2;
+    tmpPos.copy(patrolStart).lerp(patrolEnd, alpha);
+    const terrainY = sampleHeight(tmpPos.x, tmpPos.z);
+    scout.position.set(tmpPos.x, terrainY + 1.6, tmpPos.z);
 
-    const currentIndex = pathIndexRef.current;
-    const nextIndex = (currentIndex + 1) % pathPoints.length;
-    const targetPoint = pathPoints[nextIndex];
-    desiredDir.set(0, 0, 0);
+    const offset = 0.05;
+    const alphaNext = (Math.sin((clock.elapsedTime + offset) * 0.18) * 0.5 + 0.5) ** 1.2;
+    const alphaPrev = (Math.sin((clock.elapsedTime - offset) * 0.18) * 0.5 + 0.5) ** 1.2;
+    nextPos.copy(patrolStart).lerp(patrolEnd, alphaNext);
+    prevPos.copy(patrolStart).lerp(patrolEnd, alphaPrev);
+    const baseDir = nextPos.clone().sub(prevPos).setY(0).normalize();
+    if (baseDir.lengthSq() === 0) baseDir.set(0, 0, 1);
 
-    moveDir
-      .subVectors(targetPoint, scout.position)
-      .setY(0);
-    const distanceToTarget = moveDir.length();
-    const moveSpeed = 8.5;
-    const step = moveSpeed * delta;
-
-    if (distanceToTarget > 0.001) {
-      moveDir.normalize();
-      desiredDir.copy(moveDir);
-      if (distanceToTarget <= step) {
-        scout.position.x = targetPoint.x;
-        scout.position.z = targetPoint.z;
-        const newIndex = nextIndex;
-        pathIndexRef.current = newIndex;
-        const upcoming = pathPoints[(newIndex + 1) % pathPoints.length];
-        moveDir.subVectors(upcoming, targetPoint).setY(0);
-        if (moveDir.lengthSq() > 0.0001) {
-          moveDir.normalize();
-          desiredDir.copy(moveDir);
-        }
-      } else {
-        scout.position.x += moveDir.x * step;
-        scout.position.z += moveDir.z * step;
-      }
-    }
-
-    if (desiredDir.lengthSq() > 0.0001) {
-      travelDir.lerp(desiredDir, 1 - Math.exp(-delta * 8));
-    }
-    if (travelDir.lengthSq() < 0.0001) {
-      travelDir.set(0, 0, 1);
-    } else {
-      travelDir.normalize();
-    }
-
-    tmpPos.copy(travelDir);
-    if (tmpPos.lengthSq() < 0.0001) tmpPos.set(0, 0, 1);
-
-    quat.setFromUnitVectors(zAxis, tmpPos);
+    quat.setFromUnitVectors(new THREE.Vector3(0, 0, 1), baseDir);
     const scanAngle = Math.sin(clock.elapsedTime * 0.8) * THREE.MathUtils.degToRad(35);
     scanQuat.setFromAxisAngle(up, scanAngle);
     quat.multiply(scanQuat);
     scout.quaternion.slerp(quat, 0.1);
-
-    rayOrigin.set(scout.position.x, 200, scout.position.z);
-    raycaster.set(rayOrigin, down);
-    const groundHit = raycaster.intersectObject(terrain, true)[0];
-    const groundY = groundHit
-      ? groundHit.point.y
-      : sampleHeight(scout.position.x, scout.position.z);
-    const targetY = groundY + 1.5;
-    if (!heightInitRef.current) {
-      scout.position.y = targetY;
-      heightInitRef.current = true;
-    } else {
-      scout.position.y = THREE.MathUtils.lerp(
-        scout.position.y,
-        targetY,
-        delta * 10
-      );
-    }
 
     toPlayer.subVectors(player.position, scout.position);
     const distance = toPlayer.length();
@@ -840,7 +757,6 @@ export default function WorldScene() {
 
         <Scout
           playerRef={playerRef}
-          terrainRef={terrainRef}
           noise={simplex}
           onDetectionUpdate={handleDetectionUpdate}
         />
