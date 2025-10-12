@@ -309,51 +309,168 @@ function createVillageLayout(noise: SimplexLike) {
   const westOrigin = { x: -42, z: -18 };
   const eastOrigin = { x: 38, z: 12 };
 
-  const westHouses = [
-    makeHouse("house-west-1", westOrigin.x - 6, westOrigin.z - 4, 0, 6, 5, 3, 2.8),
-    makeHouse("house-west-2", westOrigin.x + 2, westOrigin.z - 5, 0, 6.5, 5.5, 3.2, 3.1),
-    makeHouse("house-west-3", westOrigin.x - 5.5, westOrigin.z + 4.5, Math.PI / 2, 5.6, 5, 3.1, 2.7),
-    makeHouse("house-west-4", westOrigin.x + 3.5, westOrigin.z + 5, Math.PI / 2, 6.2, 5.2, 3.4, 3.0),
+  const SPREAD_FACTOR = 1.6;
+
+  const scaleOffset = (
+    origin: { x: number; z: number },
+    offset: { x: number; z: number }
+  ) => ({
+    x: origin.x + offset.x * SPREAD_FACTOR,
+    z: origin.z + offset.z * SPREAD_FACTOR,
+  });
+
+  const orientTowards = (
+    position: { x: number; z: number },
+    target: { x: number; z: number }
+  ) => Math.atan2(target.x - position.x, target.z - position.z);
+
+  interface HouseBlueprint {
+    id: string;
+    offset: { x: number; z: number };
+    size: { width: number; depth: number; height: number; roof: number };
+  }
+
+  const westPathCenter = scaleOffset(westOrigin, { x: -1.5, z: 0 });
+  const eastPathCenter = scaleOffset(eastOrigin, { x: 0, z: 0 });
+
+  const westBlueprints: HouseBlueprint[] = [
+    { id: "house-west-1", offset: { x: -6, z: -4 }, size: { width: 6, depth: 5, height: 3, roof: 2.8 } },
+    { id: "house-west-2", offset: { x: 2, z: -5 }, size: { width: 6.5, depth: 5.5, height: 3.2, roof: 3.1 } },
+    {
+      id: "house-west-3",
+      offset: { x: -5.5, z: 4.5 },
+      size: { width: 5.6, depth: 5, height: 3.1, roof: 2.7 },
+    },
+    {
+      id: "house-west-4",
+      offset: { x: 3.5, z: 5 },
+      size: { width: 6.2, depth: 5.2, height: 3.4, roof: 3.0 },
+    },
   ];
+
+  const eastBlueprints: HouseBlueprint[] = [
+    { id: "house-east-1", offset: { x: -6, z: -6 }, size: { width: 6.5, depth: 5.5, height: 3.3, roof: 3.0 } },
+    { id: "house-east-2", offset: { x: 1.8, z: -5.5 }, size: { width: 6.0, depth: 5.0, height: 3.2, roof: 3.0 } },
+    {
+      id: "house-east-3",
+      offset: { x: -5, z: 4.5 },
+      size: { width: 5.5, depth: 5.2, height: 3.1, roof: 2.6 },
+    },
+    {
+      id: "house-east-4",
+      offset: { x: 2.5, z: 4.2 },
+      size: { width: 6.4, depth: 5.4, height: 3.5, roof: 3.1 },
+    },
+    {
+      id: "house-east-5",
+      offset: { x: 8, z: 0 },
+      size: { width: 5.8, depth: 5.3, height: 3.3, roof: 2.8 },
+    },
+  ];
+
+  const westHouses = westBlueprints.map((blueprint) => {
+    const position = scaleOffset(westOrigin, blueprint.offset);
+    const rotation = orientTowards(position, westPathCenter);
+    return makeHouse(
+      blueprint.id,
+      position.x,
+      position.z,
+      rotation,
+      blueprint.size.width,
+      blueprint.size.depth,
+      blueprint.size.height,
+      blueprint.size.roof
+    );
+  });
   houses.push(...westHouses);
 
-  const eastHouses = [
-    makeHouse("house-east-1", eastOrigin.x - 6, eastOrigin.z - 6, 0, 6.5, 5.5, 3.3, 3.0),
-    makeHouse("house-east-2", eastOrigin.x + 1.8, eastOrigin.z - 5.5, 0, 6.0, 5.0, 3.2, 3.0),
-    makeHouse("house-east-3", eastOrigin.x - 5, eastOrigin.z + 4.5, Math.PI / 2, 5.5, 5.2, 3.1, 2.6),
-    makeHouse("house-east-4", eastOrigin.x + 2.5, eastOrigin.z + 4.2, Math.PI / 2, 6.4, 5.4, 3.5, 3.1),
-    makeHouse("house-east-5", eastOrigin.x + 8, eastOrigin.z, Math.PI / 2, 5.8, 5.3, 3.3, 2.8),
-  ];
+  const eastHouses = eastBlueprints.map((blueprint) => {
+    const position = scaleOffset(eastOrigin, blueprint.offset);
+    const rotation = orientTowards(position, eastPathCenter);
+    return makeHouse(
+      blueprint.id,
+      position.x,
+      position.z,
+      rotation,
+      blueprint.size.width,
+      blueprint.size.depth,
+      blueprint.size.height,
+      blueprint.size.roof
+    );
+  });
   houses.push(...eastHouses);
 
+  const pathScale = 1 + (SPREAD_FACTOR - 1) * 0.9;
+  const westCrossPos = scaleOffset(westOrigin, { x: -2, z: 0 });
+  const eastCrossPos = scaleOffset(eastOrigin, { x: -1, z: 0 });
+
   paths.push(
-    makePath("path-west-main", westOrigin.x - 1.5, westOrigin.z, 0, 12, 5.5, 0.2),
-    makePath("path-west-cross", westOrigin.x - 2, westOrigin.z, Math.PI / 2, 10, 5, 0.2),
-    makePath("path-east-main", eastOrigin.x, eastOrigin.z, 0, 13, 5.5, 0.2),
-    makePath("path-east-cross", eastOrigin.x - 1, eastOrigin.z, Math.PI / 2, 10, 5, 0.2),
-    makePath("path-connector", -2, -3, Math.PI / 2, 8, 65, 0.15)
+    makePath("path-west-main", westPathCenter.x, westPathCenter.z, 0, 12 * pathScale, 5.5 * pathScale, 0.2),
+    makePath(
+      "path-west-cross",
+      westCrossPos.x,
+      westCrossPos.z,
+      Math.PI / 2,
+      10 * pathScale,
+      5 * pathScale,
+      0.2
+    ),
+    makePath("path-east-main", eastPathCenter.x, eastPathCenter.z, 0, 13 * pathScale, 5.5 * pathScale, 0.2),
+    makePath(
+      "path-east-cross",
+      eastCrossPos.x,
+      eastCrossPos.z,
+      Math.PI / 2,
+      10 * pathScale,
+      5 * pathScale,
+      0.2
+    ),
+    makePath("path-connector", -2, -3, Math.PI / 2, 8 * pathScale, 65 * pathScale, 0.15)
   );
+
+  const radiusScale = 1 + (SPREAD_FACTOR - 1) * 0.6;
+
+  const westSquareCenter = scaleOffset(westOrigin, { x: -1.5, z: 0 });
+  const westGardenCenter = scaleOffset(westOrigin, { x: 6, z: 4 });
+  const eastSquareCenter = scaleOffset(eastOrigin, { x: 0, z: 1 });
+  const eastPorchCenter = scaleOffset(eastOrigin, { x: 7, z: -2 });
 
   villagerZones.push(
     {
       id: "villagers-west-square",
-      center: new THREE.Vector3(westOrigin.x - 1.5, terrainHeight(noise, westOrigin.x - 1.5, westOrigin.z), westOrigin.z),
-      radius: 8,
+      center: new THREE.Vector3(
+        westSquareCenter.x,
+        terrainHeight(noise, westSquareCenter.x, westSquareCenter.z),
+        westSquareCenter.z
+      ),
+      radius: 8 * radiusScale,
     },
     {
       id: "villagers-west-garden",
-      center: new THREE.Vector3(westOrigin.x + 6, terrainHeight(noise, westOrigin.x + 6, westOrigin.z + 4), westOrigin.z + 4),
-      radius: 6,
+      center: new THREE.Vector3(
+        westGardenCenter.x,
+        terrainHeight(noise, westGardenCenter.x, westGardenCenter.z),
+        westGardenCenter.z
+      ),
+      radius: 6 * radiusScale,
     },
     {
       id: "villagers-east-square",
-      center: new THREE.Vector3(eastOrigin.x, terrainHeight(noise, eastOrigin.x, eastOrigin.z), eastOrigin.z + 1),
-      radius: 9,
+      center: new THREE.Vector3(
+        eastSquareCenter.x,
+        terrainHeight(noise, eastSquareCenter.x, eastSquareCenter.z),
+        eastSquareCenter.z
+      ),
+      radius: 9 * radiusScale,
     },
     {
       id: "villagers-east-porch",
-      center: new THREE.Vector3(eastOrigin.x + 7, terrainHeight(noise, eastOrigin.x + 7, eastOrigin.z - 2), eastOrigin.z - 2),
-      radius: 5.5,
+      center: new THREE.Vector3(
+        eastPorchCenter.x,
+        terrainHeight(noise, eastPorchCenter.x, eastPorchCenter.z),
+        eastPorchCenter.z
+      ),
+      radius: 5.5 * radiusScale,
     }
   );
 
