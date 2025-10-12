@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/devcontainers/spec/main/schemas/devcontainer.json",
   "name": "Dominion",
   "build": {
-    "dockerfile": "Dockerfile",
+    "dockerfile": ".devcontainer/Dockerfile",
     "context": "..",
     "args": {
       "VARIANT": "3.11"
