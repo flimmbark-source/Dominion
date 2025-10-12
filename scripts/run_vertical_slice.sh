@@ -6,12 +6,8 @@ cd "$PROJECT_ROOT"
 if [ -d ".venv" ]; then
   source .venv/bin/activate
 fi
-AUDIO_DRIVER=${SDL_AUDIODRIVER:-dummy}
-export SDL_AUDIODRIVER="$AUDIO_DRIVER"
-
 DRIVER=${SDL_VIDEODRIVER:-dummy}
 export SDL_VIDEODRIVER="$DRIVER"
-
 if [ "$DRIVER" = "dummy" ]; then
   exec python grimm_dominion_vertical_slice_pygame.py
 else

@@ -4,10 +4,10 @@ This repository now includes a ready-to-use [GitHub Codespaces](https://github.c
 
 ## Getting Started
 
-1. Open the repository in a Codespace. The lightweight Python-focused devcontainer automatically:
-   - installs the minimal system dependency (`xvfb`) without recommended extras,
+1. Open the repository in a Codespace. The devcontainer automatically:
+   - installs system dependencies (including `xvfb`),
    - creates a project-local virtual environment at `.venv`, and
-   - installs the Python requirements defined in `requirements.txt` without caching to keep the image lean.
+   - installs the Python requirements defined in `requirements.txt`.
 
 2. Once the Codespace has finished provisioning, launch the vertical slice using:
 
@@ -15,11 +15,10 @@ This repository now includes a ready-to-use [GitHub Codespaces](https://github.c
    ./scripts/run_vertical_slice.sh
    ```
 
-   By default the script uses SDL's `dummy` video and audio drivers so it can run headlessly inside Codespaces. If you connect a graphical display (for example via VS Code's `Codespaces: Forward Port` feature) you can set different drivers before executing the script:
+   By default the script uses SDL's `dummy` video driver so it can run headlessly inside Codespaces. If you connect a graphical display (for example via VS Code's `Codespaces: Forward Port` feature) you can set a different driver before executing the script:
 
    ```bash
    export SDL_VIDEODRIVER=x11
-   export SDL_AUDIODRIVER=pulseaudio
    ./scripts/run_vertical_slice.sh
    ```
 
