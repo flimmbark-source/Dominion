@@ -15,11 +15,10 @@ This repository now includes a ready-to-use [GitHub Codespaces](https://github.c
    ./scripts/run_vertical_slice.sh
    ```
 
-   By default the script uses SDL's `dummy` video and audio drivers so it can run headlessly inside Codespaces. If you connect a graphical display (for example via VS Code's `Codespaces: Forward Port` feature) you can set different drivers before executing the script:
+   By default the script uses SDL's `dummy` video driver so it can run headlessly inside Codespaces. If you connect a graphical display (for example via VS Code's `Codespaces: Forward Port` feature) you can set a different driver before executing the script:
 
    ```bash
    export SDL_VIDEODRIVER=x11
-   export SDL_AUDIODRIVER=pulseaudio
    ./scripts/run_vertical_slice.sh
    ```
 
