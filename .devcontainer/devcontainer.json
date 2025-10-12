@@ -1,14 +1,17 @@
 {
   "$schema": "https://raw.githubusercontent.com/devcontainers/spec/main/schemas/devcontainer.json",
   "name": "Dominion",
-  "build": {
-    "dockerfile": ".devcontainer/Dockerfile",
-    "context": "..",
-    "args": {
-      "VARIANT": "3.11"
+  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.11",
+      "installTools": true
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
     }
   },
-  "postCreateCommand": "ln -snf /opt/venv .venv",
+  "postCreateCommand": "bash .devcontainer/postCreate.sh",
   "customizations": {
     "vscode": {
       "settings": {
