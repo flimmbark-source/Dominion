@@ -16,8 +16,6 @@ RUN apt-get update \
         libsdl2-mixer-2.0-0 \
         libsdl2-ttf-2.0-0 \
         libportaudio2 \
-        fontconfig \
-        fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a reusable virtual environment and pre-install dependencies

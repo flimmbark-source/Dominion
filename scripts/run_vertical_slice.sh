@@ -13,8 +13,7 @@ if [[ ! -x "${PYTHON}" ]]; then
 fi
 
 : "${SDL_VIDEODRIVER:=dummy}"
-: "${SDL_AUDIODRIVER:=dummy}"
-export SDL_VIDEODRIVER SDL_AUDIODRIVER
+export SDL_VIDEODRIVER
 
 if [[ "${SDL_VIDEODRIVER}" == "dummy" ]]; then
   exec "${PYTHON}" "${REPO_ROOT}/grimm_dominion_vertical_slice_pygame.py"
