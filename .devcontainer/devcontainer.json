@@ -1,36 +1,30 @@
 // File: .devcontainer/devcontainer.json
 {
-  "name": "Grimm Dominion (Codespaces)",
-  "features": {
-    "ghcr.io/devcontainers/features/python:1": {
-      "version": "3.11"
-    }
+  "name": "Grimm Dominion (Fast Codespaces)",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
   },
+  "features": {},
   "customizations": {
     "vscode": {
-      "settings": {
-        "python.testing.pytestEnabled": true,
-        "python.formatting.provider": "black",
-        "terminal.integrated.shellIntegration.enabled": true
-      },
       "extensions": [
         "ms-python.python",
         "ms-python.vscode-pylance",
         "ms-python.black-formatter"
-      ]
+      ],
+      "settings": {
+        "python.testing.pytestEnabled": true,
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "terminal.integrated.shellIntegration.enabled": true
+      }
     }
   },
-  "updateContentCommand": "pip install -r requirements.txt",
-  "postCreateCommand": "echo 'Devcontainer ready.'",
-  "containerEnv": {
-    "PYTHONUNBUFFERED": "1"
-  },
-  "runArgs": [
-    // Enable ALSA/Pulse if you later add sounds (safe to keep)
-    "--env=SDL_AUDIODRIVER=dummy"
+  "mounts": [
+    "type=cache,target=/root/.cache/pip"
   ],
-  "hostRequirements": {
-    "cpus": 2,
-    "memory": "4gb"
-  }
+  "updateContentCommand": "",          // nothing on open (already baked in)
+  "postCreateCommand": "",             // keep empty for zero-delay first open
+  "postStartCommand": "",              // optionally: "make web"
+  "remoteUser": "vscode"               // default user in devcontainers image
 }
