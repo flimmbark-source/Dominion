@@ -1,8 +1,14 @@
 {
   "$schema": "https://raw.githubusercontent.com/devcontainers/spec/main/schemas/devcontainer.json",
   "name": "Dominion",
-  "image": "mcr.microsoft.com/devcontainers/universal:2",
-  "postCreateCommand": "bash -lc 'sudo apt-get update && sudo apt-get install -y xvfb && python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt'",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".",
+    "args": {
+      "VARIANT": "3.11"
+    }
+  },
+  "postCreateCommand": "ln -snf /opt/venv .venv",
   "customizations": {
     "vscode": {
       "settings": {
