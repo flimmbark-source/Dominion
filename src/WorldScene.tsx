@@ -109,6 +109,143 @@ function terrainHeight(
   return (primary + secondary) * scale;
 }
 
+// ---------------------------------------------------------------------------
+// 🏘️ Village layout & occlusion helpers
+// ---------------------------------------------------------------------------
+interface HouseDescriptor {
+  id: string;
+  basePosition: THREE.Vector3;
+  bodySize: THREE.Vector3;
+  roofHeight: number;
+}
+
+interface VillagerDescriptor {
+  id: string;
+  home: THREE.Vector3;
+  roamRadius: number;
+}
+
+interface VillageLayout {
+  houses: HouseDescriptor[];
+  villagers: VillagerDescriptor[];
+}
+
+function createVillageLayout(noise: SimplexLike): VillageLayout {
+  const clusters = [
+    { center: new THREE.Vector2(-35, -10), rows: 2, cols: 3, spacing: 12 },
+    { center: new THREE.Vector2(25, 25), rows: 2, cols: 2, spacing: 13 },
+    { center: new THREE.Vector2(-5, 40), rows: 1, cols: 3, spacing: 11 },
+  ];
+
+  const houses: HouseDescriptor[] = [];
+  const villagers: VillagerDescriptor[] = [];
+  let houseIndex = 0;
+
+  for (const [clusterIndex, cluster] of clusters.entries()) {
+    const count = cluster.rows * cluster.cols;
+    for (let i = 0; i < count; i++) {
+      const row = Math.floor(i / cluster.cols);
+      const col = i % cluster.cols;
+      const jitterX = (Math.random() - 0.5) * 2.2;
+      const jitterZ = (Math.random() - 0.5) * 2.2;
+      const x =
+        cluster.center.x +
+        (col - (cluster.cols - 1) / 2) * cluster.spacing +
+        jitterX;
+      const z =
+        cluster.center.y +
+        (row - (cluster.rows - 1) / 2) * cluster.spacing +
+        jitterZ;
+      const ground = terrainHeight(noise, x, z, 1.0);
+      const width = 7 + Math.random() * 2;
+      const depth = 6.5 + Math.random() * 1.6;
+      const height = 4.8 + Math.random() * 0.6;
+      const roofHeight = 2.6 + Math.random() * 0.6;
+
+      const basePosition = new THREE.Vector3(x, ground + 0.05, z);
+      const bodySize = new THREE.Vector3(width, height, depth);
+      const id = `house-${houseIndex++}`;
+      houses.push({ id, basePosition, bodySize, roofHeight });
+
+      const villagerHome = basePosition.clone();
+      villagerHome.y = ground + 1.0;
+      villagers.push({
+        id: `villager-${clusterIndex}-${i}`,
+        home: villagerHome,
+        roamRadius: cluster.spacing * 0.55,
+      });
+    }
+  }
+
+  return { houses, villagers };
+}
+
+function createHouseBoxes(houses: HouseDescriptor[]): THREE.Box3[] {
+  return houses.map((house) => {
+    const half = house.bodySize.clone().multiplyScalar(0.5);
+    const min = new THREE.Vector3(
+      house.basePosition.x - half.x,
+      house.basePosition.y,
+      house.basePosition.z - half.z
+    );
+    const max = new THREE.Vector3(
+      house.basePosition.x + half.x,
+      house.basePosition.y + house.bodySize.y + house.roofHeight,
+      house.basePosition.z + half.z
+    );
+    return new THREE.Box3(min, max);
+  });
+}
+
+function createVisionConeGeometry(range: number, halfFov: number, segments = 18) {
+  const vertices: number[] = [];
+  const indices: number[] = [];
+  vertices.push(0, 0, 0);
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const angle = -halfFov + t * halfFov * 2;
+    const x = Math.sin(angle) * range;
+    const z = Math.cos(angle) * range;
+    vertices.push(x, 0, z);
+    if (i > 0) {
+      indices.push(0, i, i + 1);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(vertices, 3)
+  );
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function isLineObstructed(
+  origin: THREE.Vector3,
+  target: THREE.Vector3,
+  obstacles: THREE.Box3[],
+  dir: THREE.Vector3,
+  ray: THREE.Ray,
+  hit: THREE.Vector3
+) {
+  if (obstacles.length === 0) return false;
+  dir.subVectors(target, origin);
+  const distance = dir.length();
+  if (distance <= 0.001) return false;
+  dir.normalize();
+  ray.set(origin, dir);
+  for (const box of obstacles) {
+    const point = ray.intersectBox(box, hit);
+    if (!point) continue;
+    const hitDistance = point.distanceTo(origin);
+    if (hitDistance > 0.05 && hitDistance < distance - 0.1) {
+      return true;
+    }
+  }
+  return false;
+}
+
 const Terrain = React.forwardRef(function Terrain(
   {
     width,
@@ -485,20 +622,37 @@ const Trees = React.memo(({ trees }: { trees: { pos: THREE.Vector3; scale: numbe
 // 👁️ Scout enemy with line-of-sight detection
 // ---------------------------------------------------------------------------
 function Scout({
+  id,
+  patrolStart,
+  patrolEnd,
   playerRef,
   noise,
+  obstacles,
   onDetectionUpdate,
+  onRemove,
+  visionRange = 22,
+  fov = 100,
+  detectionSeconds = 3,
 }: {
+  id: string;
+  patrolStart: THREE.Vector3;
+  patrolEnd: THREE.Vector3;
   playerRef: React.MutableRefObject<THREE.Mesh>;
   noise: SimplexLike;
-  onDetectionUpdate: (value: number, inCone: boolean, detected: boolean) => void;
+  obstacles: THREE.Box3[];
+  onDetectionUpdate: (
+    id: string,
+    report: { value: number; inCone: boolean; detected: boolean }
+  ) => void;
+  onRemove: (id: string) => void;
+  visionRange?: number;
+  fov?: number;
+  detectionSeconds?: number;
 }) {
   const scoutRef = useRef<THREE.Group>(null!);
   const detectionRef = useRef(0);
   const prevReportRef = useRef({ value: -1, inCone: false, detected: false });
 
-  const patrolStart = useMemo(() => new THREE.Vector3(-45, 0, -35), []);
-  const patrolEnd = useMemo(() => new THREE.Vector3(45, 0, 35), []);
   const nextPos = useMemo(() => new THREE.Vector3(), []);
   const prevPos = useMemo(() => new THREE.Vector3(), []);
   const tmpPos = useMemo(() => new THREE.Vector3(), []);
@@ -508,11 +662,30 @@ function Scout({
   const up = useMemo(() => new THREE.Vector3(0, 1, 0), []);
   const quat = useMemo(() => new THREE.Quaternion(), []);
   const scanQuat = useMemo(() => new THREE.Quaternion(), []);
+  const eyePos = useMemo(() => new THREE.Vector3(), []);
+  const hitPoint = useMemo(() => new THREE.Vector3(), []);
+  const ray = useMemo(() => new THREE.Ray(), []);
+  const lineDir = useMemo(() => new THREE.Vector3(), []);
+  const playerWorld = useMemo(() => new THREE.Vector3(), []);
 
   const sampleHeight = useCallback(
     (x: number, z: number) => noise.noise2D(x / 40, z / 40) * 8 * 1.2,
     [noise]
   );
+
+  const halfFov = THREE.MathUtils.degToRad(fov / 2);
+  const visionGeometry = useMemo(
+    () => createVisionConeGeometry(visionRange, halfFov, 24),
+    [visionRange, halfFov]
+  );
+
+  useEffect(() => {
+    return () => {
+      visionGeometry.dispose();
+    };
+  }, [visionGeometry]);
+
+  useEffect(() => () => onRemove(id), [id, onRemove]);
 
   useFrame(({ clock }, delta) => {
     const scout = scoutRef.current;
@@ -541,11 +714,9 @@ function Scout({
 
     toPlayer.subVectors(player.position, scout.position);
     const distance = toPlayer.length();
-    const viewRange = 15;
-    const halfFov = THREE.MathUtils.degToRad(45);
     let inCone = false;
 
-    if (distance <= viewRange) {
+    if (distance <= visionRange) {
       flatPlayer.set(toPlayer.x, 0, toPlayer.z);
       if (flatPlayer.lengthSq() > 0.0001) {
         flatPlayer.normalize();
@@ -558,8 +729,17 @@ function Scout({
       }
     }
 
-    const detectionRate = 100 / 3; // reach 100 in 3 seconds
-    const decayRate = 55; // drains quickly when hidden
+    if (inCone) {
+      eyePos.copy(scout.position);
+      eyePos.y += 1.2;
+      playerWorld.copy(player.position);
+      if (isLineObstructed(eyePos, playerWorld, obstacles, lineDir, ray, hitPoint)) {
+        inCone = false;
+      }
+    }
+
+    const detectionRate = 100 / detectionSeconds;
+    const decayRate = 65;
     if (inCone) {
       detectionRef.current = Math.min(100, detectionRef.current + detectionRate * delta);
     } else {
@@ -578,17 +758,30 @@ function Scout({
         inCone,
         detected,
       };
-      onDetectionUpdate(detectionRef.current, inCone, detected);
+      onDetectionUpdate(id, {
+        value: detectionRef.current,
+        inCone,
+        detected,
+      });
     }
   });
 
   return (
     <group ref={scoutRef}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]}>
+        <primitive object={visionGeometry} />
+        <meshBasicMaterial
+          color="#ff6655"
+          transparent
+          opacity={0.14}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
       <mesh castShadow position={[0, 0, 0]}>
         <cylinderGeometry args={[0.8, 0.8, 2.8, 16]} />
         <meshStandardMaterial color="#ff4d4d" emissive="#5c0000" />
       </mesh>
-      <mesh position={[0, 1.7, 0]}> 
+      <mesh position={[0, 1.7, 0]}>
         <coneGeometry args={[1, 1.4, 16]} />
         <meshStandardMaterial color="#ffe8d6" emissive="#802121" />
       </mesh>
@@ -596,6 +789,265 @@ function Scout({
     </group>
   );
 }
+
+// ---------------------------------------------------------------------------
+// 🚶 Villagers wandering near their homes
+// ---------------------------------------------------------------------------
+function Villager({
+  id,
+  home,
+  roamRadius,
+  playerRef,
+  noise,
+  obstacles,
+  onDetectionUpdate,
+  onRemove,
+}: {
+  id: string;
+  home: THREE.Vector3;
+  roamRadius: number;
+  playerRef: React.MutableRefObject<THREE.Mesh>;
+  noise: SimplexLike;
+  obstacles: THREE.Box3[];
+  onDetectionUpdate: (
+    id: string,
+    report: { value: number; inCone: boolean; detected: boolean }
+  ) => void;
+  onRemove: (id: string) => void;
+}) {
+  const villagerRef = useRef<THREE.Group>(null!);
+  const detectionRef = useRef(0);
+  const prevReportRef = useRef({ value: -1, inCone: false, detected: false });
+  const targetRef = useRef<THREE.Vector3 | null>(null);
+  const idleTimerRef = useRef(0.5 + Math.random());
+
+  const moveDir = useMemo(() => new THREE.Vector3(), []);
+  const toPlayer = useMemo(() => new THREE.Vector3(), []);
+  const flatPlayer = useMemo(() => new THREE.Vector3(), []);
+  const forward = useMemo(() => new THREE.Vector3(), []);
+  const eyePos = useMemo(() => new THREE.Vector3(), []);
+  const playerWorld = useMemo(() => new THREE.Vector3(), []);
+  const lineDir = useMemo(() => new THREE.Vector3(), []);
+  const hitPoint = useMemo(() => new THREE.Vector3(), []);
+  const ray = useMemo(() => new THREE.Ray(), []);
+
+  const sampleHeight = useCallback(
+    (x: number, z: number) => terrainHeight(noise, x, z, 1.0),
+    [noise]
+  );
+
+  const viewRange = 12;
+  const halfFov = THREE.MathUtils.degToRad(45);
+  const detectionRate = 100 / 5.5;
+  const decayRate = 45;
+
+  const visionGeometry = useMemo(
+    () => createVisionConeGeometry(viewRange, halfFov, 20),
+    [viewRange, halfFov]
+  );
+
+  useEffect(() => {
+    return () => {
+      visionGeometry.dispose();
+    };
+  }, [visionGeometry]);
+
+  useEffect(() => () => onRemove(id), [id, onRemove]);
+
+  useFrame((_, delta) => {
+    const villager = villagerRef.current;
+    const player = playerRef.current;
+    if (!villager || !player) return;
+
+    const pos = villager.position;
+
+    if (!targetRef.current || pos.distanceTo(targetRef.current) < 0.35) {
+      idleTimerRef.current -= delta;
+      if (idleTimerRef.current <= 0) {
+        const angle = Math.random() * Math.PI * 2;
+        const radius = roamRadius * (0.35 + Math.random() * 0.65);
+        const tx = home.x + Math.cos(angle) * radius;
+        const tz = home.z + Math.sin(angle) * radius;
+        const ty = sampleHeight(tx, tz) + 1.0;
+        if (!targetRef.current) targetRef.current = new THREE.Vector3();
+        targetRef.current.set(tx, ty, tz);
+        idleTimerRef.current = 1.3 + Math.random() * 1.7;
+      }
+    }
+
+    if (targetRef.current) {
+      moveDir.subVectors(targetRef.current, pos);
+      const distance = moveDir.length();
+      if (distance > 0.05) {
+        moveDir.normalize();
+        const speed = 7;
+        pos.x += moveDir.x * speed * delta;
+        pos.z += moveDir.z * speed * delta;
+        const targetAngle = Math.atan2(moveDir.x, moveDir.z);
+        villager.rotation.y = THREE.MathUtils.lerp(
+          villager.rotation.y,
+          targetAngle,
+          delta * 2.5
+        );
+      } else {
+        targetRef.current = null;
+        idleTimerRef.current = 1 + Math.random() * 1.5;
+      }
+    }
+
+    const ground = sampleHeight(pos.x, pos.z);
+    pos.y = THREE.MathUtils.lerp(pos.y, ground + 1.0, 0.12);
+
+    toPlayer.subVectors(player.position, villager.position);
+    const distanceToPlayer = toPlayer.length();
+    let inCone = false;
+
+    if (distanceToPlayer <= viewRange) {
+      flatPlayer.set(toPlayer.x, 0, toPlayer.z);
+      if (flatPlayer.lengthSq() > 0.0001) {
+        flatPlayer.normalize();
+        forward.set(Math.sin(villager.rotation.y), 0, Math.cos(villager.rotation.y));
+        if (forward.lengthSq() > 0.0001) {
+          forward.normalize();
+          const angle = forward.angleTo(flatPlayer);
+          inCone = angle <= halfFov;
+        }
+      }
+    }
+
+    if (inCone) {
+      eyePos.copy(villager.position);
+      eyePos.y += 0.9;
+      playerWorld.copy(player.position);
+      if (isLineObstructed(eyePos, playerWorld, obstacles, lineDir, ray, hitPoint)) {
+        inCone = false;
+      }
+    }
+
+    if (inCone) {
+      detectionRef.current = Math.min(
+        100,
+        detectionRef.current + detectionRate * delta
+      );
+    } else {
+      detectionRef.current = Math.max(
+        0,
+        detectionRef.current - decayRate * delta
+      );
+    }
+
+    const detected = detectionRef.current >= 98;
+    const needsReport =
+      Math.abs(prevReportRef.current.value - detectionRef.current) > 0.05 ||
+      prevReportRef.current.inCone !== inCone ||
+      prevReportRef.current.detected !== detected;
+
+    if (needsReport) {
+      prevReportRef.current = {
+        value: detectionRef.current,
+        inCone,
+        detected,
+      };
+      onDetectionUpdate(id, {
+        value: detectionRef.current,
+        inCone,
+        detected,
+      });
+    }
+  });
+
+  return (
+    <group ref={villagerRef} position={[home.x, home.y, home.z]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.03, 0]}>
+        <primitive object={visionGeometry} />
+        <meshBasicMaterial
+          color="#82c7ff"
+          transparent
+          opacity={0.1}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+      <mesh castShadow position={[0, 0.0, 0]}>
+        <cylinderGeometry args={[0.55, 0.65, 1.6, 12]} />
+        <meshStandardMaterial color="#bba57a" emissive="#3b2b1a" />
+      </mesh>
+      <mesh castShadow position={[0, 1.1, 0]}>
+        <sphereGeometry args={[0.45, 16, 16]} />
+        <meshStandardMaterial color="#f7d6a0" emissive="#4c3b26" />
+      </mesh>
+      <mesh position={[0, 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[0.75, 20]} />
+        <meshStandardMaterial color="#473a28" opacity={0.35} transparent />
+      </mesh>
+    </group>
+  );
+}
+
+const Houses = React.memo(({ houses }: { houses: HouseDescriptor[] }) => {
+  return (
+    <group>
+      {houses.map((house) => {
+        const halfDepth = house.bodySize.z / 2;
+        return (
+          <group
+            key={house.id}
+            position={[house.basePosition.x, house.basePosition.y, house.basePosition.z]}
+          >
+            <mesh
+              castShadow
+              receiveShadow
+              position={[0, house.bodySize.y / 2, 0]}
+            >
+              <boxGeometry
+                args={[house.bodySize.x, house.bodySize.y, house.bodySize.z]}
+              />
+              <meshStandardMaterial
+                color="#74563a"
+                roughness={0.8}
+                metalness={0.1}
+              />
+            </mesh>
+            <mesh
+              castShadow
+              position={[0, house.bodySize.y + house.roofHeight / 2 - 0.05, 0]}
+            >
+              <coneGeometry args={[house.bodySize.x * 0.75, house.roofHeight, 4]} />
+              <meshStandardMaterial color="#4a2a1a" roughness={0.65} />
+            </mesh>
+            <mesh
+              position={[0, house.bodySize.y * 0.35, halfDepth + 0.01]}
+              rotation={[0, 0, 0]}
+            >
+              <planeGeometry
+                args={[house.bodySize.x * 0.35, house.bodySize.y * 0.45]}
+              />
+              <meshStandardMaterial
+                color="#2f1e12"
+                emissive="#1a0f08"
+                side={THREE.DoubleSide}
+              />
+            </mesh>
+            <mesh
+              position={[0, 0.02, halfDepth + 2]}
+              rotation={[-Math.PI / 2, 0, 0]}
+              receiveShadow
+            >
+              <planeGeometry args={[house.bodySize.x * 0.6, 4]} />
+              <meshStandardMaterial color="#8b6a45" roughness={0.9} />
+            </mesh>
+            <mesh
+              castShadow
+              position={[house.bodySize.x * 0.25, house.bodySize.y * 0.9, 0]}
+            >
+              <boxGeometry args={[0.6, house.roofHeight * 0.8, 0.6]} />
+              <meshStandardMaterial color="#3c2f24" />
+            </mesh>
+          </group>
+        );
+      })}
+    </group>
+  );
+});
 
 // ---------------------------------------------------------------------------
 // ✨ Fireflies
@@ -696,17 +1148,65 @@ export default function WorldScene() {
   const terrainRef = useRef<THREE.Mesh>(null!);
   const simplex = useMemo(() => makeSimplex(1337), []);
   const forestPositions = useForestLayout(simplex);
+  const { houses, villagers } = useMemo(() => createVillageLayout(simplex), [simplex]);
+  const houseBoxes = useMemo(() => createHouseBoxes(houses), [houses]);
+  const scoutRoutes = useMemo(
+    () => [
+      {
+        id: "scout-main-road",
+        start: new THREE.Vector3(-60, 0, -25),
+        end: new THREE.Vector3(60, 0, 25),
+        visionRange: 24,
+        fov: 105,
+        detectionSeconds: 2.4,
+      },
+      {
+        id: "scout-ridge",
+        start: new THREE.Vector3(-30, 0, 58),
+        end: new THREE.Vector3(40, 0, 45),
+        visionRange: 20,
+        fov: 95,
+        detectionSeconds: 2.8,
+      },
+    ],
+    []
+  );
+
   const [detectionValue, setDetectionValue] = useState(0);
   const [isInCone, setIsInCone] = useState(false);
   const [isDetected, setIsDetected] = useState(false);
+  const detectionSourcesRef = useRef(
+    new Map<string, { value: number; inCone: boolean; detected: boolean }>()
+  );
 
-  const handleDetectionUpdate = useCallback(
-    (value: number, inCone: boolean, detected: boolean) => {
-      setDetectionValue(value);
-      setIsInCone(inCone);
-      setIsDetected(detected);
+  const updateAggregate = useCallback(() => {
+    let total = 0;
+    let anyInCone = false;
+    let anyDetected = false;
+    detectionSourcesRef.current.forEach(({ value, inCone, detected }) => {
+      total += value;
+      if (inCone) anyInCone = true;
+      if (detected) anyDetected = true;
+    });
+    setDetectionValue(Math.min(100, total));
+    setIsInCone(anyInCone);
+    setIsDetected(anyDetected);
+  }, []);
+
+  const handleNpcDetection = useCallback(
+    (id: string, report: { value: number; inCone: boolean; detected: boolean }) => {
+      detectionSourcesRef.current.set(id, report);
+      updateAggregate();
     },
-    []
+    [updateAggregate]
+  );
+
+  const handleNpcRemoval = useCallback(
+    (id: string) => {
+      detectionSourcesRef.current.delete(id);
+      updateAggregate();
+    },
+    [updateAggregate]
   );
 
   useHeartbeat(isDetected);
@@ -746,6 +1246,7 @@ export default function WorldScene() {
         />
 
         <Trees trees={forestPositions} />
+        <Houses houses={houses} />
 
         <PlayerController
           target={target}
@@ -755,11 +1256,36 @@ export default function WorldScene() {
         />
         <FollowCamera playerRef={playerRef} />
 
-        <Scout
-          playerRef={playerRef}
-          noise={simplex}
-          onDetectionUpdate={handleDetectionUpdate}
-        />
+        {villagers.map((villager) => (
+          <Villager
+            key={villager.id}
+            id={villager.id}
+            home={villager.home}
+            roamRadius={villager.roamRadius}
+            playerRef={playerRef}
+            noise={simplex}
+            obstacles={houseBoxes}
+            onDetectionUpdate={handleNpcDetection}
+            onRemove={handleNpcRemoval}
+          />
+        ))}
+
+        {scoutRoutes.map((route) => (
+          <Scout
+            key={route.id}
+            id={route.id}
+            patrolStart={route.start}
+            patrolEnd={route.end}
+            playerRef={playerRef}
+            noise={simplex}
+            obstacles={houseBoxes}
+            onDetectionUpdate={handleNpcDetection}
+            onRemove={handleNpcRemoval}
+            visionRange={route.visionRange}
+            fov={route.fov}
+            detectionSeconds={route.detectionSeconds}
+          />
+        ))}
 
         <Fireflies />
         <FXBloom strength={0.35} radius={0.35} threshold={0.6} />
