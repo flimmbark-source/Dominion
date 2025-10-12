@@ -510,7 +510,7 @@ function Scout({
   const scanQuat = useMemo(() => new THREE.Quaternion(), []);
 
   const sampleHeight = useCallback(
-    (x: number, z: number) => terrainHeight(noise, x, z),
+    (x: number, z: number) => noise.noise2D(x / 40, z / 40) * 8 * 1.2,
     [noise]
   );
 
