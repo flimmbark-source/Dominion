@@ -494,8 +494,44 @@ function Scout({
   onDetectionUpdate: (value: number, inCone: boolean, detected: boolean) => void;
 }) {
   const scoutRef = useRef<THREE.Group>(null!);
+  const visionRef = useRef<THREE.Mesh>(null!);
   const detectionRef = useRef(0);
   const prevReportRef = useRef({ value: -1, inCone: false, detected: false });
+
+  const viewRange = 15;
+  const halfFov = THREE.MathUtils.degToRad(45);
+
+  const visionGeometry = useMemo(() => {
+    const segments = 24;
+    const positions: number[] = [];
+    for (let i = 0; i < segments; i++) {
+      const t0 = -halfFov + (i / segments) * halfFov * 2;
+      const t1 = -halfFov + ((i + 1) / segments) * halfFov * 2;
+      positions.push(0, 0.02, 0);
+      positions.push(Math.sin(t0) * viewRange, 0.02, Math.cos(t0) * viewRange);
+      positions.push(Math.sin(t1) * viewRange, 0.02, Math.cos(t1) * viewRange);
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geometry.computeVertexNormals();
+    return geometry;
+  }, [halfFov, viewRange]);
+
+  useEffect(() => () => visionGeometry.dispose(), [visionGeometry]);
+
+  const visionMaterial = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: "#ffb347",
+        transparent: true,
+        opacity: 0.22,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      }),
+    []
+  );
+
+  useEffect(() => () => visionMaterial.dispose(), [visionMaterial]);
 
   const patrolStart = useMemo(() => new THREE.Vector3(-45, 0, -35), []);
   const patrolEnd = useMemo(() => new THREE.Vector3(45, 0, 35), []);
@@ -541,8 +577,6 @@ function Scout({
 
     toPlayer.subVectors(player.position, scout.position);
     const distance = toPlayer.length();
-    const viewRange = 15;
-    const halfFov = THREE.MathUtils.degToRad(45);
     let inCone = false;
 
     if (distance <= viewRange) {
@@ -558,9 +592,27 @@ function Scout({
       }
     }
 
+    const dayFactor = THREE.MathUtils.clamp(
+      0.6 + 0.4 * Math.sin(clock.elapsedTime * 0.05),
+      0.0,
+      1.0
+    );
+    const inDarkness = dayFactor < 0.35;
+    const canSee = inCone && !inDarkness;
+
+    if (visionRef.current) {
+      const targetOpacity = canSee ? 0.28 : inDarkness ? 0.05 : 0.16;
+      visionMaterial.opacity = THREE.MathUtils.lerp(
+        visionMaterial.opacity,
+        targetOpacity,
+        0.12
+      );
+      visionRef.current.visible = true;
+    }
+
     const detectionRate = 100 / 3; // reach 100 in 3 seconds
     const decayRate = 55; // drains quickly when hidden
-    if (inCone) {
+    if (canSee) {
       detectionRef.current = Math.min(100, detectionRef.current + detectionRate * delta);
     } else {
       detectionRef.current = Math.max(0, detectionRef.current - decayRate * delta);
@@ -569,21 +621,27 @@ function Scout({
     const detected = detectionRef.current >= 99.5;
     const needsReport =
       Math.abs(prevReportRef.current.value - detectionRef.current) > 0.05 ||
-      prevReportRef.current.inCone !== inCone ||
+      prevReportRef.current.inCone !== canSee ||
       prevReportRef.current.detected !== detected;
 
     if (needsReport) {
       prevReportRef.current = {
         value: detectionRef.current,
-        inCone,
+        inCone: canSee,
         detected,
       };
-      onDetectionUpdate(detectionRef.current, inCone, detected);
+      onDetectionUpdate(detectionRef.current, canSee, detected);
     }
   });
 
   return (
     <group ref={scoutRef}>
+      <mesh
+        ref={visionRef}
+        geometry={visionGeometry}
+        material={visionMaterial}
+        position={[0, -1.6, 0]}
+      />
       <mesh castShadow position={[0, 0, 0]}>
         <cylinderGeometry args={[0.8, 0.8, 2.8, 16]} />
         <meshStandardMaterial color="#ff4d4d" emissive="#5c0000" />
