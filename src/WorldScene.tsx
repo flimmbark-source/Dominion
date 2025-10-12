@@ -5,7 +5,7 @@
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
-import React, { useMemo, useRef, useState, useEffect } from "react";
+import React, { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import * as SimplexModule from "simplex-noise";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { EffectComposer as ThreeEffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
@@ -328,6 +328,86 @@ function FollowCamera({
 }
 
 // ---------------------------------------------------------------------------
+// ❤️ Heartbeat feedback when fully detected
+// ---------------------------------------------------------------------------
+function useHeartbeat(active: boolean) {
+  const intervalRef = useRef<number | null>(null);
+  const ctxRef = useRef<AudioContext | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const stop = () => {
+      if (intervalRef.current != null) {
+        window.clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+
+    if (!active) {
+      stop();
+      return;
+    }
+
+    const AudioCtor = (window.AudioContext || (window as any).webkitAudioContext) as
+      | typeof AudioContext
+      | undefined;
+    if (!AudioCtor) return;
+
+    if (!ctxRef.current) {
+      ctxRef.current = new AudioCtor();
+    }
+
+    const ctx = ctxRef.current;
+    if (ctx.state === "suspended") ctx.resume().catch(() => void 0);
+
+    const beat = () => {
+      if (!ctx) return;
+      const now = ctx.currentTime;
+
+      const createPulse = (offset: number) => {
+        const gain = ctx.createGain();
+        const osc = ctx.createOscillator();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(70, now + offset);
+        osc.frequency.exponentialRampToValueAtTime(45, now + offset + 0.3);
+
+        gain.gain.setValueAtTime(0.0001, now + offset);
+        gain.gain.exponentialRampToValueAtTime(0.45, now + offset + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.35);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + offset);
+        osc.stop(now + offset + 0.4);
+      };
+
+      createPulse(0);
+      createPulse(0.35);
+    };
+
+    beat();
+    stop();
+    intervalRef.current = window.setInterval(beat, 1200);
+
+    return stop;
+  }, [active]);
+
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current != null) {
+        window.clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      if (ctxRef.current) {
+        ctxRef.current.close().catch(() => void 0);
+        ctxRef.current = null;
+      }
+    };
+  }, []);
+}
+
+// ---------------------------------------------------------------------------
 // 🌲 Forest (merged geometry)
 // ---------------------------------------------------------------------------
 function useForestLayout(noise: SimplexLike) {
@@ -392,6 +472,122 @@ const Trees = React.memo(({ trees }: { trees: { pos: THREE.Vector3; scale: numbe
     </mesh>
   );
 });
+
+// ---------------------------------------------------------------------------
+// 👁️ Scout enemy with line-of-sight detection
+// ---------------------------------------------------------------------------
+function Scout({
+  playerRef,
+  noise,
+  onDetectionUpdate,
+}: {
+  playerRef: React.MutableRefObject<THREE.Mesh>;
+  noise: SimplexLike;
+  onDetectionUpdate: (value: number, inCone: boolean, detected: boolean) => void;
+}) {
+  const scoutRef = useRef<THREE.Group>(null!);
+  const detectionRef = useRef(0);
+  const prevReportRef = useRef({ value: -1, inCone: false, detected: false });
+
+  const patrolStart = useMemo(() => new THREE.Vector3(-45, 0, -35), []);
+  const patrolEnd = useMemo(() => new THREE.Vector3(45, 0, 35), []);
+  const nextPos = useMemo(() => new THREE.Vector3(), []);
+  const prevPos = useMemo(() => new THREE.Vector3(), []);
+  const tmpPos = useMemo(() => new THREE.Vector3(), []);
+  const toPlayer = useMemo(() => new THREE.Vector3(), []);
+  const flatPlayer = useMemo(() => new THREE.Vector3(), []);
+  const forward = useMemo(() => new THREE.Vector3(), []);
+  const up = useMemo(() => new THREE.Vector3(0, 1, 0), []);
+  const quat = useMemo(() => new THREE.Quaternion(), []);
+  const scanQuat = useMemo(() => new THREE.Quaternion(), []);
+
+  const sampleHeight = useCallback(
+    (x: number, z: number) => noise.noise2D(x / 40, z / 40) * 8 * 1.2,
+    [noise]
+  );
+
+  useFrame(({ clock }, delta) => {
+    const scout = scoutRef.current;
+    const player = playerRef.current;
+    if (!scout || !player) return;
+
+    const t = clock.elapsedTime * 0.18;
+    const alpha = (Math.sin(t) * 0.5 + 0.5) ** 1.2;
+    tmpPos.copy(patrolStart).lerp(patrolEnd, alpha);
+    const terrainY = sampleHeight(tmpPos.x, tmpPos.z);
+    scout.position.set(tmpPos.x, terrainY + 1.6, tmpPos.z);
+
+    const offset = 0.05;
+    const alphaNext = (Math.sin((clock.elapsedTime + offset) * 0.18) * 0.5 + 0.5) ** 1.2;
+    const alphaPrev = (Math.sin((clock.elapsedTime - offset) * 0.18) * 0.5 + 0.5) ** 1.2;
+    nextPos.copy(patrolStart).lerp(patrolEnd, alphaNext);
+    prevPos.copy(patrolStart).lerp(patrolEnd, alphaPrev);
+    const baseDir = nextPos.clone().sub(prevPos).setY(0).normalize();
+    if (baseDir.lengthSq() === 0) baseDir.set(0, 0, 1);
+
+    quat.setFromUnitVectors(new THREE.Vector3(0, 0, 1), baseDir);
+    const scanAngle = Math.sin(clock.elapsedTime * 0.8) * THREE.MathUtils.degToRad(35);
+    scanQuat.setFromAxisAngle(up, scanAngle);
+    quat.multiply(scanQuat);
+    scout.quaternion.slerp(quat, 0.1);
+
+    toPlayer.subVectors(player.position, scout.position);
+    const distance = toPlayer.length();
+    const viewRange = 15;
+    const halfFov = THREE.MathUtils.degToRad(45);
+    let inCone = false;
+
+    if (distance <= viewRange) {
+      flatPlayer.set(toPlayer.x, 0, toPlayer.z);
+      if (flatPlayer.lengthSq() > 0.0001) {
+        flatPlayer.normalize();
+        forward.set(0, 0, 1).applyQuaternion(scout.quaternion).setY(0);
+        if (forward.lengthSq() > 0.0001) {
+          forward.normalize();
+          const angle = forward.angleTo(flatPlayer);
+          inCone = angle <= halfFov;
+        }
+      }
+    }
+
+    const detectionRate = 100 / 3; // reach 100 in 3 seconds
+    const decayRate = 55; // drains quickly when hidden
+    if (inCone) {
+      detectionRef.current = Math.min(100, detectionRef.current + detectionRate * delta);
+    } else {
+      detectionRef.current = Math.max(0, detectionRef.current - decayRate * delta);
+    }
+
+    const detected = detectionRef.current >= 99.5;
+    const needsReport =
+      Math.abs(prevReportRef.current.value - detectionRef.current) > 0.05 ||
+      prevReportRef.current.inCone !== inCone ||
+      prevReportRef.current.detected !== detected;
+
+    if (needsReport) {
+      prevReportRef.current = {
+        value: detectionRef.current,
+        inCone,
+        detected,
+      };
+      onDetectionUpdate(detectionRef.current, inCone, detected);
+    }
+  });
+
+  return (
+    <group ref={scoutRef}>
+      <mesh castShadow position={[0, 0, 0]}>
+        <cylinderGeometry args={[0.8, 0.8, 2.8, 16]} />
+        <meshStandardMaterial color="#ff4d4d" emissive="#5c0000" />
+      </mesh>
+      <mesh position={[0, 1.7, 0]}> 
+        <coneGeometry args={[1, 1.4, 16]} />
+        <meshStandardMaterial color="#ffe8d6" emissive="#802121" />
+      </mesh>
+      <pointLight position={[0, 3.2, 0]} intensity={0.55} distance={18} color="#ff6655" />
+    </group>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // ✨ Fireflies
@@ -492,40 +688,95 @@ export default function WorldScene() {
   const terrainRef = useRef<THREE.Mesh>(null!);
   const simplex = useMemo(() => makeSimplex(1337), []);
   const forestPositions = useForestLayout(simplex);
+  const [detectionValue, setDetectionValue] = useState(0);
+  const [isInCone, setIsInCone] = useState(false);
+  const [isDetected, setIsDetected] = useState(false);
+
+  const handleDetectionUpdate = useCallback(
+    (value: number, inCone: boolean, detected: boolean) => {
+      setDetectionValue(value);
+      setIsInCone(inCone);
+      setIsDetected(detected);
+    },
+    []
+  );
+
+  useHeartbeat(isDetected);
+
+  const detectionPercent = Math.max(0, Math.min(100, detectionValue));
+  const detectionColor = isDetected
+    ? "#ff2b3a"
+    : isInCone
+    ? "#ffb347"
+    : "#35c9ff";
+  const vignetteClasses = [
+    "danger-vignette",
+    isDetected ? "danger-vignette--active" : "",
+    !isDetected && isInCone ? "danger-vignette--tracking" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
-    <Canvas
-      orthographic
-      camera={{ zoom: 40, position: [60, 80, 60] }}
-      shadows
-      style={{ width: "100vw", height: "100vh" }}
-    >
-      <SkyDome />
-      <HazeAndSun />
+    <div className="world-root">
+      <Canvas
+        orthographic
+        camera={{ zoom: 40, position: [60, 80, 60] }}
+        shadows
+        style={{ width: "100%", height: "100%" }}
+      >
+        <SkyDome />
+        <HazeAndSun />
 
-      <Terrain
-        ref={terrainRef}
-        width={200}
-        height={200}
-        scale={1.0}
-        noise={simplex}
-        onSurfaceClick={(p) => setTarget(p)}
-      />
+        <Terrain
+          ref={terrainRef}
+          width={200}
+          height={200}
+          scale={1.0}
+          noise={simplex}
+          onSurfaceClick={(p) => setTarget(p)}
+        />
 
-      <Trees trees={forestPositions} />
+        <Trees trees={forestPositions} />
 
-      <PlayerController
-        target={target}
-        noise={simplex}
-        playerRef={playerRef}
-        terrainRef={terrainRef}
-      />
-      <FollowCamera playerRef={playerRef} />
+        <PlayerController
+          target={target}
+          noise={simplex}
+          playerRef={playerRef}
+          terrainRef={terrainRef}
+        />
+        <FollowCamera playerRef={playerRef} />
 
-      <Fireflies />
-      <FXBloom strength={0.35} radius={0.35} threshold={0.6} />
+        <Scout
+          playerRef={playerRef}
+          noise={simplex}
+          onDetectionUpdate={handleDetectionUpdate}
+        />
 
-      <OrbitControls enableRotate={false} enableZoom />
-    </Canvas>
+        <Fireflies />
+        <FXBloom strength={0.35} radius={0.35} threshold={0.6} />
+
+        <OrbitControls enableRotate={false} enableZoom />
+      </Canvas>
+
+      <div className="hud">
+        <div className="hud__detection">
+          <div className="detection-bar">
+            <div className="detection-bar__track">
+              <div
+                className="detection-bar__fill"
+                style={{ width: `${detectionPercent}%`, background: detectionColor }}
+              />
+            </div>
+            <span className="detection-bar__label">
+              Detection {Math.round(detectionPercent)}%
+            </span>
+          </div>
+          {isDetected && <div className="detected-text">Detected!</div>}
+        </div>
+      </div>
+
+      <div className={vignetteClasses} />
+    </div>
   );
 }
