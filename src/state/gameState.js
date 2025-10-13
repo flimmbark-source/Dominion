@@ -1,0 +1,43 @@
+import { VILLAGES, WALL, WORLD } from '../data/world.js';
+import { TAVERN_INTERIOR } from './tavern.js';
+import { W, H } from '../game/canvas.js';
+
+const mainVillage = VILLAGES[0];
+
+const state = {
+  time: 0,
+  pausedForShop: false,
+  debugCones: true,
+  message: '',
+  messageUntil: 0,
+  camera: { x: mainVillage.x + mainVillage.w/2 - W/2, y: mainVillage.y + mainVillage.h/2 - H/2 },
+  player: {
+    x: mainVillage.x + 180, y: mainVillage.y + 460, r: 10, facing: 0,
+    vx: 0, vy: 0, sprinting: false,
+    gold: 0, health: 100,
+    detection: 0,
+    invisUntil: 0,
+    stats: { speed: 120, attack: 10, stealthMult: 1.0, hasBoots:false, hasCloak:false, hasDagger:false },
+    inventory: Array(6).fill(null)
+  },
+  houses: [],
+  doors: [],
+  houseSolids: [],
+  chests: [],
+  tavern: { x: 5120, y: 4760, w: 220, h: 200, stump:{ cx:5230, cy:4860, radius:46 }, glowRadius:180, clearRadius:160 },
+  tavernInteriorState: { active: false, returnPoint: null },
+  tavernReentryBlockUntil: 0,
+  npcs: [],
+  castle: { x: WORLD.W - 320, y: 360 },
+  threat: 0,
+  threatSpawns: [50, 100],
+  spawnCount: 0,
+  interior: null,
+  stairs: [],
+  lastSeen: false,
+  tavernPlayerInside: false,
+  shopOwned: new Set(),
+  mapVisible: false
+};
+
+export { state, mainVillage };
