@@ -1,28 +1,39 @@
 import './style.css';
 
-// Single-file canvas game. ASCII-only strings/comments to avoid parser surprises in injected environments.
+import { ITEMS } from './data/items.js';
+import {
+  BASE_HOUSE_LAYOUT,
+  DEFAULT_HOUSE_JITTER,
+  HOUSE_MIN_SPACING,
+  VILLAGE_MARGIN,
+  VILLAGE_ROAD_BUFFER
+} from './data/houses.js';
+import {
+  PATH_CLEAR_RADIUS,
+  PATH_WIDTH_MAIN,
+  PATH_WIDTH_RING,
+  TREE_CANOPY_MAX,
+  TREE_CANOPY_MIN,
+  TREE_CLEARING_CHANCE,
+  TREE_MAX_SPACING,
+  TREE_MIN_SPACING,
+  VILLAGES,
+  WALL,
+  WORLD,
+  treePathNoise
+} from './data/world.js';
+import { keys, setupInput } from './input.js';
+import {
+  circleRectCollideResolve,
+  centerOf,
+  distToSegment,
+  pointInRect,
+  rectsOverlap,
+  segBlockedByAnyRect
+} from './utils/geometry.js';
+import { TAU, clamp, lerp, randRange } from './utils/math.js';
 
-/** ---------- Math/Utils ---------- */
-const TAU = Math.PI * 2;
-const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
-const lerp  = (a,b,t) => a + (b-a)*t;
-const dist2 = (a,b) => (a.x-b.x)**2+(a.y-b.y)**2;
-const lineIntersectsRect = (x1,y1,x2,y2, rx,ry,rw,rh) => {
-  // Liang-Barsky segment vs AABB
-  let p = [-(x2-x1), (x2-x1), -(y2-y1), (y2-y1)];
-  let q = [x1 - rx, rx+rw - x1, y1 - ry, ry+rh - y1];
-  let u1 = 0, u2 = 1;
-  for (let i=0;i<4;i++){
-    if (p[i] === 0) { if (q[i] < 0) return false; }
-    else {
-      let t = q[i] / p[i];
-      if (p[i] < 0) { if (t > u2) return false; if (t > u1) u1 = t; }
-      else { if (t < u1) return false; if (t < u2) u2 = t; }
-    }
-  }
-  return true;
-};
-const segBlockedByAnyRect = (x1,y1,x2,y2, rects) => rects.some(r => lineIntersectsRect(x1,y1,x2,y2, r.x, r.y, r.w, r.h));
+// Single-file canvas game. ASCII-only strings/comments to avoid parser surprises in injected environments.
 
 function canvasPointFromEvent(evt){
   const rect = canvas.getBoundingClientRect();
@@ -35,39 +46,14 @@ function canvasPointFromEvent(evt){
 }
 
 /** ---------- Input ---------- */
-const keys = new Set();
-window.addEventListener('keydown', e => { keys.add(e.key.toLowerCase()); });
-window.addEventListener('keyup',   e => { keys.delete(e.key.toLowerCase()); });
-
-/** ---------- Game State ---------- */
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const W = ctx.canvas.width, H = ctx.canvas.height;
+setupInput();
 
-const WORLD = { W: 8000, H: 8000 };
-const VILLAGES = [
-  { name:'Moonfen',   x: 3600, y: 3400, w: 960, h: 600 },
-  { name:'Brackenreach', x: 900,  y: 1200, w: 960, h: 600 },
-  { name:'Duskhaven', x: 5900, y: 1200, w: 960, h: 600 },
-  { name:'Miregate',  x: 980,  y: 5900, w: 960, h: 600 },
-  { name:'Thornfall', x: 5840, y: 5840, w: 960, h: 600 }
-];
+/** ---------- Game State ---------- */
 const mainVillage = VILLAGES[0];
 const pathSegments = [];
-const PATH_WIDTH_MAIN = 48;
-const PATH_WIDTH_RING = 38;
-const PATH_CLEAR_RADIUS = 44;
-
-const TREE_MIN_SPACING = 56;
-const TREE_MAX_SPACING = 118;
-const TREE_CLEARING_CHANCE = 0.18;
-const TREE_CANOPY_MIN = 26;
-const TREE_CANOPY_MAX = 42;
-
-function randRange(min, max){ return min + Math.random() * (max - min); }
-function treePathNoise(x, y){
-  return Math.sin(x * 0.0026) + Math.sin(y * 0.0031) - Math.cos((x + y) * 0.0017);
-}
 
 const state = {
   time: 0,
@@ -103,21 +89,12 @@ const state = {
 };
 
 /** ---------- World Setup ---------- */
-const WALL = 8;
 
 // ----- Large world + terrain (forests and roads) -----
 const roads = [];
 let forestSolids = [];
 
 function addRoad(x,y,w,h){ roads.push({x,y,w,h}); }
-function pointInRect(px,py, r){ return px>=r.x && px<=r.x+r.w && py>=r.y && py<=r.y+r.h; }
-function rectsOverlap(a,b){ return !(a.x+a.w < b.x || b.x+b.w < a.x || a.y+a.h < b.y || b.y+b.h < a.y); }
-function distToSegment(px,py, ax,ay,bx,by){
-  const vx = bx-ax, vy = by-ay; const wx = px-ax, wy = py-ay;
-  const c1 = vx*wx + vy*wy; const c2 = vx*vx + vy*vy; const t = c2 ? clamp(c1/c2,0,1):0;
-  const dx = ax + t*vx - px, dy = ay + t*vy - py; return Math.hypot(dx,dy);
-}
-function centerOf(rect){ return { x: rect.x + rect.w/2, y: rect.y + rect.h/2 }; }
 
 function projectToVillageEdge(point, toward){
   const result = { x: point.x, y: point.y };
@@ -411,23 +388,6 @@ function fillHouseInterior(h, color){
   ctx.fillRect(h.x + WALL, h.y + WALL, h.w - 2*WALL, h.h - 2*WALL);
 }
 
-const VILLAGE_MARGIN = 40;
-const VILLAGE_ROAD_BUFFER = 80;
-const DEFAULT_HOUSE_JITTER = {
-  north: { x: 70, y: 30, door: 0.18 },
-  south: { x: 70, y: 36, door: 0.18 }
-};
-const HOUSE_MIN_SPACING = 22;
-
-const BASE_HOUSE_LAYOUT = [
-  { x:120, y:120, w:140, h:90, side:'north', doorOffset:0.50 },
-  { x:320, y:100, w:160, h:110, side:'north', doorOffset:0.30 },
-  { x:540, y:110, w:150, h:100, side:'north', doorOffset:0.70 },
-  { x:160, y:320, w:150, h:110, side:'south', doorOffset:0.40 },
-  { x:380, y:340, w:160, h:110, side:'south', doorOffset:0.60 },
-  { x:620, y:330, w:170, h:120, side:'south', doorOffset:0.50 }
-];
-
 function clampToVillageBounds(village, spec, position){
   const { side } = spec;
   const roadCenterY = village.y + village.h / 2;
@@ -641,36 +601,6 @@ function patchPatrolRoutes(){
 patchPatrolRoutes();
 
 /** ---------- Items / Shop ---------- */
-const ITEMS = [
-  {
-    id:'boots', key:'1', name:'Boots of the Whipwind', price:100, type:'passive',
-    desc:'Wyvern-sinew laces grant +40 movement speed.',
-    canBuy:(p)=>!p.stats.hasBoots,
-    apply:(p)=>{ p.stats.hasBoots = true; p.stats.speed += 40; }
-  },
-  {
-    id:'cloak', key:'2', name:'Cloak of Nightwhisper', price:150, type:'passive',
-    desc:'Mycelium threads slow detection buildup by 40%.',
-    canBuy:(p)=>!p.stats.hasCloak,
-    apply:(p)=>{ p.stats.hasCloak = true; p.stats.stealthMult *= 0.6; }
-  },
-  {
-    id:'dagger', key:'3', name:'Venom-Barbed Shiv', price:120, type:'passive',
-    desc:'Coated blade boosts attack damage by +10.',
-    canBuy:(p)=>!p.stats.hasDagger,
-    apply:(p)=>{ p.stats.hasDagger = true; p.stats.attack += 10; }
-  },
-  {
-    id:'invis', key:'4', name:'Invisibility Potion', price:80, type:'consumable',
-    desc:'One draught renders you unseen for 6 seconds.',
-    apply:()=>{}
-  },
-  {
-    id:'moonleaf', key:'5', name:'Moonleaf Draught', price:90, type:'consumable',
-    desc:'Herbal brew that restores 30 health.',
-    apply:()=>{}
-  }
-];
 let shopHitRegions = [];
 let shopHover = null;
 function inventoryAdd(item){
@@ -698,16 +628,6 @@ function useInventorySlot(slotIdx){
 
 /** ---------- Helpers ---------- */
 function toast(msg, dur=2){ state.message = msg; state.messageUntil = state.time + dur; console.log(msg); }
-function inRect(px,py, r){ return px>=r.x && px<=r.x+r.w && py>=r.y && py<=r.y+r.h; }
-function circleRectCollideResolve(cx,cy,cr, r){
-  const nx = clamp(cx, r.x, r.x+r.w), ny = clamp(cy, r.y, r.y+r.h);
-  const dx = cx - nx, dy = cy - ny; const d2 = dx*dx + dy*dy;
-  if (d2 > cr*cr) return {x:cx, y:cy};
-  const d = Math.max(0.0001, Math.sqrt(d2));
-  const ux = dx/d, uy = dy/d;
-  const overlap = cr - d + 0.1;
-  return { x: cx + ux*overlap, y: cy + uy*overlap };
-}
 
 /** ---------- FOV / Detection ---------- */
 function npcSeesPlayer(npc, player){
@@ -785,7 +705,7 @@ function update(dt){
   state.camera.y = clamp(p.y - H/2, 0, Math.max(0, WORLD.H - H));
 
   // Tavern trigger -> open shop once per entry
-  const insideTavern = inRect(p.x, p.y, state.tavern);
+  const insideTavern = pointInRect(p.x, p.y, state.tavern);
   if (insideTavern){
     if (!state.tavernPlayerInside && !state.pausedForShop){
       openShop();
@@ -984,7 +904,7 @@ canvas.addEventListener('mousemove', (e)=>{
   const pt = canvasPointFromEvent(e);
   let hovered = null;
   for (const hit of shopHitRegions){
-    if (inRect(pt.x, pt.y, hit.rect)) { hovered = hit; break; }
+    if (pointInRect(pt.x, pt.y, hit.rect)) { hovered = hit; break; }
   }
   shopHover = hovered ? (hovered.type === 'exit' ? 'exit' : hovered.item.id) : null;
   canvas.style.cursor = hovered ? 'pointer' : 'default';
@@ -1000,7 +920,7 @@ canvas.addEventListener('click', (e)=>{
   if (!state.pausedForShop) return;
   const pt = canvasPointFromEvent(e);
   for (const hit of shopHitRegions){
-    if (!inRect(pt.x, pt.y, hit.rect)) continue;
+    if (!pointInRect(pt.x, pt.y, hit.rect)) continue;
     if (hit.type === 'exit'){ closeShop(); }
     else if (hit.type === 'item'){ attemptPurchase(hit.item); }
     break;
