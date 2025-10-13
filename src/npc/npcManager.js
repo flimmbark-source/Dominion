@@ -64,6 +64,10 @@ function makeNPC(type, x, y, waypoints=null){
     dynamicTargetExpire: 0,
     searchCooldown: 0,
     activeTarget: null,
+    dialogCooldown: 0,
+    lastDialogueLine: null,
+    pickpocketCooldown: 0,
+    pickpocketed: false
     maxHealth: config.maxHealth,
     health: config.maxHealth,
     attackable: !!config.attackable,
