@@ -24,6 +24,8 @@ import {
 } from './systems/shop.js';
 import { enterTavernInterior, leaveTavernInterior } from './systems/tavern.js';
 import { addThreat } from './systems/threat.js';
+import { attemptAttack } from './systems/combat.js';
+import { initPointsOfInterest, handlePointOfInterestInteraction } from './systems/pointsOfInterest.js';
 import { toast } from './ui/toast.js';
 import { pressOnce } from './input/pressOnce.js';
 import { circleRectCollideResolve, pointInRect, segBlockedByAnyRect } from './utils/geometry.js';
@@ -34,6 +36,7 @@ setupInput();
 initHouses();
 generateWorld();
 setupInitialNPCs();
+initPointsOfInterest();
 
 window.addEventListener('keydown', handleShopKeyDown);
 canvas.addEventListener('mousemove', handleShopMouseMove);
@@ -62,6 +65,8 @@ function update(dt){
   state.time += dt;
 
   const interactPressed = pressOnce('e');
+  const attackPressed = pressOnce('space');
+  let interactAvailable = interactPressed;
   const inTavernInterior = state.tavernInteriorState.active;
 
   const p = state.player;
@@ -172,14 +177,32 @@ function update(dt){
     }
   }
 
+  if (attackPressed) attemptAttack(p, playerStats);
+
   let seenBy = 0;
-  for (const npc of state.npcs) if (npcSeesPlayer(npc, p)) seenBy++;
+  for (const npc of state.npcs){
+    if (npc.faction === 'monster') continue;
+    if (npcSeesPlayer(npc, p)) seenBy++;
+  }
   const seen = seenBy > 0;
   state.lastSeen = seen;
   if (seen){
     state.lastSeenAt.x = p.x;
     state.lastSeenAt.y = p.y;
     state.lastSeenTime = state.time;
+    state.timeSinceSeen = 0;
+    state.nextSweeperSpawn = Math.max(state.nextSweeperSpawn, state.time + 12);
+  }
+  else {
+    state.timeSinceSeen += dt;
+  }
+
+  const detectionFrac = clamp(p.detection / 100, 0, 1);
+  if (seen){
+    state.huntHeat = clamp(state.huntHeat + dt * (0.7 + detectionFrac * 0.9), 0, 1);
+  } else {
+    const decay = 0.05 + (1 - detectionFrac) * 0.22 + (state.timeSinceSeen > 30 ? 0.06 : 0);
+    state.huntHeat = clamp(state.huntHeat - dt * decay, 0, 1);
   }
 
   let inc = seen ? (18 * seenBy) : 0;
@@ -194,6 +217,7 @@ function update(dt){
   }
   if (p.sprinting){
     for (const npc of state.npcs){
+      if (npc.faction === 'monster') continue;
       const hearR = (npc.type === 'scout') ? 180 : 120;
       const dd = Math.hypot(npc.x-p.x, npc.y-p.y);
       if (dd < hearR && !segBlockedByAnyRect(npc.x,npc.y,p.x,p.y,state.houseSolids)) {
@@ -216,12 +240,31 @@ function update(dt){
   if (seen && p.detection > 70) addThreat(5*dt);
   if (!seen) addThreat(-4*dt);
 
+  if (!inTavernInterior){
+    if (handlePointOfInterestInteraction(interactAvailable && !state.interior)){
+      interactAvailable = false;
+    }
+  }
+
   while (state.spawnCount < state.threatSpawns.length && state.threat >= state.threatSpawns[state.spawnCount]){
-    spawnReinforcement();
+    let mode = 'standard';
+    if (state.huntHeat > 0.6 || p.detection > 80){
+      mode = 'aggressive';
+    } else if (state.timeSinceSeen > 35){
+      mode = 'sweeper';
+    }
+    spawnReinforcement({ mode });
     state.spawnCount++;
   }
 
-  if (interactPressed && state.interior){
+
+  if (state.timeSinceSeen > 24 && state.time >= state.nextSweeperSpawn){
+    spawnReinforcement({ mode: 'sweeper' });
+    state.nextSweeperSpawn = state.time + 22 + Math.random() * 16;
+  }
+
+  if (interactAvailable && state.interior){
+
     const hid = state.interior.houseId;
     const lvl = state.interior.level;
     const st = state.stairs.find(s => s.houseId===hid && s.level===lvl && p.x >= s.x-6 && p.x <= s.x+s.w+6 && p.y >= s.y-6 && p.y <= s.y+s.h+6);

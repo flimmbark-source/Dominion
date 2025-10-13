@@ -48,9 +48,13 @@ const state = {
   lastSeen: false,
   lastSeenAt: { x: mainVillage.x + mainVillage.w / 2, y: mainVillage.y + mainVillage.h / 2 },
   lastSeenTime: -Infinity,
+  timeSinceSeen: 0,
+  huntHeat: 0,
+  nextSweeperSpawn: 0,
   tavernPlayerInside: false,
   shopOwned: new Set(),
-  mapVisible: false
+  mapVisible: false,
+  pointsOfInterest: []
 };
 
 export { state, mainVillage };

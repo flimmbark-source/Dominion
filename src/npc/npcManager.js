@@ -5,25 +5,78 @@ import { TAU, clamp } from '../utils/math.js';
 import { gatherForestSolidsAround } from '../world/terrain.js';
 import { toast } from '../ui/toast.js';
 
+const NPC_ARCHETYPES = {
+  villager: {
+    speed: 36,
+    fovAngle: Math.PI / 2,
+    fovRange: 120,
+    maxHealth: 30,
+    attackable: false,
+    faction: 'village',
+    displayName: 'villager'
+  },
+  scout: {
+    speed: 62,
+    fovAngle: Math.PI / 3,
+    fovRange: 220,
+    maxHealth: 60,
+    attackable: true,
+    backstabOnly: true,
+    backstabMultiplier: 3.2,
+    rewardGold: 30,
+    threatOnDefeat: 25,
+    counterDamage: 28,
+    counterDetection: 40,
+    counterThreat: 25,
+    faction: 'village',
+    displayName: 'scout',
+    counterMessage: 'The scout whirls and cuts you down! Approach from behind while unseen.'
+  },
+  bogling: {
+    speed: 44,
+    fovAngle: Math.PI / 2,
+    fovRange: 70,
+    maxHealth: 10,
+    attackable: true,
+    backstabMultiplier: 1.8,
+    rewardGold: 8,
+    faction: 'monster',
+    displayName: 'bogling'
+  }
+};
+
 function makeNPC(type, x, y, waypoints=null){
-  const isScout = type === 'scout';
+  const config = NPC_ARCHETYPES[type] || NPC_ARCHETYPES.villager;
   return {
     type,
     x,
     y,
     facing: 0,
-    speed: isScout ? 62 : 36,
-    baseSpeed: isScout ? 62 : 36,
-    fovAngle: isScout ? (Math.PI/3) : (Math.PI/2),
-    baseFovAngle: isScout ? (Math.PI/3) : (Math.PI/2),
-    fovRange: isScout ? 220 : 120,
-    baseFovRange: isScout ? 220 : 120,
+    speed: config.speed,
+    baseSpeed: config.speed,
+    fovAngle: config.fovAngle,
+    baseFovAngle: config.fovAngle,
+    fovRange: config.fovRange,
+    baseFovRange: config.fovRange,
     waypoints: waypoints || [{ x, y }],
     wpIndex: 0,
     dynamicTarget: null,
     dynamicTargetExpire: 0,
     searchCooldown: 0,
-    activeTarget: null
+    activeTarget: null,
+    maxHealth: config.maxHealth,
+    health: config.maxHealth,
+    attackable: !!config.attackable,
+    backstabOnly: !!config.backstabOnly,
+    backstabMultiplier: config.backstabMultiplier ?? 1,
+    rewardGold: config.rewardGold ?? 0,
+    threatOnDefeat: config.threatOnDefeat ?? 0,
+    counterDamage: config.counterDamage ?? 0,
+    counterDetection: config.counterDetection ?? 0,
+    counterThreat: config.counterThreat ?? 0,
+    counterMessage: config.counterMessage || null,
+    faction: config.faction || 'village',
+    displayName: config.displayName || type
   };
 }
 
@@ -75,6 +128,27 @@ function setupInitialNPCs(){
   addVillageNPC('scout', 3, 760, 460, [{x:760,y:460},{x:700,y:420},{x:640,y:500},{x:700,y:540}]);
   addVillageNPC('scout', 4, 720, 420, [{x:720,y:420},{x:640,y:420},{x:640,y:500},{x:720,y:500}]);
 
+  const boglingLoops = [
+    [
+      { x: mainVillage.x - 120, y: mainVillage.y + 460 },
+      { x: mainVillage.x - 80, y: mainVillage.y + 520 },
+      { x: mainVillage.x - 140, y: mainVillage.y + 560 }
+    ],
+    [
+      { x: mainVillage.x + mainVillage.w + 80, y: mainVillage.y + 420 },
+      { x: mainVillage.x + mainVillage.w + 120, y: mainVillage.y + 470 },
+      { x: mainVillage.x + mainVillage.w + 60, y: mainVillage.y + 520 }
+    ],
+    [
+      { x: mainVillage.x + 180, y: mainVillage.y + mainVillage.h + 60 },
+      { x: mainVillage.x + 260, y: mainVillage.y + mainVillage.h + 40 },
+      { x: mainVillage.x + 220, y: mainVillage.y + mainVillage.h + 120 }
+    ]
+  ];
+  for (const loop of boglingLoops){
+    state.npcs.push(makeNPC('bogling', loop[0].x, loop[0].y, loop));
+  }
+
   patchPatrolRoutes();
 }
 
@@ -95,23 +169,86 @@ function npcSeesPlayer(npc, player){
   return true;
 }
 
-function spawnReinforcement(){
+function randomPointAround(anchor, radius){
+  const angle = Math.random() * TAU;
+  return clampTargetToWorld({
+    x: anchor.x + Math.cos(angle) * radius,
+    y: anchor.y + Math.sin(angle) * radius
+  });
+}
+
+function makeAggressivePatrol(entry){
+  const focus = state.lastSeen ? state.lastSeenAt : state.player;
+  const huntFactor = clamp(state.huntHeat || 0, 0, 1);
+  const radius = 120 + 260 * huntFactor;
+  return [
+    entry,
+    randomPointAround(focus, radius),
+    randomPointAround(focus, Math.max(80, radius * 0.7)),
+    randomPointAround(focus, radius * 1.2),
+    entry
+  ];
+}
+
+function makeSweeperPatrol(entry){
+  const huntFactor = clamp(state.huntHeat || 0, 0, 1);
+  const base = {
+    x: mainVillage.x + mainVillage.w / 2 + (Math.random() * 520 - 260),
+    y: mainVillage.y + mainVillage.h / 2 + (Math.random() * 420 - 210)
+  };
+  const radius = 180 + 180 * (1 - huntFactor);
+  const loop = [entry];
+  for (let i = 0; i < 3; i++){
+    loop.push(randomPointAround(base, radius + Math.random() * 120));
+  }
+  loop.push(entry);
+  return loop;
+}
+
+function spawnReinforcement(options = {}){
+  const { mode = 'standard', announce = true } = options;
   const c = state.castle;
   const entry = { x:c.x - 20, y:c.y + 80 };
-  const patrol = [
-    entry,
-    {x: mainVillage.x + mainVillage.w - 140, y: mainVillage.y + 160},
-    {x: mainVillage.x + mainVillage.w - 200, y: mainVillage.y + 320},
-    {x: mainVillage.x + mainVillage.w - 260, y: mainVillage.y + 480},
-    {x: mainVillage.x + mainVillage.w - 200, y: mainVillage.y + 320}
-  ];
+  let patrol;
+
+  if (mode === 'aggressive'){
+    patrol = makeAggressivePatrol(entry);
+  } else if (mode === 'sweeper'){
+    patrol = makeSweeperPatrol(entry);
+  } else {
+    patrol = [
+      entry,
+      {x: mainVillage.x + mainVillage.w - 140, y: mainVillage.y + 160},
+      {x: mainVillage.x + mainVillage.w - 200, y: mainVillage.y + 320},
+      {x: mainVillage.x + mainVillage.w - 260, y: mainVillage.y + 480},
+      {x: mainVillage.x + mainVillage.w - 200, y: mainVillage.y + 320}
+    ];
+  }
+
   const npc = makeNPC('scout', entry.x, entry.y, patrol);
-  npc.baseSpeed += 10;
+  if (mode === 'aggressive'){
+    npc.baseSpeed += 16;
+    npc.baseFovRange += 60;
+  } else if (mode === 'sweeper'){
+    npc.baseSpeed += 6;
+    npc.baseFovRange += 40;
+  } else {
+    npc.baseSpeed += 10;
+    npc.baseFovRange += 30;
+  }
   npc.speed = npc.baseSpeed;
-  npc.baseFovRange += 30;
   npc.fovRange = npc.baseFovRange;
   state.npcs.push(npc);
-  toast('Reinforcement scout arrives from the castle!');
+
+  if (announce){
+    if (mode === 'aggressive'){
+      toast('A hunting party surges from the castle!');
+    } else if (mode === 'sweeper'){
+      toast('The Dark Lord dispatches a sweeper scout.');
+    } else {
+      toast('Reinforcement scout arrives from the castle!');
+    }
+  }
 }
 
 function clampTargetToWorld(target){
@@ -124,6 +261,7 @@ function clampTargetToWorld(target){
 function updateNPCBehaviors(dt){
   const threat = state.threat;
   const threatFactor = clamp(threat / 200, 0, 1);
+  const huntFactor = clamp(state.huntHeat || 0, 0, 1);
   const seenRecently = state.lastSeen && (state.time - state.lastSeenTime < 0.1) || (state.time - state.lastSeenTime < 12);
   for (const npc of state.npcs){
     if (npc.type !== 'scout'){
@@ -131,9 +269,10 @@ function updateNPCBehaviors(dt){
       continue;
     }
 
-    npc.speed = npc.baseSpeed * (1 + 0.45 * threatFactor);
-    npc.fovRange = npc.baseFovRange + 120 * threatFactor;
-    npc.fovAngle = npc.baseFovAngle * (1.05 + 0.15 * threatFactor);
+    const aggression = Math.max(threatFactor, huntFactor);
+    npc.speed = npc.baseSpeed * (1 + 0.45 * threatFactor + 0.25 * huntFactor);
+    npc.fovRange = npc.baseFovRange + 120 * threatFactor + 90 * huntFactor;
+    npc.fovAngle = npc.baseFovAngle * (1.05 + 0.15 * threatFactor + 0.12 * huntFactor);
 
     if (npc.dynamicTarget){
       const dist = Math.hypot(npc.dynamicTarget.x - npc.x, npc.dynamicTarget.y - npc.y);
@@ -150,34 +289,34 @@ function updateNPCBehaviors(dt){
         let chosen = null;
         let expire = 0;
 
-        if (seenRecently && threatFactor > 0.2){
-          const radius = 60 + 220 * threatFactor;
-          const angle = Math.random() * TAU;
-          chosen = clampTargetToWorld({
-            x: state.lastSeenAt.x + Math.cos(angle) * radius,
-            y: state.lastSeenAt.y + Math.sin(angle) * radius
-          });
-          expire = state.time + 6 + 6 * threatFactor;
-        } else if (threatFactor > 0.45){
+        if ((seenRecently && aggression > 0.2) || huntFactor > 0.55){
+          const radius = 80 + 240 * aggression;
+          chosen = randomPointAround(state.lastSeenAt, radius);
+          expire = state.time + 6 + 6 * aggression;
+        } else if (threatFactor > 0.45 || huntFactor > 0.35){
           const anchor = threatFactor > 0.75 ? state.player : {
             x: mainVillage.x + mainVillage.w / 2,
             y: mainVillage.y + mainVillage.h / 2
           };
-          const radius = 140 + 320 * threatFactor;
-          const angle = Math.random() * TAU;
-          chosen = clampTargetToWorld({
-            x: anchor.x + Math.cos(angle) * radius,
-            y: anchor.y + Math.sin(angle) * radius
-          });
-          expire = state.time + 5 + 4 * threatFactor;
+          const radius = 140 + 320 * (0.6 * threatFactor + 0.4 * huntFactor);
+          chosen = randomPointAround(anchor, radius);
+          expire = state.time + 5 + 4 * (0.6 * threatFactor + 0.4 * huntFactor);
+        } else if (state.timeSinceSeen > 20){
+          const roamAnchor = {
+            x: mainVillage.x + mainVillage.w / 2,
+            y: mainVillage.y + mainVillage.h / 2
+          };
+          const radius = 120 + 200 * (1 - huntFactor);
+          chosen = randomPointAround(roamAnchor, radius + Math.random() * 80);
+          expire = state.time + 4 + 2 * (1 - huntFactor);
         }
 
         if (chosen){
           npc.dynamicTarget = chosen;
           npc.dynamicTargetExpire = expire;
-          npc.searchCooldown = 4 + Math.random() * 3;
+          npc.searchCooldown = 2.5 + Math.random() * (2 - huntFactor);
         } else {
-          npc.searchCooldown = 2 + Math.random() * 2;
+          npc.searchCooldown = 1.5 + Math.random() * (2.5 - huntFactor);
         }
       }
     }
