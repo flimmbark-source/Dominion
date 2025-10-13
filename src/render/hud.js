@@ -1,6 +1,7 @@
 import { ctx, W, H } from '../game/canvas.js';
 import { state } from '../state/gameState.js';
 import { clamp } from '../utils/math.js';
+import { drawItemIcon } from './itemIcons.js';
 
 function bar(x,y,w,h, frac, fg, bg, border='#1a2636'){
   ctx.fillStyle = bg; ctx.fillRect(x,y,w,h);
@@ -42,10 +43,18 @@ function drawHUD(){
     ctx.fillStyle = '#6e8bb6'; ctx.font = '10px system-ui'; ctx.fillText(String(i+1), x+2, y+12);
     const it = state.player.inventory[i];
     if (it){
-      ctx.fillStyle = '#d7e6ff';
-      ctx.font = '11px system-ui';
-      const label = it.name.split(' ').map(w=>w[0]).join('').slice(0,3);
-      ctx.fillText(label, x+16, y+26);
+      if (it.icon){
+        drawItemIcon(ctx, it.icon, x + 22, y + 22, 28);
+      } else {
+        ctx.fillStyle = '#d7e6ff';
+        ctx.font = '11px system-ui';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const label = it.name.split(' ').map(w=>w[0]).join('').slice(0,3);
+        ctx.fillText(label, x + 22, y + 24);
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
+      }
     }
   }
 }

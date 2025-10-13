@@ -2,6 +2,7 @@ import { ctx, W, H } from '../game/canvas.js';
 import { state } from '../state/gameState.js';
 import { ITEMS } from '../data/items.js';
 import { setShopHitRegions, getShopHover } from '../systems/shop.js';
+import { drawItemIcon } from './itemIcons.js';
 
 function drawShop(){
   ctx.save();
@@ -87,9 +88,15 @@ function drawShop(){
     ctx.strokeStyle = hovered ? '#d6b36a' : '#8a6d3a';
     ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
 
+    const hasIcon = Boolean(item.icon);
+    const titleX = hasIcon ? rect.x + 64 : rect.x + 14;
+    const bodyX = titleX;
+    const bodyWidth = Math.max(80, rect.w - (bodyX - rect.x) - 14);
+    const descStartY = rect.y + (hasIcon ? 64 : 52);
+
     ctx.fillStyle = '#f6e9c8';
     ctx.font = '18px ui-sans-serif';
-    ctx.fillText(`${item.key}) ${item.name}`, rect.x + 14, rect.y + 26);
+    ctx.fillText(`${item.key}) ${item.name}`, titleX, rect.y + 26);
 
     ctx.textAlign = 'right';
     ctx.font = '16px ui-sans-serif';
@@ -97,27 +104,31 @@ function drawShop(){
     ctx.fillText(`${item.price}g`, rect.x + rect.w - 14, rect.y + 26);
     ctx.textAlign = 'left';
 
+    if (hasIcon){
+      drawItemIcon(ctx, item.icon, rect.x + 32, rect.y + 60, 34);
+    }
+
     ctx.fillStyle = '#d7c69a';
     ctx.font = '14px ui-sans-serif';
-    const descEndY = wrapText(item.desc, rect.x + 14, rect.y + 52, rect.w - 28, 18);
+    const descEndY = wrapText(item.desc, bodyX, descStartY, bodyWidth, 18);
 
     ctx.fillStyle = '#b18f58';
     ctx.font = '13px ui-sans-serif';
     const limitLine = owned ? 'Already owned' : `${quantity} owned`;
-    ctx.fillText(limitLine, rect.x + 14, descEndY + 26);
+    ctx.fillText(limitLine, bodyX, descEndY + 26);
 
     if (item.type === 'passive' && state.shopOwned.has(item.id)){
       ctx.fillStyle = '#9aa5b1';
       ctx.font = '12px ui-sans-serif';
-      ctx.fillText('Passive bonus active', rect.x + 14, descEndY + 46);
+      ctx.fillText('Passive bonus active', bodyX, descEndY + 46);
     } else if (!affordable){
       ctx.fillStyle = '#b35f56';
       ctx.font = '12px ui-sans-serif';
-      ctx.fillText('Not enough gold', rect.x + 14, descEndY + 46);
+      ctx.fillText('Not enough gold', bodyX, descEndY + 46);
     } else if (!owned && usedSlots >= state.player.inventory.length){
       ctx.fillStyle = '#c9813c';
       ctx.font = '12px ui-sans-serif';
-      ctx.fillText('Inventory full', rect.x + 14, descEndY + 46);
+      ctx.fillText('Inventory full', bodyX, descEndY + 46);
     }
 
     newHitRegions.push({ type:'item', item, rect });
