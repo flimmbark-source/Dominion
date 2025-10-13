@@ -53,7 +53,8 @@ const state = {
   nextSweeperSpawn: 0,
   tavernPlayerInside: false,
   shopOwned: new Set(),
-  mapVisible: false
+  mapVisible: false,
+  pointsOfInterest: []
 };
 
 export { state, mainVillage };
