@@ -74,7 +74,7 @@ const state = {
   doors: [],
   houseSolids: [],
   chests: [],
-  tavern: { x: 6460, y: 6280, w: 220, h: 200, stump:{ cx:6570, cy:6380, radius:46 }, glowRadius:180, clearRadius:160 },
+  tavern: { x: 5120, y: 4760, w: 220, h: 200, stump:{ cx:5230, cy:4860, radius:46 }, glowRadius:180, clearRadius:160 },
   npcs: [],
   castle: { x: WORLD.W - 320, y: 360 },
   threat: 0, // meter still used to spawn scouts but no HUD text
@@ -1508,6 +1508,36 @@ function drawWorldMapOverlay(){
     ctx.beginPath();
     ctx.arc(tavernPt.x, tavernPt.y, Math.max(3, 10 * scale), 0, TAU);
     ctx.fill();
+
+    ctx.save();
+    const labelFont = '12px system-ui';
+    ctx.font = labelFont;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    const label = 'Goblin Tavern';
+    const labelMetrics = ctx.measureText(label);
+    const labelPaddingX = 6;
+    const labelPaddingY = 4;
+    const labelWidth = labelMetrics.width + labelPaddingX * 2;
+    const labelHeight = 16;
+    const labelX = tavernPt.x;
+    const labelY = tavernPt.y + Math.max(10 * scale, 12) + 6;
+
+    ctx.fillStyle = 'rgba(12, 20, 30, 0.82)';
+    ctx.fillRect(labelX - labelWidth / 2, labelY - labelPaddingY, labelWidth, labelHeight);
+    ctx.strokeStyle = '#56442c';
+    ctx.strokeRect(labelX - labelWidth / 2 + 0.5, labelY - labelPaddingY + 0.5, labelWidth - 1, labelHeight - 1);
+
+    ctx.fillStyle = '#f2d9a6';
+    ctx.fillText(label, labelX, labelY);
+
+    ctx.strokeStyle = '#d6ab5c';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(labelX, labelY - labelPaddingY);
+    ctx.lineTo(tavernPt.x, tavernPt.y + Math.max(3, 10 * scale));
+    ctx.stroke();
+    ctx.restore();
   }
 
   const playerPt = toMap(state.player.x, state.player.y);
