@@ -5,7 +5,7 @@ import { setupInput, keys } from './input.js';
 import { canvas, ctx, W, H } from './game/canvas.js';
 import { state } from './state/gameState.js';
 import { getPlayerStats } from './state/playerStats.js';
-import { TAVERN_INTERIOR } from './state/tavern.js';
+import { TAVERN_INTERIOR, getTavernDoorRect } from './state/tavern.js';
 import { initHouses, isInsideHouseInterior, getActiveSolids } from './world/houses.js';
 import { generateWorld } from './world/terrain.js';
 import { drawWorldScene } from './render/world.js';
@@ -127,18 +127,22 @@ function update(dt){
   state.camera.y = clamp(p.y - H/2, 0, Math.max(0, WORLD.H - H));
 
   const tavern = state.tavern;
-  let touchingStump = false;
+  let touchingDoor = false;
   if (tavern){
-    const stumpRadius = tavern.stump?.radius ?? 46;
-    const cx = tavern.stump?.cx ?? (tavern.x + tavern.w/2);
-    const cy = tavern.stump?.cy ?? (tavern.y + tavern.h/2);
-    const dx = p.x - cx;
-    const dy = p.y - cy;
-    const contactR = stumpRadius + p.r;
-    touchingStump = (dx*dx + dy*dy) <= contactR * contactR;
+    const doorRect = getTavernDoorRect(tavern);
+    if (doorRect){
+      const doorRight = doorRect.x + doorRect.w;
+      const doorBottom = doorRect.y + doorRect.h;
+      const nearestX = clamp(p.x, doorRect.x, doorRight);
+      const nearestY = clamp(p.y, doorRect.y, doorBottom);
+      const dx = p.x - nearestX;
+      const dy = p.y - nearestY;
+      const contactR = p.r + 2;
+      touchingDoor = (dx*dx + dy*dy) <= contactR * contactR;
+    }
   }
 
-  if (touchingStump){
+  if (touchingDoor){
     if (!state.tavernPlayerInside && state.time >= state.tavernReentryBlockUntil){
       enterTavernInterior();
       return;
