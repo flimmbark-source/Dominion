@@ -1,5 +1,4 @@
 import {
-  BASE_HOUSE_LAYOUT,
   DEFAULT_HOUSE_JITTER,
   HOUSE_MIN_SPACING,
   VILLAGE_MARGIN,
@@ -11,6 +10,7 @@ import { state } from '../state/gameState.js';
 import { gatherForestSolidsAround } from './terrain.js';
 import { TAVERN_SOLIDS } from '../state/tavern.js';
 import { ctx } from '../game/canvas.js';
+import { getVillageInstance } from './villageTemplates.js';
 
 function addHouseWithDoor(x, y, w, h, side, doorOffset=0.5, doorW=22, villageId=0){
   const doorX = x + Math.round((w - doorW) * clamp(doorOffset, 0.05, 0.95));
@@ -248,28 +248,36 @@ function initHouses(){
   state.chests = [];
   state.stairs = [];
   VILLAGES.forEach((village, vIndex) => {
+    const instance = getVillageInstance(vIndex);
     const housesBySide = { north: [], south: [] };
-    for (const spec of BASE_HOUSE_LAYOUT){
+    const layout = instance?.houses?.length ? instance.houses : [];
+
+    for (const spec of layout){
+      if (!housesBySide[spec.side]) continue;
       const placement = placeVillageHouse(village, spec);
       housesBySide[spec.side].push({ spec, placement });
     }
 
+    const placed = [];
     for (const side of ['north', 'south']){
+      if (!housesBySide[side].length) continue;
       resolveSideHouseCollisions(village, housesBySide[side]);
-      housesBySide[side]
-        .forEach(({ spec, placement }) => {
-          addHouseWithDoor(
-            placement.x,
-            placement.y,
-            spec.w,
-            spec.h,
-            spec.side,
-            placement.doorOffset,
-            22,
-            vIndex
-          );
-        });
+      housesBySide[side].forEach(({ spec, placement }) => {
+        addHouseWithDoor(
+          placement.x,
+          placement.y,
+          spec.w,
+          spec.h,
+          spec.side,
+          placement.doorOffset,
+          22,
+          vIndex
+        );
+        placed.push({ spec, placement });
+      });
     }
+
+    instance.placedHouses = placed;
   });
 
   rebuildHouseSolids();

@@ -11,6 +11,7 @@ import {
   SECOND_FLOOR_BROWN
 } from '../world/houses.js';
 import { toast } from '../ui/toast.js';
+import { runVillageTemplateValidation } from './villageTemplateValidation.js';
 
 function assert(cond, name){
   if (!cond) {
@@ -109,6 +110,8 @@ function runTests(){
     assert(!blocked, `ground level door unblocked for house ${i}`);
   });
   state.interior = null;
+
+  runVillageTemplateValidation(assert);
 }
 
 export { runTests };

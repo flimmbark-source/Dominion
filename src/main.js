@@ -8,6 +8,7 @@ import { getPlayerStats } from './state/playerStats.js';
 import { TAVERN_INTERIOR, getTavernDoorRect } from './state/tavern.js';
 import { initHouses, isInsideHouseInterior, getActiveSolids } from './world/houses.js';
 import { generateWorld } from './world/terrain.js';
+import { prepareVillageInstances } from './world/villageTemplates.js';
 import { drawWorldScene } from './render/world.js';
 import { drawTavernInteriorScene } from './render/tavernInterior.js';
 import { drawHUD } from './render/hud.js';
@@ -39,6 +40,7 @@ import {
 } from './systems/villageInteractions.js';
 
 setupInput();
+prepareVillageInstances();
 initHouses();
 generateWorld();
 setupInitialNPCs();

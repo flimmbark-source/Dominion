@@ -39,6 +39,7 @@ const state = {
   tavernInteriorState: { active: false, returnPoint: null },
   tavernReentryBlockUntil: 0,
   npcs: [],
+  villageInstances: [],
   castle: { x: WORLD.W - 320, y: 360 },
   threat: 0,
   threatSpawns: [50, 100, 160],
