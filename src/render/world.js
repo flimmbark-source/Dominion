@@ -3,6 +3,7 @@ import { state } from '../state/gameState.js';
 import { clamp, TAU } from '../utils/math.js';
 import { getThreatFraction, getThreatStage } from '../systems/threat.js';
 import { drawTerrain, drawGoblinTavern } from '../world/terrain.js';
+import { drawGoblin } from './goblin.js';
 import { getRenderableStairs, fillHouseInterior, interiorFloorColor } from '../world/houses.js';
 import {
   getNearbyTrapPrompt,
@@ -11,13 +12,42 @@ import {
   VILLAGER_PICKPOCKET_DISTANCE
 } from '../systems/villageInteractions.js';
 
+function lerp(a, b, t){
+  return a + (b - a) * t;
+}
+
+function mixHexColor(base, target, t){
+  const clampT = clamp(t, 0, 1);
+  const br = parseInt(base.slice(1,3), 16);
+  const bg = parseInt(base.slice(3,5), 16);
+  const bb = parseInt(base.slice(5,7), 16);
+  const tr = parseInt(target.slice(1,3), 16);
+  const tg = parseInt(target.slice(3,5), 16);
+  const tb = parseInt(target.slice(5,7), 16);
+  const r = Math.round(lerp(br, tr, clampT));
+  const g = Math.round(lerp(bg, tg, clampT));
+  const b = Math.round(lerp(bb, tb, clampT));
+  return `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
+}
+const POI_STYLES = {
+  'shady-trader': { outer: '#3b2a16', inner: '#d0a74e' },
+  'wandering-merchant': { outer: '#1d2e45', inner: '#7ec6ff' },
+  'cursed-shrine': { outer: '#251134', inner: '#b57bf8' },
+  'bog-sprite': { outer: '#0f3320', inner: '#66e0a0' }
+};
+
 function drawWorldScene(){
   const p = state.player;
+  const playerGroundY = p.y + 8;
+  const treeBaseY = tree => tree.cy + ((tree.h ?? tree.canopyRadius ?? 0) / 2);
+  const treeBehindPlayer = tree => playerGroundY >= treeBaseY(tree);
+  const treeInFrontOfPlayer = tree => playerGroundY < treeBaseY(tree);
 
   ctx.save();
   ctx.translate(-state.camera.x, -state.camera.y);
 
-  drawTerrain();
+  drawTerrain({ includeTrees: false });
+  drawTerrain({ treeFilter: treeBehindPlayer });
   drawCastle();
 
   for (const h of state.houses){
@@ -58,6 +88,7 @@ function drawWorldScene(){
 
   drawGoblinTavern();
   drawVillageTrapMarkers();
+  drawPointsOfInterest();
 
   for (const c of state.chests){
     if (c.looted) continue;
@@ -85,7 +116,9 @@ function drawWorldScene(){
   drawInteractionPrompts();
 
   const invisible = state.time < p.invisUntil;
-  drawPlayerGoblin(p, invisible);
+  drawGoblin(ctx, p, { time: state.time, invisible });
+
+  drawTerrain({ treeFilter: treeInFrontOfPlayer });
 
   drawTorchlight();
 
@@ -181,6 +214,37 @@ function drawInteractionPrompts(){
     const { trap } = trapPrompt;
     const cooling = state.time < trap.cooldownUntil;
     drawInteractionLabel(trap.x, trap.y - 30, cooling ? 'Trap settling' : 'E: Disable trap', cooling ? 'warning' : 'default');
+function drawPointsOfInterest(){
+  if (!state.pointsOfInterest || !state.pointsOfInterest.length) return;
+  for (const poi of state.pointsOfInterest){
+    const style = POI_STYLES[poi.type] || { outer: '#1b2738', inner: '#9fb3c8' };
+    ctx.save();
+    ctx.translate(poi.x, poi.y);
+    const alpha = poi.resolved ? 0.55 : 0.9;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = style.outer;
+    ctx.beginPath();
+    ctx.arc(0, 0, 16, 0, TAU);
+    ctx.fill();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = style.inner;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(0, 0, 8, 0, TAU);
+    ctx.fillStyle = style.inner;
+    ctx.globalAlpha = poi.resolved ? 0.45 : 0.82;
+    ctx.fill();
+
+    if (!poi.resolved){
+      ctx.globalAlpha = 0.22;
+      ctx.beginPath();
+      ctx.arc(0, 0, (poi.radius ?? 60) * 0.45, 0, TAU);
+      ctx.strokeStyle = style.inner;
+      ctx.stroke();
+    }
+
+    ctx.restore();
   }
 }
 
@@ -394,27 +458,9 @@ function drawPlayerGoblin(p, invisible){
   const eyeForward = headForward + 0.6;
   const rightEye = projectPoint(eyeOffset, headHeight - 2.6, eyeForward);
   const leftEye = projectPoint(-eyeOffset * 0.9, headHeight - 2.4, eyeForward - 0.4);
+  drawTerrain({ treeFilter: treeInFrontOfPlayer });
 
-  ctx.beginPath();
-  ctx.ellipse(rightEye.x, rightEye.y, 2.4, 2.6, 0, 0, TAU);
-  ctx.fill();
-
-  ctx.beginPath();
-  ctx.ellipse(leftEye.x, leftEye.y, 2, 2.2, 0, 0, TAU);
-  ctx.fill();
-
-  ctx.globalAlpha = 1;
-
-  if (invisible){
-    const shroudCenter = projectPoint(0, headHeight - 1, hipForward - 1.6);
-    ctx.strokeStyle = 'rgba(120, 220, 180, 0.7)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([6, 6]);
-    ctx.beginPath();
-    ctx.ellipse(shroudCenter.x, shroudCenter.y, torsoWidth + 4, torsoHeight + 6, 0, 0, TAU);
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
+  drawTorchlight();
 
   ctx.restore();
 }
@@ -425,13 +471,14 @@ function drawCastle(){
   const x = c.x, y = c.y;
   const threatFrac = getThreatFraction();
   const stage = getThreatStage();
+  const hunt = clamp(state.huntHeat || 0, 0, 1);
   ctx.save();
   ctx.translate(x, y);
 
   if (threatFrac > 0){
     const auraRadius = 140 + 260 * threatFrac;
     const aura = ctx.createRadialGradient(0, 24, 24, 0, 24, auraRadius);
-    aura.addColorStop(0, `rgba(170, 60, 120, ${0.18 + 0.45 * threatFrac})`);
+    aura.addColorStop(0, `rgba(${170 + Math.round(60 * hunt)}, ${60 - Math.round(30 * hunt)}, ${120 - Math.round(40 * hunt)}, ${0.18 + 0.45 * threatFrac + 0.32 * hunt})`);
     aura.addColorStop(1, 'rgba(12, 8, 18, 0)');
     ctx.fillStyle = aura;
     ctx.beginPath();
@@ -448,18 +495,18 @@ function drawCastle(){
     ctx.fillRect(i-3, -54, 6, 12);
   }
 
-  const windowGlow = `rgba(255, 130, 120, ${0.25 + 0.5 * threatFrac})`;
+  const windowGlow = `rgba(255, ${Math.round(lerp(130, 80, hunt))}, ${Math.round(lerp(120, 60, hunt))}, ${0.25 + 0.5 * threatFrac + 0.28 * hunt})`;
   ctx.fillStyle = windowGlow;
   ctx.fillRect(-24, -8, 10, 18);
   ctx.fillRect(14, -8, 10, 18);
   ctx.fillRect(-6, -18, 12, 16);
   ctx.fillRect(-6, 4, 12, 16);
 
-  ctx.fillStyle = `rgba(120, 28, 88, ${0.3 + 0.4 * threatFrac})`;
+  ctx.fillStyle = `rgba(${Math.round(lerp(120, 200, hunt))}, ${Math.round(lerp(28, 22, hunt))}, ${Math.round(lerp(88, 44, hunt))}, ${0.3 + 0.4 * threatFrac + 0.25 * hunt})`;
   ctx.fillRect(-32, -32, 6, 42);
   ctx.fillRect(26, -32, 6, 42);
 
-  drawCastleEye(stage, threatFrac);
+  drawCastleEye(stage, threatFrac, hunt);
 
   ctx.restore();
 
@@ -468,16 +515,16 @@ function drawCastle(){
   ctx.fillText("Dark Lord's Keep", x - 58, y - 62);
 }
 
-function drawCastleEye(stage, threatFrac){
+function drawCastleEye(stage, threatFrac, hunt){
   const eyelidHeights = [8, 12, 16, 19, 24];
   const irisRadii = [6, 7, 9, 11, 13];
-  const irisColors = ['#1f2d45', '#2f4d70', '#d55a66', '#f34632', '#120102'];
-  const glowColors = [
-    'rgba(60, 84, 124, 0.45)',
-    'rgba(88, 120, 160, 0.55)',
-    'rgba(220, 110, 120, 0.65)',
-    'rgba(255, 80, 90, 0.75)',
-    'rgba(255, 40, 100, 0.85)'
+  const irisBases = ['#1f2d45', '#2f4d70', '#d55a66', '#f34632', '#120102'];
+  const glowBases = [
+    { r: 60, g: 84, b: 124, a: 0.45 },
+    { r: 88, g: 120, b: 160, a: 0.55 },
+    { r: 220, g: 110, b: 120, a: 0.65 },
+    { r: 255, g: 80, b: 90, a: 0.75 },
+    { r: 255, g: 40, b: 100, a: 0.85 }
   ];
 
   ctx.save();
@@ -488,7 +535,12 @@ function drawCastleEye(stage, threatFrac){
   ctx.ellipse(0, 0, 30, 18, 0, 0, TAU);
   ctx.fill();
 
-  ctx.fillStyle = glowColors[stage];
+  const glowBase = glowBases[stage];
+  const glowR = Math.round(lerp(glowBase.r, 255, hunt));
+  const glowG = Math.round(lerp(glowBase.g, 40, hunt));
+  const glowB = Math.round(lerp(glowBase.b, 36, hunt));
+  const glowA = glowBase.a + 0.25 * hunt + 0.2 * threatFrac;
+  ctx.fillStyle = `rgba(${glowR}, ${glowG}, ${glowB}, ${Math.min(0.95, glowA)})`;
   ctx.beginPath();
   ctx.ellipse(0, 0, 28, eyelidHeights[stage], 0, 0, TAU);
   ctx.fill();
@@ -505,7 +557,8 @@ function drawCastleEye(stage, threatFrac){
     ctx.quadraticCurveTo(0, 6, 18, 0);
     ctx.stroke();
   } else {
-    ctx.fillStyle = irisColors[stage];
+    const irisColor = mixHexColor(irisBases[stage], '#ff5b43', Math.max(hunt, threatFrac));
+    ctx.fillStyle = irisColor;
     ctx.beginPath();
     ctx.ellipse(0, 0, irisRadii[stage] + 5, eyelidHeights[stage] - 4, 0, 0, TAU);
     ctx.fill();
