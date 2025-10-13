@@ -180,6 +180,19 @@ function update(dt){
     state.lastSeenAt.x = p.x;
     state.lastSeenAt.y = p.y;
     state.lastSeenTime = state.time;
+    state.timeSinceSeen = 0;
+    state.nextSweeperSpawn = Math.max(state.nextSweeperSpawn, state.time + 12);
+  }
+  else {
+    state.timeSinceSeen += dt;
+  }
+
+  const detectionFrac = clamp(p.detection / 100, 0, 1);
+  if (seen){
+    state.huntHeat = clamp(state.huntHeat + dt * (0.7 + detectionFrac * 0.9), 0, 1);
+  } else {
+    const decay = 0.05 + (1 - detectionFrac) * 0.22 + (state.timeSinceSeen > 30 ? 0.06 : 0);
+    state.huntHeat = clamp(state.huntHeat - dt * decay, 0, 1);
   }
 
   let inc = seen ? (18 * seenBy) : 0;
@@ -217,8 +230,19 @@ function update(dt){
   if (!seen) addThreat(-4*dt);
 
   while (state.spawnCount < state.threatSpawns.length && state.threat >= state.threatSpawns[state.spawnCount]){
-    spawnReinforcement();
+    let mode = 'standard';
+    if (state.huntHeat > 0.6 || p.detection > 80){
+      mode = 'aggressive';
+    } else if (state.timeSinceSeen > 35){
+      mode = 'sweeper';
+    }
+    spawnReinforcement({ mode });
     state.spawnCount++;
+  }
+
+  if (state.timeSinceSeen > 24 && state.time >= state.nextSweeperSpawn){
+    spawnReinforcement({ mode: 'sweeper' });
+    state.nextSweeperSpawn = state.time + 22 + Math.random() * 16;
   }
 
   if (interactPressed && state.interior){
