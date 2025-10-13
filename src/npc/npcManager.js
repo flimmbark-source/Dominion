@@ -5,25 +5,78 @@ import { TAU, clamp } from '../utils/math.js';
 import { gatherForestSolidsAround } from '../world/terrain.js';
 import { toast } from '../ui/toast.js';
 
+const NPC_ARCHETYPES = {
+  villager: {
+    speed: 36,
+    fovAngle: Math.PI / 2,
+    fovRange: 120,
+    maxHealth: 30,
+    attackable: false,
+    faction: 'village',
+    displayName: 'villager'
+  },
+  scout: {
+    speed: 62,
+    fovAngle: Math.PI / 3,
+    fovRange: 220,
+    maxHealth: 60,
+    attackable: true,
+    backstabOnly: true,
+    backstabMultiplier: 3.2,
+    rewardGold: 30,
+    threatOnDefeat: 25,
+    counterDamage: 28,
+    counterDetection: 40,
+    counterThreat: 25,
+    faction: 'village',
+    displayName: 'scout',
+    counterMessage: 'The scout whirls and cuts you down! Approach from behind while unseen.'
+  },
+  bogling: {
+    speed: 44,
+    fovAngle: Math.PI / 2,
+    fovRange: 70,
+    maxHealth: 10,
+    attackable: true,
+    backstabMultiplier: 1.8,
+    rewardGold: 8,
+    faction: 'monster',
+    displayName: 'bogling'
+  }
+};
+
 function makeNPC(type, x, y, waypoints=null){
-  const isScout = type === 'scout';
+  const config = NPC_ARCHETYPES[type] || NPC_ARCHETYPES.villager;
   return {
     type,
     x,
     y,
     facing: 0,
-    speed: isScout ? 62 : 36,
-    baseSpeed: isScout ? 62 : 36,
-    fovAngle: isScout ? (Math.PI/3) : (Math.PI/2),
-    baseFovAngle: isScout ? (Math.PI/3) : (Math.PI/2),
-    fovRange: isScout ? 220 : 120,
-    baseFovRange: isScout ? 220 : 120,
+    speed: config.speed,
+    baseSpeed: config.speed,
+    fovAngle: config.fovAngle,
+    baseFovAngle: config.fovAngle,
+    fovRange: config.fovRange,
+    baseFovRange: config.fovRange,
     waypoints: waypoints || [{ x, y }],
     wpIndex: 0,
     dynamicTarget: null,
     dynamicTargetExpire: 0,
     searchCooldown: 0,
-    activeTarget: null
+    activeTarget: null,
+    maxHealth: config.maxHealth,
+    health: config.maxHealth,
+    attackable: !!config.attackable,
+    backstabOnly: !!config.backstabOnly,
+    backstabMultiplier: config.backstabMultiplier ?? 1,
+    rewardGold: config.rewardGold ?? 0,
+    threatOnDefeat: config.threatOnDefeat ?? 0,
+    counterDamage: config.counterDamage ?? 0,
+    counterDetection: config.counterDetection ?? 0,
+    counterThreat: config.counterThreat ?? 0,
+    counterMessage: config.counterMessage || null,
+    faction: config.faction || 'village',
+    displayName: config.displayName || type
   };
 }
 
@@ -74,6 +127,27 @@ function setupInitialNPCs(){
   addVillageNPC('scout', 2, 760, 420, [{x:760,y:420},{x:680,y:420},{x:680,y:500},{x:760,y:500}]);
   addVillageNPC('scout', 3, 760, 460, [{x:760,y:460},{x:700,y:420},{x:640,y:500},{x:700,y:540}]);
   addVillageNPC('scout', 4, 720, 420, [{x:720,y:420},{x:640,y:420},{x:640,y:500},{x:720,y:500}]);
+
+  const boglingLoops = [
+    [
+      { x: mainVillage.x - 120, y: mainVillage.y + 460 },
+      { x: mainVillage.x - 80, y: mainVillage.y + 520 },
+      { x: mainVillage.x - 140, y: mainVillage.y + 560 }
+    ],
+    [
+      { x: mainVillage.x + mainVillage.w + 80, y: mainVillage.y + 420 },
+      { x: mainVillage.x + mainVillage.w + 120, y: mainVillage.y + 470 },
+      { x: mainVillage.x + mainVillage.w + 60, y: mainVillage.y + 520 }
+    ],
+    [
+      { x: mainVillage.x + 180, y: mainVillage.y + mainVillage.h + 60 },
+      { x: mainVillage.x + 260, y: mainVillage.y + mainVillage.h + 40 },
+      { x: mainVillage.x + 220, y: mainVillage.y + mainVillage.h + 120 }
+    ]
+  ];
+  for (const loop of boglingLoops){
+    state.npcs.push(makeNPC('bogling', loop[0].x, loop[0].y, loop));
+  }
 
   patchPatrolRoutes();
 }
