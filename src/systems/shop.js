@@ -13,7 +13,14 @@ const shopState = {
 function inventoryAdd(item){
   const idx = state.player.inventory.findIndex(x=>x===null);
   if (idx === -1) return false;
-  state.player.inventory[idx] = { id:item.id, name:item.name, type:item.type, desc:item.desc, stacks:1 };
+  state.player.inventory[idx] = {
+    id: item.id,
+    name: item.name,
+    type: item.type,
+    desc: item.desc,
+    icon: item.icon ?? null,
+    stacks: 1
+  };
   return true;
 }
 
@@ -36,13 +43,15 @@ function useInventorySlot(slotIdx){
 
 function attemptPurchase(item){
   const p = state.player;
+  const price = Number(item.price) || 0;
+  const playerGold = Number.isFinite(p.gold) ? p.gold : 0;
   if (item.canBuy && !item.canBuy(p)){
     toast('Already owned.');
     return;
   }
-  if (p.gold < item.price){ toast('Not enough gold!'); return; }
+  if (playerGold < price){ toast('Not enough gold!'); return; }
   if (!inventoryAdd(item)){ toast('Inventory full!'); return; }
-  p.gold -= item.price;
+  p.gold = playerGold - price;
   if (item.apply) item.apply(p);
   if (item.type === 'passive') state.shopOwned.add(item.id);
   toast(`Purchased ${item.name}.`);

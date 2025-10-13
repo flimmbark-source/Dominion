@@ -200,7 +200,8 @@ function generateWorld(){
 
   const tavern = state.tavern;
   if (tavern){
-    const clearR = tavern.clearRadius || 140;
+    const stumpRadius = tavern.stump?.radius ?? 46;
+    const clearR = Math.max(stumpRadius, tavern.clearRadius ?? stumpRadius);
     const cx = tavern.stump?.cx ?? (tavern.x + tavern.w/2);
     const cy = tavern.stump?.cy ?? (tavern.y + tavern.h/2);
     const r2 = clearR * clearR;
@@ -303,14 +304,15 @@ function drawTree(tree){
 function drawGoblinTavern(){
   const tavern = state.tavern;
   if (!tavern) return;
+  const stumpRadius = tavern.stump?.radius ?? 46;
   const cx = tavern.stump?.cx ?? (tavern.x + tavern.w/2);
   const cy = tavern.stump?.cy ?? (tavern.y + tavern.h/2);
-  const glowR = tavern.glowRadius || 160;
+  const glowR = Math.max(stumpRadius, tavern.glowRadius ?? stumpRadius);
   const view = { x: state.camera.x, y: state.camera.y, w: W, h: H };
   const area = { x: cx - glowR, y: cy - glowR, w: glowR * 2, h: glowR * 2 };
   if (!rectsOverlap(area, view)) return;
 
-  const radius = tavern.stump?.radius || 46;
+  const radius = stumpRadius;
   const flicker = 0.72 + Math.sin(state.time * 5.2) * 0.05 + Math.sin(state.time * 2.1) * 0.04;
 
   ctx.save();

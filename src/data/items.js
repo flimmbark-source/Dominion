@@ -5,6 +5,7 @@ export const ITEMS = [
     name: 'Boots of the Whipwind',
     price: 100,
     type: 'passive',
+    icon: 'boots',
     desc: 'Wyvern-sinew laces grant +40 movement speed.',
     canBuy: p => !p.stats.hasBoots,
     apply: p => {
@@ -18,6 +19,7 @@ export const ITEMS = [
     name: 'Cloak of Nightwhisper',
     price: 150,
     type: 'passive',
+    icon: 'cloak',
     desc: 'Mycelium threads slow detection buildup by 40%.',
     canBuy: p => !p.stats.hasCloak,
     apply: p => {
@@ -31,6 +33,7 @@ export const ITEMS = [
     name: 'Venom-Barbed Shiv',
     price: 120,
     type: 'passive',
+    icon: 'dagger',
     desc: 'Coated blade boosts attack damage by +10.',
     canBuy: p => !p.stats.hasDagger,
     apply: p => {
@@ -44,6 +47,7 @@ export const ITEMS = [
     name: 'Invisibility Potion',
     price: 80,
     type: 'consumable',
+    icon: 'invisibilityPotion',
     desc: 'One draught renders you unseen for 6 seconds.',
     apply: () => {}
   },
@@ -53,6 +57,7 @@ export const ITEMS = [
     name: 'Moonleaf Draught',
     price: 90,
     type: 'consumable',
+    icon: 'moonleaf',
     desc: 'Herbal brew that restores 30 health.',
     apply: () => {}
   }
