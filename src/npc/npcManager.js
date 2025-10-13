@@ -1,7 +1,7 @@
 import { state, mainVillage } from '../state/gameState.js';
-import { VILLAGES } from '../data/world.js';
+import { VILLAGES, WORLD } from '../data/world.js';
 import { segBlockedByAnyRect } from '../utils/geometry.js';
-import { TAU } from '../utils/math.js';
+import { TAU, clamp } from '../utils/math.js';
 import { gatherForestSolidsAround } from '../world/terrain.js';
 import { toast } from '../ui/toast.js';
 
@@ -13,10 +13,17 @@ function makeNPC(type, x, y, waypoints=null){
     y,
     facing: 0,
     speed: isScout ? 62 : 36,
+    baseSpeed: isScout ? 62 : 36,
     fovAngle: isScout ? (Math.PI/3) : (Math.PI/2),
+    baseFovAngle: isScout ? (Math.PI/3) : (Math.PI/2),
     fovRange: isScout ? 220 : 120,
+    baseFovRange: isScout ? 220 : 120,
     waypoints: waypoints || [{ x, y }],
-    wpIndex: 0
+    wpIndex: 0,
+    dynamicTarget: null,
+    dynamicTargetExpire: 0,
+    searchCooldown: 0,
+    activeTarget: null
   };
 }
 
@@ -99,10 +106,84 @@ function spawnReinforcement(){
     {x: mainVillage.x + mainVillage.w - 200, y: mainVillage.y + 320}
   ];
   const npc = makeNPC('scout', entry.x, entry.y, patrol);
-  npc.speed += 10;
-  npc.fovRange += 30;
+  npc.baseSpeed += 10;
+  npc.speed = npc.baseSpeed;
+  npc.baseFovRange += 30;
+  npc.fovRange = npc.baseFovRange;
   state.npcs.push(npc);
   toast('Reinforcement scout arrives from the castle!');
+}
+
+function clampTargetToWorld(target){
+  return {
+    x: clamp(target.x, 32, WORLD.W - 32),
+    y: clamp(target.y, 32, WORLD.H - 32)
+  };
+}
+
+function updateNPCBehaviors(dt){
+  const threat = state.threat;
+  const threatFactor = clamp(threat / 200, 0, 1);
+  const seenRecently = state.lastSeen && (state.time - state.lastSeenTime < 0.1) || (state.time - state.lastSeenTime < 12);
+  for (const npc of state.npcs){
+    if (npc.type !== 'scout'){
+      npc.activeTarget = npc.waypoints[npc.wpIndex];
+      continue;
+    }
+
+    npc.speed = npc.baseSpeed * (1 + 0.45 * threatFactor);
+    npc.fovRange = npc.baseFovRange + 120 * threatFactor;
+    npc.fovAngle = npc.baseFovAngle * (1.05 + 0.15 * threatFactor);
+
+    if (npc.dynamicTarget){
+      const dist = Math.hypot(npc.dynamicTarget.x - npc.x, npc.dynamicTarget.y - npc.y);
+      if (dist < 10 || state.time >= npc.dynamicTargetExpire){
+        npc.dynamicTarget = null;
+        npc.dynamicTargetExpire = 0;
+        npc.searchCooldown = Math.max(npc.searchCooldown, 1.4);
+      }
+    }
+
+    if (!npc.dynamicTarget){
+      npc.searchCooldown = Math.max(0, npc.searchCooldown - dt);
+      if (npc.searchCooldown <= 0){
+        let chosen = null;
+        let expire = 0;
+
+        if (seenRecently && threatFactor > 0.2){
+          const radius = 60 + 220 * threatFactor;
+          const angle = Math.random() * TAU;
+          chosen = clampTargetToWorld({
+            x: state.lastSeenAt.x + Math.cos(angle) * radius,
+            y: state.lastSeenAt.y + Math.sin(angle) * radius
+          });
+          expire = state.time + 6 + 6 * threatFactor;
+        } else if (threatFactor > 0.45){
+          const anchor = threatFactor > 0.75 ? state.player : {
+            x: mainVillage.x + mainVillage.w / 2,
+            y: mainVillage.y + mainVillage.h / 2
+          };
+          const radius = 140 + 320 * threatFactor;
+          const angle = Math.random() * TAU;
+          chosen = clampTargetToWorld({
+            x: anchor.x + Math.cos(angle) * radius,
+            y: anchor.y + Math.sin(angle) * radius
+          });
+          expire = state.time + 5 + 4 * threatFactor;
+        }
+
+        if (chosen){
+          npc.dynamicTarget = chosen;
+          npc.dynamicTargetExpire = expire;
+          npc.searchCooldown = 4 + Math.random() * 3;
+        } else {
+          npc.searchCooldown = 2 + Math.random() * 2;
+        }
+      }
+    }
+
+    npc.activeTarget = npc.dynamicTarget || npc.waypoints[npc.wpIndex];
+  }
 }
 
 export {
@@ -111,5 +192,6 @@ export {
   patchPatrolRoutes,
   setupInitialNPCs,
   npcSeesPlayer,
-  spawnReinforcement
+  spawnReinforcement,
+  updateNPCBehaviors
 };

@@ -1,6 +1,7 @@
 import { ctx } from '../game/canvas.js';
 import { state } from '../state/gameState.js';
 import { TAU } from '../utils/math.js';
+import { getThreatFraction, getThreatStage } from '../systems/threat.js';
 import { drawTerrain, drawGoblinTavern } from '../world/terrain.js';
 import { getRenderableStairs, fillHouseInterior, interiorFloorColor } from '../world/houses.js';
 
@@ -88,16 +89,123 @@ function drawWorldScene(){
 function drawCastle(){
   const c = state.castle;
   const x = c.x, y = c.y;
+  const threatFrac = getThreatFraction();
+  const stage = getThreatStage();
   ctx.save();
-  ctx.translate(x,y);
-  ctx.fillStyle = '#151b2b';
-  ctx.fillRect(-26,-22, 52, 44);
-  ctx.fillRect(-16,-38, 32, 16);
-  for (let i=-24;i<=24;i+=12){ ctx.fillRect(i,-38, 6, 8); }
+  ctx.translate(x, y);
+
+  if (threatFrac > 0){
+    const auraRadius = 140 + 260 * threatFrac;
+    const aura = ctx.createRadialGradient(0, 24, 24, 0, 24, auraRadius);
+    aura.addColorStop(0, `rgba(170, 60, 120, ${0.18 + 0.45 * threatFrac})`);
+    aura.addColorStop(1, 'rgba(12, 8, 18, 0)');
+    ctx.fillStyle = aura;
+    ctx.beginPath();
+    ctx.arc(0, 24, auraRadius, 0, TAU);
+    ctx.fill();
+  }
+
+  ctx.fillStyle = '#0f1521';
+  ctx.fillRect(-36, -32, 72, 64);
+  ctx.fillStyle = '#161f31';
+  ctx.fillRect(-28, -54, 56, 26);
+  ctx.fillStyle = '#0a101a';
+  for (let i=-24;i<=24;i+=12){
+    ctx.fillRect(i-3, -54, 6, 12);
+  }
+
+  const windowGlow = `rgba(255, 130, 120, ${0.25 + 0.5 * threatFrac})`;
+  ctx.fillStyle = windowGlow;
+  ctx.fillRect(-24, -8, 10, 18);
+  ctx.fillRect(14, -8, 10, 18);
+  ctx.fillRect(-6, -18, 12, 16);
+  ctx.fillRect(-6, 4, 12, 16);
+
+  ctx.fillStyle = `rgba(120, 28, 88, ${0.3 + 0.4 * threatFrac})`;
+  ctx.fillRect(-32, -32, 6, 42);
+  ctx.fillRect(26, -32, 6, 42);
+
+  drawCastleEye(stage, threatFrac);
+
   ctx.restore();
-  ctx.fillStyle = '#9fb3c8';
-  ctx.font = '12px system-ui';
-  ctx.fillText("Dark Lord's Castle", x-48, y-46);
+
+  ctx.fillStyle = 'rgba(198, 214, 255, 0.7)';
+  ctx.font = '11px system-ui';
+  ctx.fillText("Dark Lord's Keep", x - 58, y - 62);
+}
+
+function drawCastleEye(stage, threatFrac){
+  const eyelidHeights = [8, 12, 16, 19, 24];
+  const irisRadii = [6, 7, 9, 11, 13];
+  const irisColors = ['#1f2d45', '#2f4d70', '#d55a66', '#f34632', '#120102'];
+  const glowColors = [
+    'rgba(60, 84, 124, 0.45)',
+    'rgba(88, 120, 160, 0.55)',
+    'rgba(220, 110, 120, 0.65)',
+    'rgba(255, 80, 90, 0.75)',
+    'rgba(255, 40, 100, 0.85)'
+  ];
+
+  ctx.save();
+  ctx.translate(0, -66);
+
+  ctx.fillStyle = 'rgba(8, 12, 20, 0.96)';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 30, 18, 0, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = glowColors[stage];
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 28, eyelidHeights[stage], 0, 0, TAU);
+  ctx.fill();
+
+  if (stage === 0){
+    ctx.strokeStyle = '#314765';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-18, 0);
+    ctx.quadraticCurveTo(0, -6, 18, 0);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-18, 0);
+    ctx.quadraticCurveTo(0, 6, 18, 0);
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = irisColors[stage];
+    ctx.beginPath();
+    ctx.ellipse(0, 0, irisRadii[stage] + 5, eyelidHeights[stage] - 4, 0, 0, TAU);
+    ctx.fill();
+
+    ctx.fillStyle = stage >= 4 ? '#060002' : '#040509';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, Math.max(3, irisRadii[stage] - 2), Math.max(3, (eyelidHeights[stage] - 6) * 0.6), 0, 0, TAU);
+    ctx.fill();
+
+    ctx.fillStyle = stage >= 4 ? '#ffe9ad' : '#f7f9ff';
+    ctx.beginPath();
+    ctx.arc(4 - stage, -2 - stage * 0.25, 2.4, 0, TAU);
+    ctx.fill();
+  }
+
+  if (stage >= 3){
+    const pulse = Math.sin(state.time * 3.4) * 6;
+    ctx.strokeStyle = `rgba(255, 60, 90, ${0.35 + threatFrac * 0.4})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, 10);
+    ctx.lineTo(0, 118 + pulse);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-10, 6);
+    ctx.lineTo(-76, 128 + pulse * 0.6);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(10, 6);
+    ctx.lineTo(76, 128 - pulse * 0.6);
+    ctx.stroke();
+  }
+
+  ctx.restore();
 }
 
 function drawFOV(npc){

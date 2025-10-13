@@ -13,7 +13,7 @@ import { drawTavernInteriorScene } from './render/tavernInterior.js';
 import { drawHUD } from './render/hud.js';
 import { drawShop } from './render/shop.js';
 import { drawWorldMapOverlay } from './render/map.js';
-import { npcSeesPlayer, setupInitialNPCs, spawnReinforcement } from './npc/npcManager.js';
+import { npcSeesPlayer, setupInitialNPCs, spawnReinforcement, updateNPCBehaviors } from './npc/npcManager.js';
 import {
   useInventorySlot,
   openShop,
@@ -152,8 +152,9 @@ function update(dt){
     state.tavernPlayerInside = false;
   }
 
+  updateNPCBehaviors(dt);
   for (const npc of state.npcs){
-    const wp = npc.waypoints[npc.wpIndex];
+    const wp = npc.activeTarget || npc.waypoints[npc.wpIndex];
     const dx = wp.x - npc.x, dy = wp.y - npc.y;
     const d = Math.hypot(dx,dy);
     if (d < 4) {
@@ -175,6 +176,11 @@ function update(dt){
   for (const npc of state.npcs) if (npcSeesPlayer(npc, p)) seenBy++;
   const seen = seenBy > 0;
   state.lastSeen = seen;
+  if (seen){
+    state.lastSeenAt.x = p.x;
+    state.lastSeenAt.y = p.y;
+    state.lastSeenTime = state.time;
+  }
 
   let inc = seen ? (18 * seenBy) : 0;
   if (seen){
@@ -208,6 +214,7 @@ function update(dt){
   }
 
   if (seen && p.detection > 70) addThreat(5*dt);
+  if (!seen) addThreat(-4*dt);
 
   while (state.spawnCount < state.threatSpawns.length && state.threat >= state.threatSpawns[state.spawnCount]){
     spawnReinforcement();

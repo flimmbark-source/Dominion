@@ -1,8 +1,9 @@
 import { ctx, W, H } from '../game/canvas.js';
 import { state } from '../state/gameState.js';
 import { getPlayerStats } from '../state/playerStats.js';
-import { clamp } from '../utils/math.js';
+import { clamp, TAU } from '../utils/math.js';
 import { drawItemIcon } from './itemIcons.js';
+import { getThreatFraction, getThreatStage } from '../systems/threat.js';
 
 function bar(x,y,w,h, frac, fg, bg, border='#1a2636'){
   ctx.fillStyle = bg;
@@ -126,6 +127,7 @@ function drawPanel(x, y, w, h){
 }
 
 function drawHUD(){
+  drawThreatIndicator();
   const panelHeight = 128;
   const baseY = H - panelHeight - 12;
   ctx.save();
@@ -240,6 +242,114 @@ function drawHUD(){
   }
 
   ctx.restore();
+}
+
+function drawThreatIndicator(){
+  const stage = getThreatStage();
+  const fraction = getThreatFraction();
+  const gaugeColors = ['#5f7fa6', '#7db3d8', '#ffc971', '#ff745c', '#ff2a44'];
+
+  ctx.save();
+  ctx.translate(16, 16);
+
+  ctx.fillStyle = 'rgba(8, 12, 20, 0.88)';
+  ctx.fillRect(0, 0, 72, 72);
+  ctx.strokeStyle = 'rgba(48, 66, 96, 0.95)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, 70, 70);
+
+  ctx.save();
+  ctx.translate(36, 36);
+
+  ctx.strokeStyle = 'rgba(24, 36, 56, 0.7)';
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.arc(0, 0, 26, 0, TAU);
+  ctx.stroke();
+
+  ctx.strokeStyle = gaugeColors[stage];
+  ctx.beginPath();
+  ctx.arc(0, 0, 26, -Math.PI/2, -Math.PI/2 + TAU * fraction, false);
+  ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(140, 160, 200, 0.35)';
+  ctx.lineWidth = 1.6;
+  for (let i=0;i<5;i++){
+    const ang = -Math.PI/2 + TAU * (i / 5);
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(ang) * 22, Math.sin(ang) * 22);
+    ctx.lineTo(Math.cos(ang) * 26, Math.sin(ang) * 26);
+    ctx.stroke();
+  }
+
+  drawThreatEyeIcon(stage);
+
+  ctx.restore();
+
+  ctx.restore();
+}
+
+function drawThreatEyeIcon(stage){
+  const eyelidOpen = [4, 8, 14, 16, 18];
+  const scleraColors = ['#1c2739', '#24344c', '#ffe7d0', '#ffdbc5', '#2a0101'];
+  const irisColors = ['#2a3e5b', '#3d6188', '#ff806f', '#ff4b3f', '#1d0000'];
+  const highlightColors = ['#87aed8', '#aed8ff', '#ffeedd', '#ffe2d7', '#ffd6ff'];
+
+  if (stage === 0){
+    ctx.strokeStyle = '#7b95bf';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-22, 0);
+    ctx.quadraticCurveTo(0, -10, 22, 0);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-22, 0);
+    ctx.quadraticCurveTo(0, 8, 22, 0);
+    ctx.stroke();
+    return;
+  }
+
+  ctx.fillStyle = scleraColors[stage];
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 24, eyelidOpen[stage], 0, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = irisColors[stage];
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 11 + stage, Math.max(6, eyelidOpen[stage] - 2), 0, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = stage >= 3 ? '#0b0002' : '#061018';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, Math.max(4, 8 + stage - 4), Math.max(4, eyelidOpen[stage] - 6), 0, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = highlightColors[stage];
+  ctx.beginPath();
+  ctx.arc(6 - stage, -4 - stage * 0.5, 3, 0, TAU);
+  ctx.fill();
+
+  if (stage >= 3){
+    const flameColor = stage === 3 ? 'rgba(255, 112, 92, 0.6)' : 'rgba(190, 0, 30, 0.65)';
+    ctx.strokeStyle = flameColor;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-20, -eyelidOpen[stage] + 2);
+    ctx.lineTo(-30, -eyelidOpen[stage] - 6);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(20, -eyelidOpen[stage] + 2);
+    ctx.lineTo(30, -eyelidOpen[stage] - 6);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-18, eyelidOpen[stage] - 2);
+    ctx.lineTo(-26, eyelidOpen[stage] + 6);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(18, eyelidOpen[stage] - 2);
+    ctx.lineTo(26, eyelidOpen[stage] + 6);
+    ctx.stroke();
+  }
 }
 
 export { drawHUD };
