@@ -50,7 +50,8 @@ const state = {
   lastSeenTime: -Infinity,
   tavernPlayerInside: false,
   shopOwned: new Set(),
-  mapVisible: false
+  mapVisible: false,
+  villageTasks: []
 };
 
 export { state, mainVillage };

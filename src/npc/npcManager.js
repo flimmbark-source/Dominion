@@ -23,7 +23,11 @@ function makeNPC(type, x, y, waypoints=null){
     dynamicTarget: null,
     dynamicTargetExpire: 0,
     searchCooldown: 0,
-    activeTarget: null
+    activeTarget: null,
+    dialogCooldown: 0,
+    lastDialogueLine: null,
+    pickpocketCooldown: 0,
+    pickpocketed: false
   };
 }
 

@@ -1,9 +1,15 @@
 import { ctx } from '../game/canvas.js';
 import { state } from '../state/gameState.js';
-import { TAU } from '../utils/math.js';
+import { clamp, TAU } from '../utils/math.js';
 import { getThreatFraction, getThreatStage } from '../systems/threat.js';
 import { drawTerrain, drawGoblinTavern } from '../world/terrain.js';
 import { getRenderableStairs, fillHouseInterior, interiorFloorColor } from '../world/houses.js';
+import {
+  getNearbyTrapPrompt,
+  getVillageTraps,
+  getVillagerPromptData,
+  VILLAGER_PICKPOCKET_DISTANCE
+} from '../systems/villageInteractions.js';
 
 function drawWorldScene(){
   const p = state.player;
@@ -51,6 +57,7 @@ function drawWorldScene(){
   }
 
   drawGoblinTavern();
+  drawVillageTrapMarkers();
 
   for (const c of state.chests){
     if (c.looted) continue;
@@ -75,12 +82,106 @@ function drawWorldScene(){
     ctx.stroke();
   }
 
+  drawInteractionPrompts();
+
   const invisible = state.time < p.invisUntil;
   drawPlayerGoblin(p, invisible);
 
   drawTorchlight();
 
   ctx.restore();
+}
+
+function drawInteractionLabel(x, y, text, style='default'){
+  ctx.save();
+  ctx.font = '12px "Trebuchet MS", system-ui';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const paddingX = 8;
+  const width = ctx.measureText(text).width + paddingX * 2;
+  const height = 20;
+  const left = x - width / 2;
+  const top = y - height / 2;
+  ctx.fillStyle = style === 'warning' ? 'rgba(36, 14, 14, 0.88)' : 'rgba(12, 18, 28, 0.88)';
+  ctx.fillRect(left, top, width, height);
+  ctx.strokeStyle = style === 'warning' ? '#f68a6f' : '#4da3ff';
+  ctx.lineWidth = 1.4;
+  ctx.strokeRect(left + 0.5, top + 0.5, width - 1, height - 1);
+  ctx.fillStyle = '#d9e7ff';
+  ctx.fillText(text, x, y + 1);
+  ctx.restore();
+}
+
+function drawVillageTrapMarkers(){
+  const traps = getVillageTraps();
+  if (!traps) return;
+  for (const trap of traps){
+    const pulse = Math.sin(state.time * 3.2 + trap.x * 0.015);
+    if (!trap.completed){
+      ctx.fillStyle = `rgba(240, 124, 74, ${0.25 + Math.max(0, pulse) * 0.25})`;
+      ctx.beginPath();
+      ctx.arc(trap.x, trap.y, 18 + pulse * 2.4, 0, TAU);
+      ctx.fill();
+    } else {
+      const fade = clamp(1 - (state.time - trap.completedAt) / 4, 0, 1);
+      if (fade > 0){
+        ctx.fillStyle = `rgba(88, 170, 120, ${0.22 * fade})`;
+        ctx.beginPath();
+        ctx.arc(trap.x, trap.y, 18, 0, TAU);
+        ctx.fill();
+      }
+    }
+
+    ctx.strokeStyle = trap.completed ? '#58aa78' : '#f07c4a';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(trap.x, trap.y, 12, 0, TAU);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(trap.x - 8, trap.y);
+    ctx.lineTo(trap.x + 8, trap.y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(trap.x, trap.y - 8);
+    ctx.lineTo(trap.x, trap.y + 8);
+    ctx.stroke();
+
+    if (!trap.completed){
+      ctx.font = '10px "Trebuchet MS", system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = 'rgba(255, 213, 140, 0.85)';
+      ctx.fillText(trap.label, trap.x, trap.y + 16);
+    }
+  }
+}
+
+function drawInteractionPrompts(){
+  const villagerPrompt = getVillagerPromptData();
+  if (villagerPrompt){
+    const { npc, canTalk, canPickpocket, pickpocketOnCooldown, dist } = villagerPrompt;
+    let offset = -30;
+    if (canTalk){
+      drawInteractionLabel(npc.x, npc.y + offset, 'E: Talk');
+      offset -= 24;
+    }
+    if (dist <= VILLAGER_PICKPOCKET_DISTANCE + 12){
+      if (canPickpocket){
+        drawInteractionLabel(npc.x, npc.y + offset, 'R: Pickpocket');
+      } else if (pickpocketOnCooldown){
+        drawInteractionLabel(npc.x, npc.y + offset, 'R: Watched', 'warning');
+      } else if (npc.pickpocketed){
+        drawInteractionLabel(npc.x, npc.y + offset, 'Pocket picked', 'warning');
+      }
+    }
+  }
+
+  const trapPrompt = getNearbyTrapPrompt();
+  if (trapPrompt){
+    const { trap } = trapPrompt;
+    const cooling = state.time < trap.cooldownUntil;
+    drawInteractionLabel(trap.x, trap.y - 30, cooling ? 'Trap settling' : 'E: Disable trap', cooling ? 'warning' : 'default');
+  }
 }
 
 function drawPlayerGoblin(p, invisible){

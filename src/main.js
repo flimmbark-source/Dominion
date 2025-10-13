@@ -29,11 +29,18 @@ import { pressOnce } from './input/pressOnce.js';
 import { circleRectCollideResolve, pointInRect, segBlockedByAnyRect } from './utils/geometry.js';
 import { clamp } from './utils/math.js';
 import { runTests } from './tests/lightweight.js';
+import {
+  initVillageInteractions,
+  tryDisarmNearbyTrap,
+  tryPickpocketVillager,
+  tryTalkToVillager
+} from './systems/villageInteractions.js';
 
 setupInput();
 initHouses();
 generateWorld();
 setupInitialNPCs();
+initVillageInteractions();
 
 window.addEventListener('keydown', handleShopKeyDown);
 canvas.addEventListener('mousemove', handleShopMouseMove);
@@ -62,6 +69,7 @@ function update(dt){
   state.time += dt;
 
   const interactPressed = pressOnce('e');
+  const pickpocketPressed = pressOnce('r');
   const inTavernInterior = state.tavernInteriorState.active;
 
   const p = state.player;
@@ -150,6 +158,18 @@ function update(dt){
     state.tavernPlayerInside = true;
   } else {
     state.tavernPlayerInside = false;
+  }
+
+  if (!inTavernInterior && !state.interior){
+    if (interactPressed){
+      const spoke = tryTalkToVillager();
+      if (!spoke){
+        tryDisarmNearbyTrap();
+      }
+    }
+    if (pickpocketPressed){
+      tryPickpocketVillager();
+    }
   }
 
   updateNPCBehaviors(dt);
