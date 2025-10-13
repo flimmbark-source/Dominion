@@ -204,11 +204,12 @@ function generateWorld(){
     const clearR = Math.max(stumpRadius, tavern.clearRadius ?? stumpRadius);
     const cx = tavern.stump?.cx ?? (tavern.x + tavern.w/2);
     const cy = tavern.stump?.cy ?? (tavern.y + tavern.h/2);
-    const r2 = clearR * clearR;
+    const glowR = Math.max(clearR, tavern.glowRadius ?? clearR);
     forestSolids = forestSolids.filter(tile => {
       const dx = tile.cx - cx;
       const dy = tile.cy - cy;
-      return (dx*dx + dy*dy) > r2;
+      const radius = glowR + (tile.canopyRadius ?? 0);
+      return (dx*dx + dy*dy) > radius * radius;
     });
   }
 }
