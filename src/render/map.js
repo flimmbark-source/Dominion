@@ -4,6 +4,13 @@ import { WORLD, VILLAGES } from '../data/world.js';
 import { roads, pathSegments } from '../world/terrain.js';
 import { TAU } from '../utils/math.js';
 
+const MAP_POI_COLORS = {
+  'shady-trader': '#d0a74e',
+  'wandering-merchant': '#7ec6ff',
+  'cursed-shrine': '#b57bf8',
+  'bog-sprite': '#66e0a0'
+};
+
 function drawWorldMapOverlay(){
   ctx.save();
 
@@ -108,6 +115,28 @@ function drawWorldMapOverlay(){
     ctx.lineTo(tavernPt.x, tavernPt.y + Math.max(3, 10 * scale));
     ctx.stroke();
     ctx.restore();
+  }
+
+  if (state.pointsOfInterest && state.pointsOfInterest.length){
+    for (const poi of state.pointsOfInterest){
+      if (!poi.visibleOnMap) continue;
+      const poiPt = toMap(poi.x, poi.y);
+      const color = MAP_POI_COLORS[poi.type] || '#9fb3c8';
+      ctx.globalAlpha = poi.resolved ? 0.55 : 0.9;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(poiPt.x, poiPt.y, Math.max(3, 9 * scale), 0, TAU);
+      ctx.fill();
+      if (!poi.resolved){
+        ctx.globalAlpha = 0.4;
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = color;
+        ctx.beginPath();
+        ctx.arc(poiPt.x, poiPt.y, Math.max(6, 16 * scale), 0, TAU);
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
   }
 
   const playerPt = toMap(state.player.x, state.player.y);

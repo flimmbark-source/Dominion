@@ -24,6 +24,7 @@ import {
 } from './systems/shop.js';
 import { enterTavernInterior, leaveTavernInterior } from './systems/tavern.js';
 import { addThreat } from './systems/threat.js';
+import { initPointsOfInterest, handlePointOfInterestInteraction } from './systems/pointsOfInterest.js';
 import { toast } from './ui/toast.js';
 import { pressOnce } from './input/pressOnce.js';
 import { circleRectCollideResolve, pointInRect, segBlockedByAnyRect } from './utils/geometry.js';
@@ -34,6 +35,7 @@ setupInput();
 initHouses();
 generateWorld();
 setupInitialNPCs();
+initPointsOfInterest();
 
 window.addEventListener('keydown', handleShopKeyDown);
 canvas.addEventListener('mousemove', handleShopMouseMove);
@@ -62,6 +64,7 @@ function update(dt){
   state.time += dt;
 
   const interactPressed = pressOnce('e');
+  let interactAvailable = interactPressed;
   const inTavernInterior = state.tavernInteriorState.active;
 
   const p = state.player;
@@ -216,12 +219,18 @@ function update(dt){
   if (seen && p.detection > 70) addThreat(5*dt);
   if (!seen) addThreat(-4*dt);
 
+  if (!inTavernInterior){
+    if (handlePointOfInterestInteraction(interactAvailable && !state.interior)){
+      interactAvailable = false;
+    }
+  }
+
   while (state.spawnCount < state.threatSpawns.length && state.threat >= state.threatSpawns[state.spawnCount]){
     spawnReinforcement();
     state.spawnCount++;
   }
 
-  if (interactPressed && state.interior){
+  if (interactAvailable && state.interior){
     const hid = state.interior.houseId;
     const lvl = state.interior.level;
     const st = state.stairs.find(s => s.houseId===hid && s.level===lvl && p.x >= s.x-6 && p.x <= s.x+s.w+6 && p.y >= s.y-6 && p.y <= s.y+s.h+6);
