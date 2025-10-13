@@ -167,18 +167,19 @@ function drawHUD(){
   ctx.font = '12px "Trebuchet MS", system-ui';
   ctx.fillText(`${Math.max(0, 100 - Math.round(p.detection))}% hidden`, 140, baseY + 96);
 
-  const goldTextX = barPanelX + barPanelWidth - 32;
+  const goldIconX = barPanelX + barPanelWidth - 78;
   ctx.fillStyle = '#ffd25a';
   ctx.font = '15px "Trebuchet MS", system-ui';
-  ctx.textAlign = 'right';
-  ctx.fillText(`${p.gold}`, goldTextX, baseY + 116);
+  drawCoinIcon(goldIconX, baseY + 102);
   ctx.textAlign = 'left';
-  drawCoinIcon(goldTextX - 20, baseY + 102);
+  ctx.fillText(`${p.gold}`, goldIconX + 28, baseY + 116);
 
   const statTextY = baseY + 34;
   const statTextX = statsPanelX + 52;
   ctx.fillStyle = '#cfe1ff';
   ctx.font = '12px "Trebuchet MS", system-ui';
+  const previousBaseline = ctx.textBaseline;
+  ctx.textBaseline = 'middle';
 
   const statRows = [
     {
@@ -198,8 +199,10 @@ function drawHUD(){
   statRows.forEach((row, i) => {
     const lineY = statTextY + i * 30;
     row.icon(statsPanelX + 18, lineY - 20);
-    ctx.fillText(row.label, statTextX, lineY);
+    ctx.fillText(row.label, statTextX, lineY - 10);
   });
+
+  ctx.textBaseline = previousBaseline;
 
   const slotSize = 52;
   const slotCount = 6;
