@@ -5,6 +5,13 @@ import { getThreatFraction, getThreatStage } from '../systems/threat.js';
 import { drawTerrain, drawGoblinTavern } from '../world/terrain.js';
 import { getRenderableStairs, fillHouseInterior, interiorFloorColor } from '../world/houses.js';
 
+const POI_STYLES = {
+  'shady-trader': { outer: '#3b2a16', inner: '#d0a74e' },
+  'wandering-merchant': { outer: '#1d2e45', inner: '#7ec6ff' },
+  'cursed-shrine': { outer: '#251134', inner: '#b57bf8' },
+  'bog-sprite': { outer: '#0f3320', inner: '#66e0a0' }
+};
+
 function drawWorldScene(){
   const p = state.player;
 
@@ -51,6 +58,7 @@ function drawWorldScene(){
   }
 
   drawGoblinTavern();
+  drawPointsOfInterest();
 
   for (const c of state.chests){
     if (c.looted) continue;
@@ -81,6 +89,40 @@ function drawWorldScene(){
   drawTorchlight();
 
   ctx.restore();
+}
+
+function drawPointsOfInterest(){
+  if (!state.pointsOfInterest || !state.pointsOfInterest.length) return;
+  for (const poi of state.pointsOfInterest){
+    const style = POI_STYLES[poi.type] || { outer: '#1b2738', inner: '#9fb3c8' };
+    ctx.save();
+    ctx.translate(poi.x, poi.y);
+    const alpha = poi.resolved ? 0.55 : 0.9;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = style.outer;
+    ctx.beginPath();
+    ctx.arc(0, 0, 16, 0, TAU);
+    ctx.fill();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = style.inner;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(0, 0, 8, 0, TAU);
+    ctx.fillStyle = style.inner;
+    ctx.globalAlpha = poi.resolved ? 0.45 : 0.82;
+    ctx.fill();
+
+    if (!poi.resolved){
+      ctx.globalAlpha = 0.22;
+      ctx.beginPath();
+      ctx.arc(0, 0, (poi.radius ?? 60) * 0.45, 0, TAU);
+      ctx.strokeStyle = style.inner;
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
 }
 
 function drawPlayerGoblin(p, invisible){

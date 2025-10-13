@@ -50,7 +50,8 @@ const state = {
   lastSeenTime: -Infinity,
   tavernPlayerInside: false,
   shopOwned: new Set(),
-  mapVisible: false
+  mapVisible: false,
+  pointsOfInterest: []
 };
 
 export { state, mainVillage };
