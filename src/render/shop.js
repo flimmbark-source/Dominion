@@ -92,7 +92,9 @@ function drawShop(){
     const titleX = hasIcon ? rect.x + 64 : rect.x + 14;
     const bodyX = titleX;
     const bodyWidth = Math.max(80, rect.w - (bodyX - rect.x) - 14);
-    const descStartY = rect.y + (hasIcon ? 64 : 52);
+    const iconSize = 34;
+    const iconCenterX = rect.x + 32;
+    const iconCenterY = rect.y + 56;
 
     ctx.fillStyle = '#f6e9c8';
     ctx.font = '18px ui-sans-serif';
@@ -105,9 +107,10 @@ function drawShop(){
     ctx.textAlign = 'left';
 
     if (hasIcon){
-      drawItemIcon(ctx, item.icon, rect.x + 32, rect.y + 60, 34);
+      drawItemIcon(ctx, item.icon, iconCenterX, iconCenterY, iconSize);
     }
 
+    const descStartY = hasIcon ? iconCenterY + iconSize / 2 + 8 : rect.y + 52;
     ctx.fillStyle = '#d7c69a';
     ctx.font = '14px ui-sans-serif';
     const descEndY = wrapText(item.desc, bodyX, descStartY, bodyWidth, 18);
