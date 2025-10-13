@@ -3,6 +3,7 @@ import { state } from '../state/gameState.js';
 import { TAU } from '../utils/math.js';
 import { getThreatFraction, getThreatStage } from '../systems/threat.js';
 import { drawTerrain, drawGoblinTavern } from '../world/terrain.js';
+import { drawGoblin } from './goblin.js';
 import { getRenderableStairs, fillHouseInterior, interiorFloorColor } from '../world/houses.js';
 
 const POI_STYLES = {
@@ -14,11 +15,16 @@ const POI_STYLES = {
 
 function drawWorldScene(){
   const p = state.player;
+  const playerGroundY = p.y + 8;
+  const treeBaseY = tree => tree.cy + ((tree.h ?? tree.canopyRadius ?? 0) / 2);
+  const treeBehindPlayer = tree => playerGroundY >= treeBaseY(tree);
+  const treeInFrontOfPlayer = tree => playerGroundY < treeBaseY(tree);
 
   ctx.save();
   ctx.translate(-state.camera.x, -state.camera.y);
 
-  drawTerrain();
+  drawTerrain({ treeFilter: treeBehindPlayer });
+  drawTerrain({ includeTrees: false });
   drawCastle();
 
   for (const h of state.houses){
@@ -84,7 +90,7 @@ function drawWorldScene(){
   }
 
   const invisible = state.time < p.invisUntil;
-  drawPlayerGoblin(p, invisible);
+  drawGoblin(ctx, p, { time: state.time, invisible });
 
   drawTorchlight();
 
@@ -335,27 +341,9 @@ function drawPlayerGoblin(p, invisible){
   const eyeForward = headForward + 0.6;
   const rightEye = projectPoint(eyeOffset, headHeight - 2.6, eyeForward);
   const leftEye = projectPoint(-eyeOffset * 0.9, headHeight - 2.4, eyeForward - 0.4);
+  drawTerrain({ treeFilter: treeInFrontOfPlayer });
 
-  ctx.beginPath();
-  ctx.ellipse(rightEye.x, rightEye.y, 2.4, 2.6, 0, 0, TAU);
-  ctx.fill();
-
-  ctx.beginPath();
-  ctx.ellipse(leftEye.x, leftEye.y, 2, 2.2, 0, 0, TAU);
-  ctx.fill();
-
-  ctx.globalAlpha = 1;
-
-  if (invisible){
-    const shroudCenter = projectPoint(0, headHeight - 1, hipForward - 1.6);
-    ctx.strokeStyle = 'rgba(120, 220, 180, 0.7)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([6, 6]);
-    ctx.beginPath();
-    ctx.ellipse(shroudCenter.x, shroudCenter.y, torsoWidth + 4, torsoHeight + 6, 0, 0, TAU);
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
+  drawTorchlight();
 
   ctx.restore();
 }
