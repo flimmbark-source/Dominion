@@ -4,6 +4,7 @@ import { canvas, canvasPointFromEvent } from '../game/canvas.js';
 import { clamp } from '../utils/math.js';
 import { toast } from '../ui/toast.js';
 import { resetPressOnce } from '../input/pressOnce.js';
+import { getPlayerStats, markPlayerStatsDirty, addTemporaryStatEffect } from '../state/playerStats.js';
 
 const shopState = {
   hitRegions: [],
@@ -19,8 +20,14 @@ function inventoryAdd(item){
     type: item.type,
     desc: item.desc,
     icon: item.icon ?? null,
-    stacks: 1
+    effects: item.effects ? {
+      add: item.effects.add ? { ...item.effects.add } : undefined,
+      mult: item.effects.mult ? { ...item.effects.mult } : undefined
+    } : null,
+    charges: item.charges ?? 1
   };
+  markPlayerStatsDirty(state.player);
+  getPlayerStats(state.player, state.time);
   return true;
 }
 
@@ -32,11 +39,21 @@ function useInventorySlot(slotIdx){
     const now = state.time;
     if (now < state.player.invisUntil) return;
     state.player.invisUntil = now + 6;
+    addTemporaryStatEffect(state.player, {
+      id: 'invisibility-potion',
+      mult: { stealthFactor: 0 },
+      duration: 6
+    }, now);
     state.player.inventory[slotIdx] = null;
+    markPlayerStatsDirty(state.player);
+    getPlayerStats(state.player, state.time);
     toast('You fade from sight...');
   } else if (it.id === 'moonleaf'){
-    state.player.health = clamp(state.player.health + 30, 0, 100);
+    const stats = getPlayerStats(state.player, state.time);
+    state.player.health = clamp(state.player.health + 30, 0, stats.maxHealth);
     state.player.inventory[slotIdx] = null;
+    markPlayerStatsDirty(state.player);
+    getPlayerStats(state.player, state.time);
     toast('You feel restored (+30 HP).');
   }
 }
@@ -52,7 +69,6 @@ function attemptPurchase(item){
   if (playerGold < price){ toast('Not enough gold!'); return; }
   if (!inventoryAdd(item)){ toast('Inventory full!'); return; }
   p.gold = playerGold - price;
-  if (item.apply) item.apply(p);
   if (item.type === 'passive') state.shopOwned.add(item.id);
   toast(`Purchased ${item.name}.`);
 }

@@ -7,10 +7,9 @@ export const ITEMS = [
     type: 'passive',
     icon: 'boots',
     desc: 'Wyvern-sinew laces grant +40 movement speed.',
-    canBuy: p => !p.stats.hasBoots,
-    apply: p => {
-      p.stats.hasBoots = true;
-      p.stats.speed += 40;
+    canBuy: p => !p.inventory.some(it => it && it.id === 'boots'),
+    effects: {
+      add: { movementSpeed: 40 }
     }
   },
   {
@@ -21,10 +20,9 @@ export const ITEMS = [
     type: 'passive',
     icon: 'cloak',
     desc: 'Mycelium threads slow detection buildup by 40%.',
-    canBuy: p => !p.stats.hasCloak,
-    apply: p => {
-      p.stats.hasCloak = true;
-      p.stats.stealthMult *= 0.6;
+    canBuy: p => !p.inventory.some(it => it && it.id === 'cloak'),
+    effects: {
+      mult: { stealthFactor: 0.6 }
     }
   },
   {
@@ -35,10 +33,9 @@ export const ITEMS = [
     type: 'passive',
     icon: 'dagger',
     desc: 'Coated blade boosts attack damage by +10.',
-    canBuy: p => !p.stats.hasDagger,
-    apply: p => {
-      p.stats.hasDagger = true;
-      p.stats.attack += 10;
+    canBuy: p => !p.inventory.some(it => it && it.id === 'dagger'),
+    effects: {
+      add: { attackDamage: 10 }
     }
   },
   {
@@ -48,8 +45,7 @@ export const ITEMS = [
     price: 80,
     type: 'consumable',
     icon: 'invisibilityPotion',
-    desc: 'One draught renders you unseen for 6 seconds.',
-    apply: () => {}
+    desc: 'One draught renders you unseen for 6 seconds.'
   },
   {
     id: 'moonleaf',
@@ -58,7 +54,6 @@ export const ITEMS = [
     price: 90,
     type: 'consumable',
     icon: 'moonleaf',
-    desc: 'Herbal brew that restores 30 health.',
-    apply: () => {}
+    desc: 'Herbal brew that restores 30 health.'
   }
 ];

@@ -1,5 +1,6 @@
 import { ctx, W, H } from '../game/canvas.js';
 import { state } from '../state/gameState.js';
+import { getPlayerStats } from '../state/playerStats.js';
 import { clamp } from '../utils/math.js';
 import { drawItemIcon } from './itemIcons.js';
 
@@ -16,7 +17,9 @@ function drawHUD(){
   ctx.strokeRect(0.5, H-100.5, W-1, 100);
 
   const p = state.player;
-  bar(16, H-84, 220, 18, p.health/100, '#35c46a', '#233645');
+  const stats = getPlayerStats(p);
+  const maxHealth = stats.maxHealth || 1;
+  bar(16, H-84, 220, 18, p.health/maxHealth, '#35c46a', '#233645');
   ctx.fillStyle = '#d4ffe6'; ctx.font = '12px system-ui'; ctx.fillText('Health', 20, H-70);
 
   bar(16, H-52, 220, 14, p.detection/100, '#f0c94c', '#233645');
@@ -28,7 +31,7 @@ function drawHUD(){
 
   ctx.fillStyle = '#cfe1ff';
   ctx.font = '12px system-ui';
-  ctx.fillText(`Speed: ${Math.round(p.stats.speed)}  Damage: ${p.stats.attack}  Stealth x${p.stats.stealthMult.toFixed(2)}`, 260, H-44);
+  ctx.fillText(`Speed: ${Math.round(stats.movementSpeed)}  Damage: ${Math.round(stats.attackDamage)}  Stealth x${stats.stealthFactor.toFixed(2)}`, 260, H-44);
 
   ctx.fillStyle = '#ffb347';
   ctx.font = '12px system-ui';
