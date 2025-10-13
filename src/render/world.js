@@ -7,11 +7,16 @@ import { getRenderableStairs, fillHouseInterior, interiorFloorColor } from '../w
 
 function drawWorldScene(){
   const p = state.player;
+  const playerGroundY = p.y + 8;
+  const treeBaseY = tree => tree.cy + ((tree.h ?? tree.canopyRadius ?? 0) / 2);
+  const treeBehindPlayer = tree => playerGroundY >= treeBaseY(tree);
+  const treeInFrontOfPlayer = tree => playerGroundY < treeBaseY(tree);
 
   ctx.save();
   ctx.translate(-state.camera.x, -state.camera.y);
 
-  drawTerrain();
+  drawTerrain({ treeFilter: treeBehindPlayer });
+  drawTerrain({ includeTrees: false });
   drawCastle();
 
   for (const h of state.houses){
@@ -77,6 +82,8 @@ function drawWorldScene(){
 
   const invisible = state.time < p.invisUntil;
   drawPlayerGoblin(p, invisible);
+
+  drawTerrain({ treeFilter: treeInFrontOfPlayer });
 
   drawTorchlight();
 
