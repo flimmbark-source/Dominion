@@ -107,25 +107,20 @@ function drawPlayerGoblin(p, invisible){
   ctx.fill();
   ctx.restore();
 
-  const legStartY = 6;
-  const legLength = 16;
-  const footAnchor = legStartY + legLength;
-
   ctx.translate(p.x, p.y + bob);
-  ctx.translate(0, footAnchor);
   ctx.rotate(p.facing + lean);
-  ctx.translate(0, -footAnchor);
 
   const alpha = invisible ? 0.55 : 1;
   ctx.globalAlpha = alpha;
 
+  const legStartY = 6;
   const legs = [
     { offset: -4, swing: strideA, color: '#204b2a' },
     { offset: 4, swing: strideB, color: '#2f7a3c' }
   ];
   legs.sort((a, b) => a.swing - b.swing);
   for (const leg of legs){
-    drawGoblinLimb(leg.offset, legStartY, legLength, leg.swing, 4, leg.color, 0.85);
+    drawGoblinLimb(leg.offset, legStartY, 16, leg.swing, 4, leg.color, 0.85);
   }
 
   const arms = [
