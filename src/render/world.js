@@ -214,6 +214,9 @@ function drawInteractionPrompts(){
     const { trap } = trapPrompt;
     const cooling = state.time < trap.cooldownUntil;
     drawInteractionLabel(trap.x, trap.y - 30, cooling ? 'Trap settling' : 'E: Disable trap', cooling ? 'warning' : 'default');
+  }
+}
+
 function drawPointsOfInterest(){
   if (!state.pointsOfInterest || !state.pointsOfInterest.length) return;
   for (const poi of state.pointsOfInterest){
