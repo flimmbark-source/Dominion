@@ -6,6 +6,13 @@ import { gatherForestSolidsAround } from '../world/terrain.js';
 import { toast } from '../ui/toast.js';
 import { forEachVillageInstance, prepareVillageInstances } from '../world/villageTemplates.js';
 
+const NPC_STATE = Object.freeze({
+  PATROL: 'PATROL',
+  SUSPICIOUS: 'SUSPICIOUS',
+  ALERT: 'ALERT',
+  SEARCH: 'SEARCH'
+});
+
 const NPC_ARCHETYPES = {
   villager: {
     speed: 36,
@@ -14,7 +21,11 @@ const NPC_ARCHETYPES = {
     maxHealth: 30,
     attackable: false,
     faction: 'village',
-    displayName: 'villager'
+    displayName: 'villager',
+    defaultState: NPC_STATE.PATROL,
+    patrolPauseRange: [2.2, 3.6],
+    investigateDuration: 2.4,
+    hearingRadius: 110
   },
   scout: {
     speed: 62,
@@ -31,7 +42,11 @@ const NPC_ARCHETYPES = {
     counterThreat: 25,
     faction: 'village',
     displayName: 'scout',
-    counterMessage: 'The scout whirls and cuts you down! Approach from behind while unseen.'
+    counterMessage: 'The scout whirls and cuts you down! Approach from behind while unseen.',
+    defaultState: NPC_STATE.PATROL,
+    patrolPauseRange: [1.4, 4.2],
+    investigateDuration: 3.6,
+    hearingRadius: 240
   },
   bogling: {
     speed: 44,
@@ -42,12 +57,17 @@ const NPC_ARCHETYPES = {
     backstabMultiplier: 1.8,
     rewardGold: 8,
     faction: 'monster',
-    displayName: 'bogling'
+    displayName: 'bogling',
+    defaultState: NPC_STATE.PATROL,
+    patrolPauseRange: [1.2, 2.2],
+    investigateDuration: 2,
+    hearingRadius: 100
   }
 };
 
 function makeNPC(type, x, y, waypoints=null){
   const config = NPC_ARCHETYPES[type] || NPC_ARCHETYPES.villager;
+  const defaultState = config.defaultState || NPC_STATE.PATROL;
   return {
     type,
     x,
@@ -61,9 +81,6 @@ function makeNPC(type, x, y, waypoints=null){
     baseFovRange: config.fovRange,
     waypoints: waypoints || [{ x, y }],
     wpIndex: 0,
-    dynamicTarget: null,
-    dynamicTargetExpire: 0,
-    searchCooldown: 0,
     activeTarget: null,
     dialogCooldown: 0,
     lastDialogueLine: null,
@@ -81,9 +98,29 @@ function makeNPC(type, x, y, waypoints=null){
     counterThreat: config.counterThreat ?? 0,
     counterMessage: config.counterMessage || null,
     faction: config.faction || 'village',
-    displayName: config.displayName || type
+    displayName: config.displayName || type,
+    behaviorState: defaultState,
+    stateSince: state.time,
+    pauseTimer: 0,
+    holdPosition: false,
+    investigationTimer: 0,
+    investigateTarget: null,
+    arrivedAtInvestigation: false,
+    searchRoute: null,
+    searchIndex: 0,
+    noiseResponseCooldown: 0,
+    assistanceCooldown: 0,
+    assignedNoiseId: null,
+    lastHeardNoiseAt: null,
+    lastKnownPlayer: { x, y, time: -Infinity },
+    sawPlayerAt: -Infinity,
+    patrolPauseRange: config.patrolPauseRange || [1.2, 2.8],
+    investigateDuration: config.investigateDuration || 2.8,
+    hearingRadius: config.hearingRadius || 120
   };
 }
+
+let nextNoiseId = 1;
 
 function offsetPoint(villageIndex, x, y){
   const v = VILLAGES[villageIndex];
@@ -179,6 +216,140 @@ function randomPointAround(anchor, radius){
   });
 }
 
+function buildSearchRoute(anchor, radius = 140, steps = 3){
+  const base = anchor || state.lastSeenAt || {
+    x: mainVillage.x + mainVillage.w / 2,
+    y: mainVillage.y + mainVillage.h / 2
+  };
+  const route = [{ x: base.x, y: base.y }];
+  for (let i = 0; i < steps; i++){
+    const swing = radius * (0.6 + Math.random() * 0.6);
+    route.push(randomPointAround(base, swing));
+  }
+  route.push({ x: base.x, y: base.y });
+  return route;
+}
+
+function setNPCState(npc, newState, options = {}){
+  const previous = npc.behaviorState;
+  const forced = !!options.force;
+  const changed = forced || previous !== newState;
+  if (!changed){
+    if (newState === NPC_STATE.SUSPICIOUS && options.target){
+      npc.investigateTarget = { x: options.target.x, y: options.target.y, noiseId: options.target.noiseId ?? null };
+      npc.assignedNoiseId = options.target.noiseId ?? npc.assignedNoiseId;
+      npc.investigationTimer = options.investigationTimer ?? npc.investigateDuration;
+      npc.arrivedAtInvestigation = false;
+    }
+    if (newState === NPC_STATE.SEARCH && options.route){
+      npc.searchRoute = options.route;
+      npc.searchIndex = 0;
+    }
+    return false;
+  }
+
+  npc.behaviorState = newState;
+  npc.stateSince = state.time;
+  npc.activeTarget = null;
+  npc.pauseTimer = 0;
+  npc.holdPosition = false;
+  npc.arrivedAtInvestigation = false;
+
+  if (newState === NPC_STATE.SUSPICIOUS){
+    npc.investigateTarget = options.target ? { x: options.target.x, y: options.target.y, noiseId: options.target.noiseId ?? null } : null;
+    npc.assignedNoiseId = options.target?.noiseId ?? null;
+    npc.investigationTimer = options.investigationTimer ?? npc.investigateDuration;
+  } else {
+    npc.investigateTarget = null;
+    npc.investigationTimer = 0;
+    npc.assignedNoiseId = null;
+  }
+
+  if (newState === NPC_STATE.SEARCH){
+    npc.searchRoute = options.route || null;
+    npc.searchIndex = 0;
+  } else {
+    npc.searchRoute = null;
+    npc.searchIndex = 0;
+  }
+
+  if (newState === NPC_STATE.ALERT){
+    npc.pauseTimer = 0;
+  }
+
+  if (npc.type === 'scout'){
+    const reason = options.reason ? ` (${options.reason})` : '';
+    console.debug(`[AI] ${npc.displayName || npc.type} -> ${newState}${reason} @${state.time.toFixed(2)}`);
+  }
+
+  return true;
+}
+
+function assignNoise(npc, event){
+  const changed = setNPCState(npc, NPC_STATE.SUSPICIOUS, {
+    target: { x: event.x, y: event.y, noiseId: event.id },
+    investigationTimer: event.investigateFor ?? npc.investigateDuration,
+    reason: `noise:${event.type || 'unknown'}`,
+    force: true
+  });
+  npc.noiseResponseCooldown = Math.max(npc.noiseResponseCooldown, event.cooldown ?? 5);
+  npc.lastHeardNoiseAt = { x: event.x, y: event.y, time: state.time };
+  return changed;
+}
+
+function broadcastAlarm(sourceNpc, anchor){
+  const now = state.time;
+  const focus = anchor || state.lastSeenAt || { x: sourceNpc.x, y: sourceNpc.y };
+  state.alarmLevel = Math.min((state.alarmLevel || 0) + 1, 3);
+  state.alarmUntil = now + 16;
+
+  for (const npc of state.npcs){
+    if (npc === sourceNpc) continue;
+    if (npc.type !== 'scout') continue;
+    if (npc.behaviorState === NPC_STATE.ALERT) continue;
+    const dist = Math.hypot(npc.x - focus.x, npc.y - focus.y);
+    if (dist > 520 && state.alarmLevel < 3) continue;
+    const route = buildSearchRoute(focus, 180, 4);
+    setNPCState(npc, NPC_STATE.SEARCH, { route, reason: 'alarm_broadcast', force: true });
+  }
+}
+
+function queueNoiseEvent(options){
+  const now = state.time;
+  const event = {
+    id: nextNoiseId++,
+    x: options.x,
+    y: options.y,
+    radius: options.radius ?? 180,
+    source: options.source || 'unknown',
+    type: options.type || 'noise',
+    createdAt: now,
+    expiresAt: now + (options.duration ?? 6),
+    investigateFor: options.investigateFor ?? 3,
+    maxResponders: options.maxResponders ?? 1,
+    cooldown: options.cooldown ?? 5,
+    assigned: []
+  };
+  state.noiseEvents.push(event);
+  if (options.debug !== false){
+    console.debug(`[AI] Noise '${event.type}' at (${event.x.toFixed(1)}, ${event.y.toFixed(1)}) r=${event.radius}`);
+  }
+  return event.id;
+}
+
+function notifyNPCPlayerSpotted(npc, location){
+  npc.sawPlayerAt = state.time;
+  npc.lastKnownPlayer = { x: location.x, y: location.y, time: state.time };
+  const changed = setNPCState(npc, NPC_STATE.ALERT, { reason: 'player_spotted' });
+  if (!npc.activeTarget) npc.activeTarget = { x: location.x, y: location.y };
+  npc.activeTarget.x = location.x;
+  npc.activeTarget.y = location.y;
+  if ((changed || npc.assistanceCooldown <= 0) && npc.type === 'scout'){
+    broadcastAlarm(npc, location);
+    npc.assistanceCooldown = 4.5;
+  }
+}
+
 function makeAggressivePatrol(entry){
   const focus = state.lastSeen ? state.lastSeenAt : state.player;
   const huntFactor = clamp(state.huntHeat || 0, 0, 1);
@@ -261,78 +432,133 @@ function clampTargetToWorld(target){
 }
 
 function updateNPCBehaviors(dt){
-  const threat = state.threat;
-  const threatFactor = clamp(threat / 200, 0, 1);
+  const now = state.time;
+  const threatFactor = clamp(state.threat / 200, 0, 1);
   const huntFactor = clamp(state.huntHeat || 0, 0, 1);
-  const seenRecently = state.lastSeen && (state.time - state.lastSeenTime < 0.1) || (state.time - state.lastSeenTime < 12);
+
+  if (state.alarmLevel > 0 && now >= state.alarmUntil){
+    state.alarmLevel = 0;
+  }
+
+  state.noiseEvents = state.noiseEvents.filter(ev => now <= ev.expiresAt);
+  const scouts = [];
+
   for (const npc of state.npcs){
-    if (npc.type !== 'scout'){
+    npc.pauseTimer = Math.max(0, npc.pauseTimer - dt);
+    if (npc.assistanceCooldown > 0) npc.assistanceCooldown = Math.max(0, npc.assistanceCooldown - dt);
+    if (npc.noiseResponseCooldown > 0) npc.noiseResponseCooldown = Math.max(0, npc.noiseResponseCooldown - dt);
+
+    if (npc.behaviorState === NPC_STATE.SUSPICIOUS && npc.arrivedAtInvestigation){
+      npc.investigationTimer = Math.max(0, npc.investigationTimer - dt);
+    }
+
+    if (npc.behaviorState === NPC_STATE.PATROL && npc.holdPosition && npc.pauseTimer <= 0){
+      npc.holdPosition = false;
+      npc.wpIndex = (npc.wpIndex + 1) % npc.waypoints.length;
+    }
+
+    if (npc.type === 'scout'){
+      scouts.push(npc);
+      const aggression = Math.max(threatFactor, huntFactor);
+      npc.speed = npc.baseSpeed * (1 + 0.45 * threatFactor + 0.25 * huntFactor);
+      npc.fovRange = npc.baseFovRange + 120 * threatFactor + 90 * huntFactor;
+      npc.fovAngle = npc.baseFovAngle * (1.05 + 0.15 * threatFactor + 0.12 * huntFactor);
+
+      if (npc.behaviorState === NPC_STATE.ALERT){
+        if (!npc.activeTarget) npc.activeTarget = { x: state.player.x, y: state.player.y };
+        npc.activeTarget.x = state.player.x;
+        npc.activeTarget.y = state.player.y;
+        npc.pauseTimer = 0;
+        if (now - npc.sawPlayerAt > 1.75){
+          const anchor = npc.lastKnownPlayer?.time ? npc.lastKnownPlayer : state.lastSeenAt;
+          const route = buildSearchRoute(anchor, 160, 4);
+          setNPCState(npc, NPC_STATE.SEARCH, { route, reason: 'lost_visual', force: true });
+        }
+      } else if (npc.behaviorState === NPC_STATE.SUSPICIOUS){
+        if (!npc.investigateTarget){
+          setNPCState(npc, NPC_STATE.PATROL, { reason: 'no_noise' });
+        } else if (npc.arrivedAtInvestigation && npc.investigationTimer <= 0){
+          const anchor = npc.investigateTarget || npc.lastKnownPlayer || state.lastSeenAt;
+          const route = buildSearchRoute(anchor, 120, 3);
+          setNPCState(npc, NPC_STATE.SEARCH, { route, reason: 'investigation_clear', force: true });
+        }
+      } else if (npc.behaviorState === NPC_STATE.SEARCH){
+        if (!npc.searchRoute){
+          npc.searchRoute = buildSearchRoute(npc.lastKnownPlayer || state.lastSeenAt, 160, 4);
+          npc.searchIndex = 0;
+        } else if (npc.searchIndex >= npc.searchRoute.length){
+          if (state.alarmLevel > 0){
+            npc.searchRoute = buildSearchRoute(state.lastSeenAt, 180, 4);
+            npc.searchIndex = 0;
+          } else if (npc.pauseTimer <= 0){
+            setNPCState(npc, NPC_STATE.PATROL, { reason: 'search_done' });
+          }
+        }
+      }
+
+      switch (npc.behaviorState){
+        case NPC_STATE.PATROL:
+          npc.activeTarget = npc.waypoints[npc.wpIndex];
+          break;
+        case NPC_STATE.SUSPICIOUS:
+          npc.activeTarget = (npc.arrivedAtInvestigation && npc.pauseTimer > 0)
+            ? { x: npc.x, y: npc.y }
+            : (npc.investigateTarget || npc.waypoints[npc.wpIndex]);
+          break;
+        case NPC_STATE.SEARCH:
+          if (npc.searchRoute && npc.searchIndex < npc.searchRoute.length){
+            npc.activeTarget = npc.searchRoute[npc.searchIndex];
+          } else {
+            npc.activeTarget = npc.waypoints[npc.wpIndex];
+          }
+          break;
+        case NPC_STATE.ALERT:
+          break;
+        default:
+          npc.activeTarget = npc.waypoints[npc.wpIndex];
+          break;
+      }
+    } else {
       npc.activeTarget = npc.waypoints[npc.wpIndex];
-      continue;
+    }
+  }
+
+  for (const event of state.noiseEvents){
+    const maxResponders = event.maxResponders ?? 1;
+    event.assigned = event.assigned?.filter(Boolean) || [];
+    if (event.assigned.length >= maxResponders) continue;
+
+    const candidates = [];
+    for (const npc of scouts){
+      if (event.assigned.includes(npc)) continue;
+      if (npc.behaviorState === NPC_STATE.ALERT) continue;
+      if (npc.noiseResponseCooldown > 0) continue;
+      const radius = event.radius ?? npc.hearingRadius;
+      const dist = Math.hypot(npc.x - event.x, npc.y - event.y);
+      if (dist > radius) continue;
+      if (segBlockedByAnyRect(npc.x, npc.y, event.x, event.y, state.houseSolids)) continue;
+      candidates.push({ npc, dist });
     }
 
-    const aggression = Math.max(threatFactor, huntFactor);
-    npc.speed = npc.baseSpeed * (1 + 0.45 * threatFactor + 0.25 * huntFactor);
-    npc.fovRange = npc.baseFovRange + 120 * threatFactor + 90 * huntFactor;
-    npc.fovAngle = npc.baseFovAngle * (1.05 + 0.15 * threatFactor + 0.12 * huntFactor);
+    candidates.sort((a, b) => a.dist - b.dist);
 
-    if (npc.dynamicTarget){
-      const dist = Math.hypot(npc.dynamicTarget.x - npc.x, npc.dynamicTarget.y - npc.y);
-      if (dist < 10 || state.time >= npc.dynamicTargetExpire){
-        npc.dynamicTarget = null;
-        npc.dynamicTargetExpire = 0;
-        npc.searchCooldown = Math.max(npc.searchCooldown, 1.4);
-      }
+    while (event.assigned.length < maxResponders && candidates.length){
+      const { npc } = candidates.shift();
+      assignNoise(npc, event);
+      event.assigned.push(npc);
     }
-
-    if (!npc.dynamicTarget){
-      npc.searchCooldown = Math.max(0, npc.searchCooldown - dt);
-      if (npc.searchCooldown <= 0){
-        let chosen = null;
-        let expire = 0;
-
-        if ((seenRecently && aggression > 0.2) || huntFactor > 0.55){
-          const radius = 80 + 240 * aggression;
-          chosen = randomPointAround(state.lastSeenAt, radius);
-          expire = state.time + 6 + 6 * aggression;
-        } else if (threatFactor > 0.45 || huntFactor > 0.35){
-          const anchor = threatFactor > 0.75 ? state.player : {
-            x: mainVillage.x + mainVillage.w / 2,
-            y: mainVillage.y + mainVillage.h / 2
-          };
-          const radius = 140 + 320 * (0.6 * threatFactor + 0.4 * huntFactor);
-          chosen = randomPointAround(anchor, radius);
-          expire = state.time + 5 + 4 * (0.6 * threatFactor + 0.4 * huntFactor);
-        } else if (state.timeSinceSeen > 20){
-          const roamAnchor = {
-            x: mainVillage.x + mainVillage.w / 2,
-            y: mainVillage.y + mainVillage.h / 2
-          };
-          const radius = 120 + 200 * (1 - huntFactor);
-          chosen = randomPointAround(roamAnchor, radius + Math.random() * 80);
-          expire = state.time + 4 + 2 * (1 - huntFactor);
-        }
-
-        if (chosen){
-          npc.dynamicTarget = chosen;
-          npc.dynamicTargetExpire = expire;
-          npc.searchCooldown = 2.5 + Math.random() * (2 - huntFactor);
-        } else {
-          npc.searchCooldown = 1.5 + Math.random() * (2.5 - huntFactor);
-        }
-      }
-    }
-
-    npc.activeTarget = npc.dynamicTarget || npc.waypoints[npc.wpIndex];
   }
 }
 
 export {
+  NPC_STATE,
   makeNPC,
   addVillageNPC,
   patchPatrolRoutes,
   setupInitialNPCs,
   npcSeesPlayer,
   spawnReinforcement,
-  updateNPCBehaviors
+  updateNPCBehaviors,
+  queueNoiseEvent,
+  notifyNPCPlayerSpotted
 };
