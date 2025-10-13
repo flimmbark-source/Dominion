@@ -330,6 +330,13 @@ function fillHouseInterior(h, color){
   ctx.fillRect(h.x + WALL, h.y + WALL, h.w - 2*WALL, h.h - 2*WALL);
 }
 
+const VILLAGE_MARGIN = 40;
+const VILLAGE_ROAD_BUFFER = 80;
+const DEFAULT_HOUSE_JITTER = {
+  north: { x: 70, y: 30, door: 0.18 },
+  south: { x: 70, y: 36, door: 0.18 }
+};
+
 const BASE_HOUSE_LAYOUT = [
   { x:120, y:120, w:140, h:90, side:'north', doorOffset:0.50 },
   { x:320, y:100, w:160, h:110, side:'north', doorOffset:0.30 },
@@ -339,11 +346,69 @@ const BASE_HOUSE_LAYOUT = [
   { x:620, y:330, w:170, h:120, side:'south', doorOffset:0.50 }
 ];
 
+function clampToVillageBounds(village, spec, position){
+  const { side } = spec;
+  const roadCenterY = village.y + village.h / 2;
+  const minX = village.x + VILLAGE_MARGIN;
+  const maxX = village.x + village.w - spec.w - VILLAGE_MARGIN;
+  let x = clamp(position.x, minX, maxX);
+
+  let minY, maxY;
+  if (side === 'north'){
+    minY = village.y + VILLAGE_MARGIN;
+    maxY = roadCenterY - VILLAGE_ROAD_BUFFER - spec.h;
+  } else {
+    minY = roadCenterY + VILLAGE_ROAD_BUFFER;
+    maxY = village.y + village.h - spec.h - VILLAGE_MARGIN;
+  }
+  if (maxY < minY){
+    const mid = (minY + maxY) / 2;
+    minY = maxY = mid;
+  }
+  let y = clamp(position.y, minY, maxY);
+
+  return { x, y };
+}
+
+function placeVillageHouse(village, spec){
+  const jitter = spec.jitter || DEFAULT_HOUSE_JITTER[spec.side] || { x: 0, y: 0, door: 0 };
+  const jittered = {
+    x: village.x + spec.x + (jitter.x ? randRange(-jitter.x, jitter.x) : 0),
+    y: village.y + spec.y + (jitter.y ? randRange(-jitter.y, jitter.y) : 0)
+  };
+  const { x, y } = clampToVillageBounds(village, spec, jittered);
+  const doorOffset = clamp(
+    spec.doorOffset + (jitter.door ? randRange(-jitter.door, jitter.door) : 0),
+    0.1,
+    0.9
+  );
+  return { x, y, doorOffset };
+}
+
 function initHouses(){
   state.houses = []; state.doors = []; state.houseSolids = []; state.chests = []; state.stairs = [];
   VILLAGES.forEach((village, vIndex) => {
+    const housesBySide = { north: [], south: [] };
     for (const spec of BASE_HOUSE_LAYOUT){
-      addHouseWithDoor(village.x + spec.x, village.y + spec.y, spec.w, spec.h, spec.side, spec.doorOffset, 22, vIndex);
+      const placement = placeVillageHouse(village, spec);
+      housesBySide[spec.side].push({ spec, placement });
+    }
+
+    for (const side of ['north', 'south']){
+      housesBySide[side]
+        .sort((a, b) => a.placement.x - b.placement.x)
+        .forEach(({ spec, placement }) => {
+          addHouseWithDoor(
+            placement.x,
+            placement.y,
+            spec.w,
+            spec.h,
+            spec.side,
+            placement.doorOffset,
+            22,
+            vIndex
+          );
+        });
     }
   });
 
