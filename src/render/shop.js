@@ -94,7 +94,7 @@ function drawShop(){
     const bodyWidth = Math.max(80, rect.w - (bodyX - rect.x) - 14);
     const iconSize = 34;
     const iconCenterX = rect.x + 32;
-    const iconCenterY = rect.y + 56;
+    const iconCenterY = rect.y + 32;
 
     ctx.fillStyle = '#f6e9c8';
     ctx.font = '18px ui-sans-serif';
