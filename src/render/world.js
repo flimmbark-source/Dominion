@@ -140,13 +140,13 @@ function drawPlayerGoblin(p, invisible){
     }
   };
 
+
   const alpha = invisible ? 0.55 : 1;
   ctx.globalAlpha = alpha;
 
   const hipForward = forwardLean * 0.28;
   const torsoForward = forwardLean;
   const shoulderForward = forwardLean * 0.82;
-
   const legs = [
     { offset: -4 + hipSway, swing: strideA, color: '#204b2a' },
     { offset: 4 + hipSway, swing: strideB, color: '#2f7a3c' }
@@ -171,6 +171,7 @@ function drawPlayerGoblin(p, invisible){
   const eyeColor = invisible ? 'rgba(43,102,61,0.55)' : '#2b663d';
   drawFilledEllipse(torsoSideSway + 3.4, -7.1, torsoForward * 0.95, 2.6, 2.6, eyeColor);
   drawFilledEllipse(torsoSideSway - 3.4, -7.1, torsoForward * 0.88, 2.2, 2.2, eyeColor);
+
 
   ctx.globalAlpha = 1;
 
