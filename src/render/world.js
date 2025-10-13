@@ -76,14 +76,109 @@ function drawWorldScene(){
   }
 
   const invisible = state.time < p.invisUntil;
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, p.r, 0, TAU);
-  ctx.fillStyle = invisible ? 'rgba(120,220,180,0.35)' : '#5cc16d';
-  ctx.fill();
+  drawPlayerGoblin(p, invisible);
 
   drawTorchlight();
 
   ctx.restore();
+}
+
+function drawPlayerGoblin(p, invisible){
+  const moveSpeed = Math.hypot(p.vx, p.vy);
+  const moveIntensity = Math.min(moveSpeed / 130, 1);
+  const sprintBonus = p.sprinting ? 1.25 : 1;
+  const cycle = state.time * (3.6 + moveIntensity * 6.2 * sprintBonus);
+  const strideA = Math.sin(cycle) * moveIntensity;
+  const strideB = Math.sin(cycle + Math.PI) * moveIntensity;
+  const bob = Math.sin(cycle * 2) * (1.6 + moveIntensity * 1.8) * moveIntensity;
+  const lean = Math.max(-0.35, Math.min(0.4, Math.cos(cycle) * 0.18 * moveIntensity + (p.sprinting ? 0.12 : 0)));
+  const bodyColor = invisible ? 'rgba(92,193,109,0.45)' : '#5cc16d';
+  const bodyShade = invisible ? 'rgba(52,131,74,0.45)' : '#3a8247';
+
+  ctx.save();
+
+  // Ground shadow stays anchored to the world to sell the motion.
+  ctx.save();
+  ctx.translate(p.x, p.y + 10);
+  ctx.scale(1, 0.36);
+  ctx.fillStyle = `rgba(0, 0, 0, ${0.24 + moveIntensity * 0.18})`;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 12 + moveIntensity * 6, 8 + moveIntensity * 4, 0, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.translate(p.x, p.y + bob);
+  ctx.rotate(p.facing + lean);
+
+  const alpha = invisible ? 0.55 : 1;
+  ctx.globalAlpha = alpha;
+
+  const legStartY = 6;
+  const legs = [
+    { offset: -4, swing: strideA, color: '#204b2a' },
+    { offset: 4, swing: strideB, color: '#2f7a3c' }
+  ];
+  legs.sort((a, b) => a.swing - b.swing);
+  for (const leg of legs){
+    drawGoblinLimb(leg.offset, legStartY, 16, leg.swing, 4, leg.color, 0.85);
+  }
+
+  const arms = [
+    { offset: -6, swing: strideB, color: '#173625' },
+    { offset: 6, swing: strideA, color: '#275739' }
+  ];
+  arms.sort((a, b) => a.swing - b.swing);
+  for (const arm of arms){
+    drawGoblinLimb(arm.offset, -2, 12, arm.swing * 0.9, 3, arm.color, 0.65);
+  }
+
+  ctx.fillStyle = bodyColor;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 9, 12, 0, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = bodyShade;
+  ctx.beginPath();
+  ctx.ellipse(0, -6, 8, 6.6, 0, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = invisible ? 'rgba(43,102,61,0.55)' : '#2b663d';
+  ctx.beginPath();
+  ctx.ellipse(3.4, -7, 2.6, 2.6, 0, 0, TAU);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.ellipse(-3.4, -7, 2.2, 2.2, 0, 0, TAU);
+  ctx.fill();
+
+  ctx.globalAlpha = 1;
+
+  if (invisible){
+    ctx.strokeStyle = 'rgba(120, 220, 180, 0.7)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 6]);
+    ctx.beginPath();
+    ctx.ellipse(0, -2, 14, 18, 0, 0, TAU);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  ctx.restore();
+}
+
+function drawGoblinLimb(offsetX, startY, length, swing, thickness, color, follow){
+  const swingAmount = swing * (length * 0.55 + 6 * follow);
+  const controlX = offsetX + swingAmount * 0.45;
+  const endX = offsetX + swingAmount;
+  const controlY = startY + length * 0.45;
+  const endY = startY + length;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = thickness;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(offsetX, startY);
+  ctx.quadraticCurveTo(controlX, controlY, endX, endY);
+  ctx.stroke();
 }
 
 function drawCastle(){
