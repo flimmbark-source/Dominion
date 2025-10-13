@@ -15,6 +15,13 @@ import { TAU, randRange } from '../utils/math.js';
 import { state } from '../state/gameState.js';
 import { getTavernDoorRect } from '../state/tavern.js';
 import { ctx, W, H } from '../game/canvas.js';
+import {
+  prepareVillageInstances,
+  forEachVillageInstance,
+  getVillageInstance,
+  getConnector,
+  OPPOSITE_DIRECTION
+} from './villageTemplates.js';
 
 const roads = [];
 let forestSolids = [];
@@ -44,6 +51,20 @@ const ZONE_STYLES = {
     border: 'rgba(126, 182, 140, 0.18)',
     dash: [18, 14],
     tileSize: 176
+  },
+  safeZone: {
+    base: '#112118',
+    overlay: ['rgba(82, 160, 120, 0.24)', 'rgba(10, 24, 16, 0.46)'],
+    border: 'rgba(160, 220, 180, 0.35)',
+    dash: [6, 10],
+    tileSize: 120
+  },
+  tensionZone: {
+    base: '#231214',
+    overlay: ['rgba(210, 82, 64, 0.22)', 'rgba(40, 12, 10, 0.5)'],
+    border: 'rgba(220, 126, 106, 0.42)',
+    dash: [10, 8],
+    tileSize: 120
   }
 };
 
@@ -278,11 +299,50 @@ function generateWorld(){
   terrainZones.length = 0;
   terrainProps.length = 0;
 
-  for (const village of VILLAGES){
-    addRoad(village.x + 160, village.y + village.h/2 - 20, village.w - 320, 40);
-  }
+  prepareVillageInstances();
 
-  const centers = VILLAGES.map(centerOf);
+  const instances = VILLAGES.map((_, idx) => getVillageInstance(idx));
+  const usedConnectors = new Set();
+
+  forEachVillageInstance(instance => {
+    for (const road of instance.roads){
+      for (const rect of road.rects){
+        addRoad(rect.x, rect.y, rect.w, rect.h);
+      }
+    }
+
+    for (const zone of instance.safeZones){
+      if (!zone.rect) continue;
+      terrainZones.push({
+        type: 'safeZone',
+        x: zone.rect.x,
+        y: zone.rect.y,
+        w: zone.rect.w,
+        h: zone.rect.h,
+        clearTrees: true,
+        treeBuffer: 36,
+        zoneId: zone.id,
+        templateId: instance.template.id
+      });
+    }
+
+    for (const zone of instance.tensionZones){
+      if (!zone.rect) continue;
+      terrainZones.push({
+        type: 'tensionZone',
+        x: zone.rect.x,
+        y: zone.rect.y,
+        w: zone.rect.w,
+        h: zone.rect.h,
+        clearTrees: true,
+        treeBuffer: 28,
+        zoneId: zone.id,
+        templateId: instance.template.id
+      });
+    }
+  });
+
+  const centers = instances.map(({ village }) => centerOf(village));
   const nearest = centers.map(() => new Set());
 
   for (let i = 0; i < centers.length; i++){
@@ -303,32 +363,59 @@ function generateWorld(){
   }
 
   function connectVillages(i, j){
-    const a = centers[i];
-    const b = centers[j];
-    const dir = { x: b.x - a.x, y: b.y - a.y };
+    const instA = instances[i];
+    const instB = instances[j];
+    const centerA = centers[i];
+    const centerB = centers[j];
+    const dir = { x: centerB.x - centerA.x, y: centerB.y - centerA.y };
     const dist = Math.hypot(dir.x, dir.y);
     if (dist < 1){
-      pushPathSegment(a, b, PATH_WIDTH_MAIN);
+      pushPathSegment(centerA, centerB, PATH_WIDTH_MAIN);
       return;
     }
 
-    const nx = -dir.y / dist;
-    const ny = dir.x / dist;
-    const bend = ((i + j) % 2 === 0) ? 1 : -1;
-    const firstOffset = Math.min(220, dist * 0.25);
-    const secondOffset = Math.min(180, dist * 0.25);
-    const first = {
-      x: a.x + dir.x * 0.33 + nx * firstOffset * bend,
-      y: a.y + dir.y * 0.33 + ny * firstOffset * bend
-    };
-    const second = {
-      x: a.x + dir.x * 0.66 - nx * secondOffset * bend,
-      y: a.y + dir.y * 0.66 - ny * secondOffset * bend
-    };
+    const dominant = Math.abs(dir.x) >= Math.abs(dir.y) ? 'x' : 'y';
+    const sideA = dominant === 'x' ? (dir.x >= 0 ? 'east' : 'west') : (dir.y >= 0 ? 'south' : 'north');
+    const sideB = OPPOSITE_DIRECTION[sideA];
 
-    const segments = [a, first, second, b];
-    for (let s = 0; s < segments.length - 1; s++){
-      pushPathSegment(segments[s], segments[s + 1], PATH_WIDTH_MAIN);
+    const connectorA = getConnector(instA, sideA, { tags: ['primary'] }) || getConnector(instA, sideA);
+    const connectorB = getConnector(instB, sideB, { tags: ['primary'] }) || getConnector(instB, sideB);
+
+    if (connectorA) usedConnectors.add(connectorA);
+    if (connectorB) usedConnectors.add(connectorB);
+
+    const start = connectorA?.position || centerA;
+    const end = connectorB?.position || centerB;
+    const width = Math.round(((connectorA?.pathWidth ?? PATH_WIDTH_MAIN) + (connectorB?.pathWidth ?? PATH_WIDTH_MAIN)) / 2);
+
+    const points = [start];
+    if (connectorA?.approach?.length) points.push(...connectorA.approach);
+    if (connectorA?.outside) points.push(connectorA.outside);
+
+    const baseDir = { x: end.x - start.x, y: end.y - start.y };
+    const baseDist = Math.hypot(baseDir.x, baseDir.y);
+    if (baseDist >= 1){
+      const nx = -baseDir.y / baseDist;
+      const ny = baseDir.x / baseDist;
+      const bend = ((i + j) % 2 === 0) ? 1 : -1;
+      const firstOffset = Math.min(220, baseDist * 0.25);
+      const secondOffset = Math.min(180, baseDist * 0.25);
+      points.push({
+        x: start.x + baseDir.x * 0.33 + nx * firstOffset * bend,
+        y: start.y + baseDir.y * 0.33 + ny * firstOffset * bend
+      });
+      points.push({
+        x: start.x + baseDir.x * 0.66 - nx * secondOffset * bend,
+        y: start.y + baseDir.y * 0.66 - ny * secondOffset * bend
+      });
+    }
+
+    if (connectorB?.outside) points.push(connectorB.outside);
+    if (connectorB?.approach?.length) points.push(...connectorB.approach.slice().reverse());
+    points.push(end);
+
+    for (let s = 0; s < points.length - 1; s++){
+      pushPathSegment(points[s], points[s + 1], width);
     }
   }
 
@@ -339,6 +426,17 @@ function generateWorld(){
       }
     }
   }
+
+  forEachVillageInstance(instance => {
+    for (const dir of ['north', 'south', 'east', 'west']){
+      for (const connector of instance.connectors[dir] || []){
+        if (!connector.position || !connector.outside) continue;
+        if (usedConnectors.has(connector)) continue;
+        const width = connector.pathWidth ?? PATH_WIDTH_MAIN;
+        pushPathSegment(connector.position, connector.outside, width);
+      }
+    }
+  });
 
   const corridor = PATH_CLEAR_RADIUS;
   let y = 0;
