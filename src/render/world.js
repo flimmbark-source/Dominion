@@ -109,25 +109,51 @@ function drawPlayerGoblin(p, invisible){
   ctx.fill();
   ctx.restore();
 
-  const legStartY = 6;
-  const legLength = 16;
-  const footAnchor = legStartY + legLength;
+  const forwardDir = { x: Math.cos(p.facing), y: Math.sin(p.facing) };
+  const sideDir = { x: -forwardDir.y, y: forwardDir.x };
 
-  ctx.translate(p.x, p.y + bob);
-  ctx.translate(0, footAnchor);
-  ctx.rotate(p.facing + lean);
-  ctx.translate(0, -footAnchor);
+  const projectPoint = (lateral, vertical, forward = 0, bobWeight = 1) => ({
+    x: p.x + lateral * sideDir.x + forward * forwardDir.x,
+    y: p.y + vertical + lateral * sideDir.y + forward * forwardDir.y + bob * bobWeight
+  });
+
+  const drawFilledEllipse = (lateral, vertical, forward, rx, ry, color, bobWeight = 1) => {
+    const center = projectPoint(lateral, vertical, forward, bobWeight);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(center.x, center.y, rx, ry, 0, 0, TAU);
+    ctx.fill();
+  };
+
+  const drawStrokedEllipse = (lateral, vertical, forward, rx, ry, style, bobWeight = 1) => {
+    const center = projectPoint(lateral, vertical, forward, bobWeight);
+    ctx.strokeStyle = style.color;
+    ctx.lineWidth = style.lineWidth;
+    if (style.dash){
+      ctx.setLineDash(style.dash);
+    }
+    ctx.beginPath();
+    ctx.ellipse(center.x, center.y, rx, ry, 0, 0, TAU);
+    ctx.stroke();
+    if (style.dash){
+      ctx.setLineDash([]);
+    }
+  };
+
 
   const alpha = invisible ? 0.55 : 1;
   ctx.globalAlpha = alpha;
 
+  const hipForward = forwardLean * 0.28;
+  const torsoForward = forwardLean;
+  const shoulderForward = forwardLean * 0.82;
   const legs = [
     { offset: -4 + hipSway, swing: strideA, color: '#204b2a' },
     { offset: 4 + hipSway, swing: strideB, color: '#2f7a3c' }
   ];
   legs.sort((a, b) => a.swing - b.swing);
   for (const leg of legs){
-    drawGoblinLimb(leg.offset, legStartY, legLength, leg.swing, 4, leg.color, 0.85);
+    drawGoblinLimb(projectPoint, leg.offset, 6, 16, leg.swing, 4, leg.color, 0.85, hipForward, undefined, true);
   }
 
   const arms = [
@@ -143,8 +169,9 @@ function drawPlayerGoblin(p, invisible){
   drawFilledEllipse(torsoSideSway * 0.82, -6.2, torsoForward * 0.9, 8, 6.6, bodyShade);
 
   const eyeColor = invisible ? 'rgba(43,102,61,0.55)' : '#2b663d';
-  drawFilledEllipse(torsoSideSway + 3.4, -7.2, torsoForward * 0.95, 2.6, 2.6, eyeColor);
-  drawFilledEllipse(torsoSideSway - 3.4, -7.2, torsoForward * 0.88, 2.2, 2.2, eyeColor);
+  drawFilledEllipse(torsoSideSway + 3.4, -7.1, torsoForward * 0.95, 2.6, 2.6, eyeColor);
+  drawFilledEllipse(torsoSideSway - 3.4, -7.1, torsoForward * 0.88, 2.2, 2.2, eyeColor);
+
 
   ctx.globalAlpha = 1;
 
