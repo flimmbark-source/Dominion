@@ -1,8 +1,11 @@
 import { VILLAGES, WALL, WORLD } from '../data/world.js';
 import { TAVERN_INTERIOR } from './tavern.js';
+import { createPlayerStats } from './playerStats.js';
 import { W, H } from '../game/canvas.js';
 
 const mainVillage = VILLAGES[0];
+
+const playerStats = createPlayerStats();
 
 const state = {
   time: 0,
@@ -14,10 +17,10 @@ const state = {
   player: {
     x: mainVillage.x + 180, y: mainVillage.y + 460, r: 10, facing: 0,
     vx: 0, vy: 0, sprinting: false,
-    gold: 0, health: 100,
+    gold: 0, health: playerStats.base.maxHealth,
     detection: 0,
     invisUntil: 0,
-    stats: { speed: 120, attack: 10, stealthMult: 1.0, hasBoots:false, hasCloak:false, hasDagger:false },
+    stats: playerStats,
     inventory: Array(6).fill(null)
   },
   houses: [],

@@ -4,6 +4,7 @@ import { WORLD } from './data/world.js';
 import { setupInput, keys } from './input.js';
 import { canvas, ctx, W, H } from './game/canvas.js';
 import { state } from './state/gameState.js';
+import { getPlayerStats } from './state/playerStats.js';
 import { TAVERN_INTERIOR } from './state/tavern.js';
 import { initHouses, isInsideHouseInterior, getActiveSolids } from './world/houses.js';
 import { generateWorld } from './world/terrain.js';
@@ -64,13 +65,14 @@ function update(dt){
   const inTavernInterior = state.tavernInteriorState.active;
 
   const p = state.player;
+  const playerStats = getPlayerStats(p, state.time);
   let ix = 0, iy = 0;
   if (keys.has('w')) iy -= 1;
   if (keys.has('s')) iy += 1;
   if (keys.has('a')) ix -= 1;
   if (keys.has('d')) ix += 1;
   const m = Math.hypot(ix,iy) || 1;
-  const wantSpeed = p.stats.speed * (keys.has('shift') ? 1.7 : 1.0);
+  const wantSpeed = playerStats.movementSpeed * (keys.has('shift') ? 1.7 : 1.0);
   p.sprinting = keys.has('shift') && (ix||iy);
   p.vx = (ix/m) * wantSpeed;
   p.vy = (iy/m) * wantSpeed;
@@ -191,7 +193,7 @@ function update(dt){
   }
 
   if (state.time < p.invisUntil) inc = 0;
-  inc *= p.stats.stealthMult;
+  inc *= playerStats.stealthFactor;
   if (inc > 0) p.detection = clamp(p.detection + inc*dt, 0, 100);
   else p.detection = clamp(p.detection - 10*dt, 0, 100);
 
