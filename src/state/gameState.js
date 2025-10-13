@@ -24,7 +24,15 @@ const state = {
   doors: [],
   houseSolids: [],
   chests: [],
-  tavern: { x: 5120, y: 4760, w: 220, h: 200, stump:{ cx:5230, cy:4860, radius:46 } },
+  tavern: {
+    x: 5120,
+    y: 4760,
+    w: 220,
+    h: 200,
+    clearRadius: 56,
+    glowRadius: 56,
+    stump: { cx: 5230, cy: 4860, radius: 46 }
+  },
   tavernInteriorState: { active: false, returnPoint: null },
   tavernReentryBlockUntil: 0,
   npcs: [],
