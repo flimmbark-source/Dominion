@@ -226,19 +226,25 @@ function gatherForestSolidsAround(x, y, radius=280){
   return results;
 }
 
-function drawTerrain(){
+function drawTerrain(options = {}){
+  const { includeTrees = true, treeFilter = null } = options;
   const view = { x: state.camera.x - 120, y: state.camera.y - 120, w: W + 240, h: H + 240 };
 
-  for (const tree of forestSolids){
-    const bounds = {
-      x: tree.cx - tree.canopyRadius - 14,
-      y: tree.cy - tree.canopyRadius - 14,
-      w: tree.canopyRadius * 2 + 28,
-      h: tree.canopyRadius * 2 + 28
-    };
-    if (!rectsOverlap(bounds, view)) continue;
-    drawTree(tree);
+  if (includeTrees){
+    for (const tree of forestSolids){
+      const bounds = {
+        x: tree.cx - tree.canopyRadius - 14,
+        y: tree.cy - tree.canopyRadius - 14,
+        w: tree.canopyRadius * 2 + 28,
+        h: tree.canopyRadius * 2 + 28
+      };
+      if (!rectsOverlap(bounds, view)) continue;
+      if (treeFilter && !treeFilter(tree)) continue;
+      drawTree(tree);
+    }
   }
+
+  if (treeFilter) return;
 
   ctx.strokeStyle = '#3a2a1c';
   ctx.lineCap = 'round';

@@ -2,6 +2,7 @@ import { ctx, W, H } from '../game/canvas.js';
 import { state } from '../state/gameState.js';
 import { TAVERN_INTERIOR } from '../state/tavern.js';
 import { TAU } from '../utils/math.js';
+import { drawGoblin } from './goblin.js';
 
 function drawTavernInteriorScene(){
   const p = state.player;
@@ -164,10 +165,7 @@ function drawTavernInteriorScene(){
   ctx.fill();
 
   const invisible = state.time < p.invisUntil;
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, p.r, 0, TAU);
-  ctx.fillStyle = invisible ? 'rgba(120,220,180,0.35)' : '#5cc16d';
-  ctx.fill();
+  drawGoblin(ctx, p, { time: state.time, invisible });
 
   const distToBarkeep = Math.hypot(p.x - barkeep.x, p.y - barkeep.y);
   if (distToBarkeep <= barkeep.interactRadius && !state.pausedForShop){
