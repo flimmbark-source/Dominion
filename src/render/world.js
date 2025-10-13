@@ -88,229 +88,77 @@ function drawPlayerGoblin(p, invisible){
   const moveIntensity = Math.min(moveSpeed / 130, 1);
   const sprintBonus = p.sprinting ? 1.25 : 1;
   const cycle = state.time * (3.6 + moveIntensity * 6.2 * sprintBonus);
-
-  function gait(phase){
-    const stride = Math.sin(phase) * moveIntensity;
-    const lift = Math.max(0, Math.sin(phase + Math.PI / 2)) * moveIntensity;
-    return { stride, lift };
-  }
-
+  const strideA = Math.sin(cycle) * moveIntensity;
+  const strideB = Math.sin(cycle + Math.PI) * moveIntensity;
   const bob = Math.sin(cycle * 2) * (1.6 + moveIntensity * 1.8) * moveIntensity;
   const lean = Math.max(-0.35, Math.min(0.4, Math.cos(cycle) * 0.18 * moveIntensity + (p.sprinting ? 0.12 : 0)));
   const bodyColor = invisible ? 'rgba(92,193,109,0.45)' : '#5cc16d';
   const bodyShade = invisible ? 'rgba(52,131,74,0.45)' : '#3a8247';
 
-  const dirX = Math.cos(p.facing || 0);
-  const dirY = Math.sin(p.facing || 0);
-  const rightX = -dirY;
-  const rightY = dirX;
-  const isoScaleY = 0.62;
-  const isoScaleX = 1;
-
-  function projectPoint(localRight, localUp, localForward){
-    const groundX = (rightX * localRight + dirX * localForward) * isoScaleX;
-    const groundY = (rightY * localRight + dirY * localForward) * isoScaleY;
-    return {
-      x: p.x + groundX,
-      y: p.y + groundY - localUp
-    };
-  }
-
   ctx.save();
 
-  // Draw the ground shadow anchored to the player's feet.
+  // Ground shadow stays anchored to the world to sell the motion.
   ctx.save();
-  ctx.translate(p.x, p.y + 8);
-  const shadowWidth = 12 + moveIntensity * 6;
-  const shadowHeight = 7 + moveIntensity * 3.5;
-  const shadowSkew = 1 + Math.abs(dirX) * 0.25;
-  ctx.scale(shadowSkew, 0.34);
+  ctx.translate(p.x, p.y + 10);
+  ctx.scale(1, 0.36);
   ctx.fillStyle = `rgba(0, 0, 0, ${0.24 + moveIntensity * 0.18})`;
   ctx.beginPath();
-  ctx.ellipse(0, 0, shadowWidth, shadowHeight, 0, 0, TAU);
+  ctx.ellipse(0, 0, 12 + moveIntensity * 6, 8 + moveIntensity * 4, 0, 0, TAU);
   ctx.fill();
   ctx.restore();
+
+  ctx.translate(p.x, p.y + bob);
+  ctx.rotate(p.facing + lean);
 
   const alpha = invisible ? 0.55 : 1;
   ctx.globalAlpha = alpha;
 
-  const sideDot = dirX;
-  const forwardDot = dirY;
-
-  const hipHeight = 12 + bob * 0.7;
-  const hipForward = -1.8 + forwardDot * 2.2 - lean * 5.4;
-  const hipSpacing = 4.6 + sideDot * 0.8;
-
-  const shoulderHeight = hipHeight + 7 + moveIntensity * 1.1;
-  const shoulderForward = hipForward - 1.6;
-  const shoulderSpacing = 6.8 + sideDot * 0.6;
-
-  const headHeight = shoulderHeight + 6.4 + moveIntensity * 0.4;
-  const headForward = shoulderForward - 1.2 - lean * 6;
-
-  const limbs = [];
-
-  function enqueueLimb({
-    baseRight,
-    baseUp,
-    baseForward,
-    stride,
-    lift,
-    length,
-    swingRight,
-    swingForward,
-    liftControl,
-    liftFoot,
-    thickness,
-    color,
-    depthBias
-  }){
-    const start = projectPoint(baseRight, baseUp, baseForward);
-    const control = projectPoint(
-      baseRight + stride * swingRight * 0.52,
-      baseUp - length * 0.45 + lift * liftControl,
-      baseForward + stride * swingForward * 0.52
-    );
-    const end = projectPoint(
-      baseRight + stride * swingRight,
-      Math.max(0, lift * liftFoot),
-      baseForward + stride * swingForward
-    );
-
-    limbs.push({ start, control, end, thickness, color, depth: end.y + depthBias });
+  const legStartY = 6;
+  const legs = [
+    { offset: -4, swing: strideA, color: '#204b2a' },
+    { offset: 4, swing: strideB, color: '#2f7a3c' }
+  ];
+  legs.sort((a, b) => a.swing - b.swing);
+  for (const leg of legs){
+    drawGoblinLimb(leg.offset, legStartY, 16, leg.swing, 4, leg.color, 0.85);
   }
 
-  const legPhaseLeft = gait(cycle);
-  const legPhaseRight = gait(cycle + Math.PI);
-
-  enqueueLimb({
-    baseRight: -hipSpacing + sideDot * -0.6,
-    baseUp: hipHeight,
-    baseForward: hipForward,
-    stride: legPhaseLeft.stride,
-    lift: legPhaseLeft.lift,
-    length: 18,
-    swingRight: 3.4,
-    swingForward: 5.8,
-    liftControl: 6.4,
-    liftFoot: 3.6,
-    thickness: 4.2,
-    color: '#204b2a',
-    depthBias: -forwardDot * 6 - sideDot * 2
-  });
-
-  enqueueLimb({
-    baseRight: hipSpacing + sideDot * 0.6,
-    baseUp: hipHeight,
-    baseForward: hipForward,
-    stride: legPhaseRight.stride,
-    lift: legPhaseRight.lift,
-    length: 18,
-    swingRight: 3.4,
-    swingForward: 5.8,
-    liftControl: 6.4,
-    liftFoot: 3.6,
-    thickness: 4.2,
-    color: '#2f7a3c',
-    depthBias: forwardDot * 6 + sideDot * 2
-  });
-
-  const armPhaseLeft = gait(cycle + Math.PI);
-  const armPhaseRight = gait(cycle);
-
-  enqueueLimb({
-    baseRight: -shoulderSpacing + sideDot * -0.8,
-    baseUp: shoulderHeight,
-    baseForward: shoulderForward,
-    stride: armPhaseLeft.stride * 0.9,
-    lift: armPhaseLeft.lift * 0.6,
-    length: 14,
-    swingRight: 2.1,
-    swingForward: 3.8,
-    liftControl: 3.8,
-    liftFoot: 2.6,
-    thickness: 3.2,
-    color: '#173625',
-    depthBias: -forwardDot * 8 - 12
-  });
-
-  enqueueLimb({
-    baseRight: shoulderSpacing + sideDot * 0.8,
-    baseUp: shoulderHeight,
-    baseForward: shoulderForward,
-    stride: armPhaseRight.stride * 0.9,
-    lift: armPhaseRight.lift * 0.6,
-    length: 14,
-    swingRight: 2.1,
-    swingForward: 3.8,
-    liftControl: 3.8,
-    liftFoot: 2.6,
-    thickness: 3.2,
-    color: '#275739',
-    depthBias: forwardDot * 8 + 12
-  });
-
-  limbs.sort((a, b) => a.depth - b.depth);
-
-  for (const limb of limbs){
-    ctx.strokeStyle = limb.color;
-    ctx.lineWidth = limb.thickness;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(limb.start.x, limb.start.y);
-    ctx.quadraticCurveTo(limb.control.x, limb.control.y, limb.end.x, limb.end.y);
-    ctx.stroke();
+  const arms = [
+    { offset: -6, swing: strideB, color: '#173625' },
+    { offset: 6, swing: strideA, color: '#275739' }
+  ];
+  arms.sort((a, b) => a.swing - b.swing);
+  for (const arm of arms){
+    drawGoblinLimb(arm.offset, -2, 12, arm.swing * 0.9, 3, arm.color, 0.65);
   }
-
-  const torsoCenter = projectPoint(sideDot * 1.1, hipHeight + 4.6 + bob * 0.4, hipForward - 2.6 + lean * -8);
-  const torsoWidth = 9.4 + Math.abs(sideDot) * 2 + moveIntensity * 0.8;
-  const torsoHeight = 12 + moveIntensity * 0.5;
 
   ctx.fillStyle = bodyColor;
   ctx.beginPath();
-  ctx.ellipse(torsoCenter.x, torsoCenter.y, torsoWidth, torsoHeight, 0, 0, TAU);
+  ctx.ellipse(0, 0, 9, 12, 0, 0, TAU);
   ctx.fill();
 
-  const bellyShade = projectPoint(sideDot * 2.6 + 1.2, hipHeight + 2.2 + bob * 0.3, hipForward - 0.6);
   ctx.fillStyle = bodyShade;
   ctx.beginPath();
-  ctx.ellipse(bellyShade.x, bellyShade.y, 3.6 + moveIntensity * 0.5, 6.4, 0, 0, TAU);
-  ctx.fill();
-
-  const shoulderShade = projectPoint(-sideDot * 2.4 + 0.4, shoulderHeight - 1.2, shoulderForward - 0.4);
-  ctx.beginPath();
-  ctx.ellipse(shoulderShade.x, shoulderShade.y, 5.6, 4.4, 0, 0, TAU);
-  ctx.fill();
-
-  const headCenter = projectPoint(sideDot * 1.4, headHeight, headForward);
-  ctx.fillStyle = invisible ? 'rgba(92,193,109,0.4)' : '#6bd377';
-  ctx.beginPath();
-  ctx.ellipse(headCenter.x, headCenter.y, 6.2 + Math.abs(sideDot) * 0.8, 7.6, 0, 0, TAU);
+  ctx.ellipse(0, -6, 8, 6.6, 0, 0, TAU);
   ctx.fill();
 
   ctx.fillStyle = invisible ? 'rgba(43,102,61,0.55)' : '#2b663d';
-  const eyeOffset = 2.6 + sideDot * 0.6;
-  const eyeForward = headForward + 0.6;
-  const rightEye = projectPoint(eyeOffset, headHeight - 2.6, eyeForward);
-  const leftEye = projectPoint(-eyeOffset * 0.9, headHeight - 2.4, eyeForward - 0.4);
-
   ctx.beginPath();
-  ctx.ellipse(rightEye.x, rightEye.y, 2.4, 2.6, 0, 0, TAU);
+  ctx.ellipse(3.4, -7, 2.6, 2.6, 0, 0, TAU);
   ctx.fill();
 
   ctx.beginPath();
-  ctx.ellipse(leftEye.x, leftEye.y, 2, 2.2, 0, 0, TAU);
+  ctx.ellipse(-3.4, -7, 2.2, 2.2, 0, 0, TAU);
   ctx.fill();
 
   ctx.globalAlpha = 1;
 
   if (invisible){
-    const shroudCenter = projectPoint(0, headHeight - 1, hipForward - 1.6);
     ctx.strokeStyle = 'rgba(120, 220, 180, 0.7)';
     ctx.lineWidth = 2;
     ctx.setLineDash([6, 6]);
     ctx.beginPath();
-    ctx.ellipse(shroudCenter.x, shroudCenter.y, torsoWidth + 4, torsoHeight + 6, 0, 0, TAU);
+    ctx.ellipse(0, -2, 14, 18, 0, 0, TAU);
     ctx.stroke();
     ctx.setLineDash([]);
   }
@@ -318,6 +166,20 @@ function drawPlayerGoblin(p, invisible){
   ctx.restore();
 }
 
+function drawGoblinLimb(offsetX, startY, length, swing, thickness, color, follow){
+  const swingAmount = swing * (length * 0.55 + 6 * follow);
+  const controlX = offsetX + swingAmount * 0.45;
+  const endX = offsetX + swingAmount;
+  const controlY = startY + length * 0.45;
+  const endY = startY + length;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = thickness;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(offsetX, startY);
+  ctx.quadraticCurveTo(controlX, controlY, endX, endY);
+  ctx.stroke();
+}
 
 function drawCastle(){
   const c = state.castle;
