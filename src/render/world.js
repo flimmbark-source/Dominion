@@ -109,6 +109,8 @@ function drawWorldScene(){
   const invisible = state.time < p.invisUntil;
   drawGoblin(ctx, p, { time: state.time, invisible });
 
+  drawTerrain({ treeFilter: treeInFrontOfPlayer });
+
   drawTorchlight();
 
   ctx.restore();
