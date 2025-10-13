@@ -54,7 +54,7 @@ const state = {
   tavernPlayerInside: false,
   shopOwned: new Set(),
   mapVisible: false,
-  villageTasks: []
+  villageTasks: [],
   pointsOfInterest: []
 };
 
