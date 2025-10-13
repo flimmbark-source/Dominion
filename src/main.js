@@ -54,6 +54,56 @@ setupInput();
 const mainVillage = VILLAGES[0];
 const pathSegments = [];
 
+const TAVERN_INTERIOR = {
+  width: 640,
+  height: 360,
+  wallThickness: 28,
+  exitBuffer: 24,
+  spawn: { x: 320, y: 300 },
+  exit: { x: 292, y: 326, w: 56, h: 28 },
+  barkeep: { x: 320, y: 124, radius: 18, interactRadius: 72 },
+  barRect: { x: 160, y: 140, w: 320, h: 24 },
+  shelves: { x: 140, y: 52, w: 360, h: 36 },
+  tables: [
+    { x: 180, y: 226 },
+    { x: 460, y: 232 },
+    { x: 304, y: 268 }
+  ],
+  patrons: [
+    { x: 150, y: 228, color: '#5cc16d', sway: 0.4, type: 'goblin' },
+    { x: 214, y: 214, color: '#8bd66e', sway: 1.2, type: 'goblin' },
+    { x: 458, y: 236, color: '#b88cff', sway: 2.1, type: 'fairy' },
+    { x: 512, y: 248, color: '#ff94d6', sway: 2.8, type: 'fairy' },
+    { x: 340, y: 186, color: '#67c48d', sway: 1.7, type: 'goblin' }
+  ]
+};
+
+const TAVERN_SOLIDS = (()=>{
+  const solids = [];
+  const t = TAVERN_INTERIOR.wallThickness;
+  const exit = TAVERN_INTERIOR.exit;
+  const gap = TAVERN_INTERIOR.exitBuffer;
+  solids.push({ x: 0, y: 0, w: TAVERN_INTERIOR.width, h: t });
+  solids.push({ x: 0, y: 0, w: t, h: TAVERN_INTERIOR.height });
+  solids.push({ x: TAVERN_INTERIOR.width - t, y: 0, w: t, h: TAVERN_INTERIOR.height });
+  solids.push({ x: 0, y: TAVERN_INTERIOR.height - t, w: Math.max(0, exit.x - gap), h: t });
+  const rightWallX = exit.x + exit.w + gap;
+  const rightWallW = TAVERN_INTERIOR.width - rightWallX;
+  if (rightWallW > 0){
+    solids.push({ x: rightWallX, y: TAVERN_INTERIOR.height - t, w: rightWallW, h: t });
+  }
+  solids.push({
+    x: TAVERN_INTERIOR.barRect.x,
+    y: TAVERN_INTERIOR.barRect.y,
+    w: TAVERN_INTERIOR.barRect.w,
+    h: TAVERN_INTERIOR.barRect.h
+  });
+  for (const tbl of TAVERN_INTERIOR.tables){
+    solids.push({ x: tbl.x - 40, y: tbl.y - 22, w: 80, h: 44 });
+  }
+  return solids;
+})();
+
 const state = {
   time: 0,
   pausedForShop: false,
@@ -75,6 +125,8 @@ const state = {
   houseSolids: [],
   chests: [],
   tavern: { x: 5120, y: 4760, w: 220, h: 200, stump:{ cx:5230, cy:4860, radius:46 }, glowRadius:180, clearRadius:160 },
+  tavernInteriorState: { active: false, returnPoint: null },
+  tavernReentryBlockUntil: 0,
   npcs: [],
   castle: { x: WORLD.W - 320, y: 360 },
   threat: 0, // meter still used to spawn scouts but no HUD text
@@ -387,6 +439,9 @@ function gatherForestSolidsAround(x,y,radius=280){
 }
 
 function getActiveSolids(anchor = state.player){
+  if (state.tavernInteriorState.active){
+    return TAVERN_SOLIDS.slice();
+  }
   const solids = state.houseSolids.slice();
   // When upstairs, block the doorway so you can't exit to street
   if (state.interior && state.interior.level === 1){
@@ -695,6 +750,9 @@ function update(dt){
 
   state.time += dt;
 
+  const interactPressed = pressOnce('e');
+  let inTavernInterior = state.tavernInteriorState.active;
+
   // Player movement
   const p = state.player;
   let ix = 0, iy = 0;
@@ -711,9 +769,10 @@ function update(dt){
 
   // Integrate
   let nx = p.x + p.vx*dt, ny = p.y + p.vy*dt;
-  // World bounds
-  nx = clamp(nx, p.r+2, WORLD.W - p.r - 2);
-  ny = clamp(ny, p.r+2, WORLD.H - p.r - 2);
+  const boundsW = inTavernInterior ? TAVERN_INTERIOR.width : WORLD.W;
+  const boundsH = inTavernInterior ? TAVERN_INTERIOR.height : WORLD.H;
+  nx = clamp(nx, p.r+2, boundsW - p.r - 2);
+  ny = clamp(ny, p.r+2, boundsH - p.r - 2);
   // Collide with active solids (outside walls + upstairs door block)
   const solids = getActiveSolids(p);
   for (const h of solids){
@@ -721,6 +780,29 @@ function update(dt){
     nx = fixed.x; ny = fixed.y;
   }
   p.x = nx; p.y = ny;
+
+  if (inTavernInterior){
+    state.interior = null;
+    state.camera.x = 0;
+    state.camera.y = 0;
+    state.lastSeen = false;
+
+    const exitRect = TAVERN_INTERIOR.exit;
+    if (pointInRect(p.x, p.y, exitRect)){
+      leaveTavernInterior();
+      return;
+    }
+
+    if (interactPressed && !state.pausedForShop){
+      const barkeep = TAVERN_INTERIOR.barkeep;
+      const dist = Math.hypot(p.x - barkeep.x, p.y - barkeep.y);
+      if (dist <= barkeep.interactRadius){
+        openShop();
+      }
+    }
+
+    p.detection = clamp(p.detection - 16*dt, 0, 100);
+  }
 
   // Determine if player is inside a house interior and track level
   let insideId = -1;
@@ -737,11 +819,12 @@ function update(dt){
   state.camera.x = clamp(p.x - W/2, 0, Math.max(0, WORLD.W - W));
   state.camera.y = clamp(p.y - H/2, 0, Math.max(0, WORLD.H - H));
 
-  // Tavern trigger -> open shop once per entry
+  // Tavern trigger -> slip inside
   const insideTavern = pointInRect(p.x, p.y, state.tavern);
   if (insideTavern){
-    if (!state.tavernPlayerInside && !state.pausedForShop){
-      openShop();
+    if (!state.tavernPlayerInside && state.time >= state.tavernReentryBlockUntil){
+      enterTavernInterior();
+      return;
     }
     state.tavernPlayerInside = true;
   } else {
@@ -819,33 +902,29 @@ function update(dt){
   }
 
   // Interact (E): stairs first, then chest
-  if (pressOnce('e')){
-    if (state.interior){
-      const hid = state.interior.houseId;
-      const lvl = state.interior.level;
-      const st = state.stairs.find(s => s.houseId===hid && s.level===lvl && p.x >= s.x-6 && p.x <= s.x+s.w+6 && p.y >= s.y-6 && p.y <= s.y+s.h+6);
-      if (st){
-        // Preserve exact player position when changing levels
-        const px = p.x, py = p.y;
-        state.interior.level = st.targetLevel;
-        // keep position exactly the same
-        p.x = px; p.y = py;
-        toast(st.targetLevel===1 ? 'You climb upstairs.' : 'You head downstairs.');
-      } else {
-        let target = null, best = 26;
-        for (const c of state.chests){
-          if (c.looted) continue;
-          if (c.houseId!==hid || c.level!==lvl) continue;
-          const dd = Math.hypot(c.x - p.x, c.y - p.y);
-          if (dd < best){ best = dd; target = c; }
-        }
-        if (target){
-          target.looted = true;
-          p.gold += target.amount;
-          toast(`Looted ${target.amount} gold.`);
-          p.detection = clamp(p.detection + 25, 0, 100);
-          addThreat(12);
-        }
+  if (interactPressed && state.interior){
+    const hid = state.interior.houseId;
+    const lvl = state.interior.level;
+    const st = state.stairs.find(s => s.houseId===hid && s.level===lvl && p.x >= s.x-6 && p.x <= s.x+s.w+6 && p.y >= s.y-6 && p.y <= s.y+s.h+6);
+    if (st){
+      const px = p.x, py = p.y;
+      state.interior.level = st.targetLevel;
+      p.x = px; p.y = py;
+      toast(st.targetLevel===1 ? 'You climb upstairs.' : 'You head downstairs.');
+    } else {
+      let target = null, best = 26;
+      for (const c of state.chests){
+        if (c.looted) continue;
+        if (c.houseId!==hid || c.level!==lvl) continue;
+        const dd = Math.hypot(c.x - p.x, c.y - p.y);
+        if (dd < best){ best = dd; target = c; }
+      }
+      if (target){
+        target.looted = true;
+        p.gold += target.amount;
+        toast(`Looted ${target.amount} gold.`);
+        p.detection = clamp(p.detection + 25, 0, 100);
+        addThreat(12);
       }
     }
   }
@@ -904,6 +983,38 @@ function attemptPurchase(item){
   if (item.apply) item.apply(p);
   if (item.type === 'passive') state.shopOwned.add(item.id);
   toast(`Purchased ${item.name}.`);
+}
+
+function enterTavernInterior(){
+  if (state.tavernInteriorState.active) return;
+  const p = state.player;
+  state.tavernInteriorState.active = true;
+  state.tavernInteriorState.returnPoint = { x: p.x, y: p.y };
+  state.tavernPlayerInside = true;
+  p.x = TAVERN_INTERIOR.spawn.x;
+  p.y = TAVERN_INTERIOR.spawn.y;
+  p.vx = 0;
+  p.vy = 0;
+  p.facing = -Math.PI/2;
+  toast('You slip into the hidden goblin tavern.', 2.6);
+}
+
+function leaveTavernInterior(){
+  if (!state.tavernInteriorState.active) return;
+  const p = state.player;
+  const returnPoint = state.tavernInteriorState.returnPoint;
+  if (state.pausedForShop) closeShop();
+  state.tavernInteriorState.active = false;
+  state.tavernInteriorState.returnPoint = null;
+  state.tavernPlayerInside = false;
+  if (returnPoint){
+    p.x = returnPoint.x;
+    p.y = returnPoint.y;
+  }
+  p.vx = 0;
+  p.vy = 0;
+  state.tavernReentryBlockUntil = state.time + 0.75;
+  toast('You step back into the moonlit glade.', 2.0);
 }
 
 function openShop(){
@@ -1133,13 +1244,8 @@ function drawGoblinTavern(){
   ctx.restore();
 }
 
-function draw(){
+function drawWorldScene(){
   const p = state.player;
-
-  // Night sky + moon haze
-  ctx.clearRect(0,0,W,H);
-  ctx.fillStyle = '#05080e';
-  ctx.fillRect(0,0,W,H);
 
   ctx.save();
   ctx.translate(-state.camera.x, -state.camera.y);
@@ -1147,28 +1253,25 @@ function draw(){
   drawTerrain();
   drawCastle();
 
-  // Houses (draw)
   for (const h of state.houses){
     ctx.fillStyle = '#1b2638';
     ctx.fillRect(h.x, h.y, h.w, h.h);
     ctx.strokeStyle = '#2a3b57';
     ctx.strokeRect(h.x+0.5, h.y+0.5, h.w-1, h.h-1);
   }
-  // Doors
   for (const d of state.doors){
     ctx.fillStyle = '#0b0f17';
     ctx.fillRect(d.x, d.y, d.w, d.h);
     ctx.strokeStyle = '#3b4d6a';
     ctx.strokeRect(d.x+0.5, d.y+0.5, d.w-1, d.h-1);
   }
-  // Upstairs floor interior fill (brown)
+
   if (state.interior && state.interior.level === 1) {
     const h = state.houses[state.interior.houseId];
     const col = interiorFloorColor(1);
     if (h && col) fillHouseInterior(h, col);
   }
 
-  // Stairs (only relevant ones) - draw treads hugging edges
   const stairsToDraw = getRenderableStairs();
   for (const s of stairsToDraw){
     if (s.treads){
@@ -1186,23 +1289,18 @@ function draw(){
     }
   }
 
-  // Tavern area
   drawGoblinTavern();
 
-  // Chests (only when interior and on same level)
   for (const c of state.chests){
     if (c.looted) continue;
-    if (state.interior){
-      if (c.houseId !== state.interior.houseId || c.level !== state.interior.level) continue;
-    } else {
-      continue;
-    }
+    if (!state.interior) continue;
+    if (c.houseId !== state.interior.houseId || c.level !== state.interior.level) continue;
     ctx.fillStyle = '#8b5a2b';
     ctx.fillRect(c.x-9, c.y-6, c.w, c.h);
-    ctx.fillStyle = '#d9a441'; ctx.fillRect(c.x-9, c.y-1, c.w, 2);
+    ctx.fillStyle = '#d9a441';
+    ctx.fillRect(c.x-9, c.y-1, c.w, 2);
   }
 
-  // NPCs + vision cones
   for (const npc of state.npcs){
     if (state.debugCones) drawFOV(npc);
     ctx.beginPath();
@@ -1212,29 +1310,222 @@ function draw(){
     ctx.beginPath();
     ctx.moveTo(npc.x, npc.y);
     ctx.lineTo(npc.x + Math.cos(npc.facing)*12, npc.y + Math.sin(npc.facing)*12);
-    ctx.strokeStyle = '#a3b9d6'; ctx.stroke();
+    ctx.strokeStyle = '#a3b9d6';
+    ctx.stroke();
   }
 
-  // Player (goblin)
   const invisible = state.time < p.invisUntil;
   ctx.beginPath();
   ctx.arc(p.x, p.y, p.r, 0, TAU);
   ctx.fillStyle = invisible ? 'rgba(120,220,180,0.35)' : '#5cc16d';
   ctx.fill();
-  // Torch light from scouts (atmosphere)
+
   drawTorchlight();
 
   ctx.restore();
+}
 
-  // HUD + UI
+function drawTavernInteriorScene(){
+  const p = state.player;
+  const config = TAVERN_INTERIOR;
+  const offsetX = (W - config.width) / 2;
+  const offsetY = (H - config.height) / 2;
+
+  ctx.save();
+  ctx.translate(offsetX, offsetY);
+
+  const floorGrad = ctx.createLinearGradient(0, 0, 0, config.height);
+  floorGrad.addColorStop(0, '#17101f');
+  floorGrad.addColorStop(1, '#100913');
+  ctx.fillStyle = floorGrad;
+  ctx.fillRect(0, 0, config.width, config.height);
+
+  ctx.fillStyle = '#2c1f2e';
+  ctx.fillRect(0, 0, config.width, config.wallThickness);
+  ctx.fillRect(0, 0, config.wallThickness, config.height);
+  ctx.fillRect(config.width - config.wallThickness, 0, config.wallThickness, config.height);
+  const exit = config.exit;
+  const gap = config.exitBuffer;
+  const leftWallW = Math.max(0, exit.x - gap);
+  if (leftWallW > 0){
+    ctx.fillRect(0, config.height - config.wallThickness, leftWallW, config.wallThickness);
+  }
+  const rightWallX = exit.x + exit.w + gap;
+  const rightWallW = Math.max(0, config.width - rightWallX);
+  if (rightWallW > 0){
+    ctx.fillRect(rightWallX, config.height - config.wallThickness, rightWallW, config.wallThickness);
+  }
+
+  const exitCx = exit.x + exit.w / 2;
+  const exitCy = exit.y + exit.h / 2;
+  const exitGlow = ctx.createRadialGradient(exitCx, exitCy, 8, exitCx, exitCy, 96);
+  exitGlow.addColorStop(0, 'rgba(120, 200, 255, 0.3)');
+  exitGlow.addColorStop(1, 'rgba(12, 20, 32, 0)');
+  ctx.fillStyle = exitGlow;
+  ctx.beginPath();
+  ctx.arc(exitCx, exitCy, 96, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = '#1f1a29';
+  ctx.fillRect(exit.x, exit.y, exit.w, exit.h);
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#9fd6ff';
+  ctx.font = '14px "Trebuchet MS", ui-sans-serif';
+  ctx.fillText('To the glade', exitCx, exit.y + exit.h + 26);
+  ctx.restore();
+
+  const shelves = config.shelves;
+  ctx.fillStyle = '#251724';
+  ctx.fillRect(shelves.x - 12, shelves.y - 16, shelves.w + 24, shelves.h + 32);
+  ctx.fillStyle = '#2f1c2d';
+  ctx.fillRect(shelves.x, shelves.y, shelves.w, shelves.h);
+  const bottlePalette = ['#71f0ad', '#9ec9ff', '#f7a6ff'];
+  for (let i = 0; i < 12; i++){
+    const t = i / 11;
+    const bx = shelves.x + 12 + t * (shelves.w - 24);
+    const bh = 14 + Math.sin(state.time * 1.4 + i) * 2;
+    ctx.fillStyle = bottlePalette[i % bottlePalette.length];
+    ctx.fillRect(bx, shelves.y + shelves.h - bh - 4, 6, bh);
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.fillRect(bx + 2, shelves.y + shelves.h - bh - 2, 2, bh - 4);
+  }
+
+  const bar = config.barRect;
+  ctx.fillStyle = '#3f271b';
+  ctx.fillRect(bar.x, bar.y, bar.w, bar.h);
+  ctx.strokeStyle = '#724d2e';
+  ctx.strokeRect(bar.x + 0.5, bar.y + 0.5, bar.w - 1, bar.h - 1);
+  ctx.fillStyle = 'rgba(120, 78, 45, 0.4)';
+  ctx.fillRect(bar.x, bar.y - 12, bar.w, 12);
+
+  for (let i = -2; i <= 2; i++){
+    const stoolX = bar.x + bar.w/2 + i * 58;
+    const stoolY = bar.y + bar.h + 20;
+    ctx.fillStyle = '#2b1d26';
+    ctx.beginPath();
+    ctx.ellipse(stoolX, stoolY, 22, 12, 0, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#5f3c2b';
+    ctx.beginPath();
+    ctx.ellipse(stoolX, stoolY - 6, 18, 8, 0, 0, TAU);
+    ctx.fill();
+  }
+
+  config.tables.forEach((tbl, idx)=>{
+    const wobble = Math.sin(state.time * 1.2 + idx) * 2;
+    ctx.save();
+    ctx.translate(tbl.x, tbl.y + wobble);
+    ctx.fillStyle = '#2d1d26';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 52, 30, 0, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = '#6b4240';
+    ctx.stroke();
+    for (let m = 0; m < 3; m++){
+      const ang = (m / 3) * TAU;
+      const mx = Math.cos(ang) * 20;
+      const my = Math.sin(ang) * 12;
+      ctx.fillStyle = '#d7c69a';
+      ctx.beginPath();
+      ctx.ellipse(mx, my - 4, 8, 5, 0, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.beginPath();
+      ctx.ellipse(mx + 2, my - 6, 3, 3, 0, 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
+  });
+
+  config.patrons.forEach((patron, idx)=>{
+    const bob = Math.sin(state.time * 1.8 + patron.sway) * 4;
+    if (patron.type === 'fairy'){
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = patron.color;
+      ctx.beginPath();
+      ctx.arc(patron.x, patron.y + bob - 18, 28, 0, TAU);
+      ctx.fill();
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = patron.color;
+      ctx.beginPath();
+      ctx.arc(patron.x, patron.y + bob - 18, 10, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = '#f4f0ff';
+      ctx.beginPath();
+      ctx.arc(patron.x, patron.y + bob - 2, 6, 0, TAU);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = patron.color;
+      ctx.beginPath();
+      ctx.arc(patron.x, patron.y + bob, 14, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = '#2f1e1c';
+      ctx.beginPath();
+      ctx.arc(patron.x, patron.y + bob + 14, 12, 0, TAU);
+      ctx.fill();
+    }
+  });
+
+  const barkeep = config.barkeep;
+  const barkeepBob = Math.sin(state.time * 1.5) * 2;
+  ctx.fillStyle = '#47b96f';
+  ctx.beginPath();
+  ctx.arc(barkeep.x, barkeep.y + barkeepBob, barkeep.radius + 2, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = '#2b753f';
+  ctx.beginPath();
+  ctx.arc(barkeep.x, barkeep.y + barkeepBob + barkeep.radius * 0.6, barkeep.radius * 0.9, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = '#0d140f';
+  ctx.beginPath();
+  ctx.arc(barkeep.x - 6, barkeep.y + barkeepBob - 4, 3, 0, TAU);
+  ctx.arc(barkeep.x + 6, barkeep.y + barkeepBob - 4, 3, 0, TAU);
+  ctx.fill();
+
+  const invisible = state.time < p.invisUntil;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, p.r, 0, TAU);
+  ctx.fillStyle = invisible ? 'rgba(120,220,180,0.35)' : '#5cc16d';
+  ctx.fill();
+
+  const distToBarkeep = Math.hypot(p.x - barkeep.x, p.y - barkeep.y);
+  if (distToBarkeep <= barkeep.interactRadius && !state.pausedForShop){
+    const promptW = 260;
+    const promptH = 34;
+    const promptX = barkeep.x - promptW/2;
+    const promptY = barkeep.y - barkeep.radius - 48;
+    ctx.fillStyle = 'rgba(18, 26, 38, 0.86)';
+    ctx.fillRect(promptX, promptY, promptW, promptH);
+    ctx.strokeStyle = '#5cc16d';
+    ctx.strokeRect(promptX + 0.5, promptY + 0.5, promptW - 1, promptH - 1);
+    ctx.fillStyle = '#f4ffdf';
+    ctx.font = '15px "Trebuchet MS", ui-sans-serif';
+    ctx.fillText('Press E to speak with the barkeep', promptX + 12, promptY + 22);
+  }
+
+  ctx.restore();
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = '#05080e';
+  ctx.fillRect(0,0,W,H);
+
+  if (state.tavernInteriorState.active){
+    drawTavernInteriorScene();
+  } else {
+    drawWorldScene();
+  }
+
   drawHUD();
 
-  // Shop overlay
   if (state.pausedForShop) drawShop();
 
   if (state.mapVisible) drawWorldMapOverlay();
 
-  // Top message
   if (state.time < state.messageUntil){
     ctx.fillStyle = '#d1e7ff';
     ctx.font = 'bold 16px system-ui';
@@ -1344,7 +1635,7 @@ function drawShop(){
   ctx.fillStyle = 'rgba(6,8,12,0.82)';
   ctx.fillRect(0,0,W,H);
 
-  const pw = 620, ph = 360;
+  const pw = 680, ph = 460;
   const px = (W - pw) / 2;
   const py = (H - ph) / 2;
   const panelGrad = ctx.createLinearGradient(px, py, px, py + ph);
@@ -1358,26 +1649,60 @@ function drawShop(){
   ctx.lineWidth = 1;
 
   ctx.fillStyle = '#f6e9c8';
-  ctx.font = '24px "Trebuchet MS", ui-sans-serif';
-  ctx.fillText('Hidden Goblin Tavern', px + 24, py + 40);
+  ctx.font = '26px "Trebuchet MS", ui-sans-serif';
+  ctx.fillText('Hidden Goblin Tavern', px + 32, py + 44);
   ctx.fillStyle = '#d7c69a';
   ctx.font = '16px ui-sans-serif';
-  ctx.fillText('Goblin Merchant: "What are ya buyin\'?"', px + 24, py + 68);
-  ctx.fillText('Left click or press 1-5 to purchase · 0/Esc to slip back outside.', px + 24, py + 94);
+  ctx.fillText('Goblin Merchant: "What are ya buyin\'?"', px + 32, py + 72);
+  ctx.fillText('Left click or press 1-5 to purchase · 0/Esc to slip back outside.', px + 32, py + 100);
 
   ctx.font = '16px ui-sans-serif';
   ctx.fillStyle = '#ffde7b';
-  ctx.fillText(`Purse: ${state.player.gold} gold`, px + 24, py + 118);
+  ctx.fillText(`Purse: ${state.player.gold} gold`, px + 32, py + 126);
 
   shopHitRegions = [];
-  const cardH = 64;
-  const spacing = 16;
-  const listStartY = py + 136;
+  const columns = ITEMS.length > 3 ? 2 : 1;
+  const colGap = columns > 1 ? 24 : 0;
+  const headerHeight = 152;
+  const footerReserve = 78;
+  const availableHeight = ph - headerHeight - footerReserve;
+  const rowGap = 14;
+  const rows = Math.max(1, Math.ceil(ITEMS.length / columns));
+  const cardH = Math.floor((availableHeight - (rows - 1) * rowGap) / rows);
+  const listStartY = py + headerHeight;
+  const availableWidth = pw - 48 - (columns - 1) * colGap;
+  const cardW = availableWidth / columns;
   const usedSlots = state.player.inventory.filter(Boolean).length;
 
+  const wrapText = (text, x, y, maxWidth, lineHeight)=>{
+    const words = text.split(' ');
+    let line = '';
+    let cursorY = y;
+    for (const word of words){
+      const testLine = line ? `${line} ${word}` : word;
+      if (ctx.measureText(testLine).width > maxWidth && line){
+        ctx.fillText(line, x, cursorY);
+        line = word;
+        cursorY += lineHeight;
+      } else {
+        line = testLine;
+      }
+    }
+    if (line){
+      ctx.fillText(line, x, cursorY);
+    }
+    return cursorY;
+  };
+
   ITEMS.forEach((item, idx)=>{
-    const y = listStartY + idx * (cardH + spacing);
-    const rect = { x: px + 24, y, w: pw - 48, h: cardH };
+    const col = idx % columns;
+    const row = Math.floor(idx / columns);
+    const rect = {
+      x: px + 24 + col * (cardW + colGap),
+      y: listStartY + row * (cardH + rowGap),
+      w: cardW,
+      h: cardH
+    };
     const hovered = shopHover === item.id;
     const affordable = state.player.gold >= item.price;
     const owned = item.canBuy ? !item.canBuy(state.player) : false;
@@ -1390,22 +1715,26 @@ function drawShop(){
 
     ctx.fillStyle = '#f6e9c8';
     ctx.font = '18px ui-sans-serif';
-    ctx.fillText(`${item.key}) ${item.name}`, rect.x + 16, rect.y + 26);
+    ctx.fillText(`${item.key}) ${item.name}`, rect.x + 14, rect.y + 26);
 
-    ctx.fillStyle = '#d9c8a2';
-    ctx.font = '14px ui-sans-serif';
-    ctx.fillText(item.desc, rect.x + 16, rect.y + 46);
-
+    ctx.textAlign = 'right';
     ctx.font = '16px ui-sans-serif';
     ctx.fillStyle = affordable ? '#ffde7b' : '#c07b6e';
-    ctx.fillText(`${item.price} gold`, rect.x + rect.w - 150, rect.y + 26);
+    ctx.fillText(`${item.price} gold`, rect.x + rect.w - 12, rect.y + 26);
+    ctx.textAlign = 'left';
 
+    ctx.fillStyle = '#d9c8a2';
+    ctx.font = '13px ui-sans-serif';
+    const descBottom = wrapText(item.desc, rect.x + 14, rect.y + 48, rect.w - 28, 16);
+
+    ctx.font = '14px ui-sans-serif';
+    const statusY = Math.min(rect.y + rect.h - 12, descBottom + 22);
     if (owned){
       ctx.fillStyle = '#7fe9a6';
-      ctx.fillText('Owned', rect.x + rect.w - 150, rect.y + 46);
+      ctx.fillText('Owned', rect.x + 14, statusY);
     } else if (item.type === 'consumable' && quantity > 0){
       ctx.fillStyle = '#9ac8ff';
-      ctx.fillText(`Satchel ×${quantity}`, rect.x + rect.w - 170, rect.y + 46);
+      ctx.fillText(`Satchel ×${quantity}`, rect.x + 14, statusY);
     }
 
     if (!affordable && !owned){
@@ -1416,7 +1745,7 @@ function drawShop(){
     shopHitRegions.push({ type:'item', item, rect });
   });
 
-  const exitRect = { x: px + pw - 160, y: py + ph - 56, w: 136, h: 36 };
+  const exitRect = { x: px + pw - 180, y: py + ph - 64, w: 156, h: 40 };
   const exitHover = shopHover === 'exit';
   ctx.fillStyle = exitHover ? 'rgba(130,63,50,0.85)' : 'rgba(77,42,37,0.85)';
   ctx.fillRect(exitRect.x, exitRect.y, exitRect.w, exitRect.h);
@@ -1424,12 +1753,12 @@ function drawShop(){
   ctx.strokeRect(exitRect.x + 0.5, exitRect.y + 0.5, exitRect.w - 1, exitRect.h - 1);
   ctx.fillStyle = '#f4d5a6';
   ctx.font = '16px ui-sans-serif';
-  ctx.fillText('Leave Tavern', exitRect.x + 14, exitRect.y + 23);
+  ctx.fillText('Leave Tavern', exitRect.x + 24, exitRect.y + 26);
   shopHitRegions.push({ type:'exit', rect: exitRect });
 
   ctx.fillStyle = '#d7c69a';
   ctx.font = '14px ui-sans-serif';
-  ctx.fillText(`Satchel slots used: ${usedSlots}/6`, px + 24, py + ph - 24);
+  ctx.fillText(`Satchel slots used: ${usedSlots}/6`, px + 32, py + ph - 28);
 
   ctx.restore();
 }
