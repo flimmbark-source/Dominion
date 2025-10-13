@@ -190,6 +190,19 @@ function update(dt){
     state.lastSeenAt.x = p.x;
     state.lastSeenAt.y = p.y;
     state.lastSeenTime = state.time;
+    state.timeSinceSeen = 0;
+    state.nextSweeperSpawn = Math.max(state.nextSweeperSpawn, state.time + 12);
+  }
+  else {
+    state.timeSinceSeen += dt;
+  }
+
+  const detectionFrac = clamp(p.detection / 100, 0, 1);
+  if (seen){
+    state.huntHeat = clamp(state.huntHeat + dt * (0.7 + detectionFrac * 0.9), 0, 1);
+  } else {
+    const decay = 0.05 + (1 - detectionFrac) * 0.22 + (state.timeSinceSeen > 30 ? 0.06 : 0);
+    state.huntHeat = clamp(state.huntHeat - dt * decay, 0, 1);
   }
 
   let inc = seen ? (18 * seenBy) : 0;
@@ -234,11 +247,24 @@ function update(dt){
   }
 
   while (state.spawnCount < state.threatSpawns.length && state.threat >= state.threatSpawns[state.spawnCount]){
-    spawnReinforcement();
+    let mode = 'standard';
+    if (state.huntHeat > 0.6 || p.detection > 80){
+      mode = 'aggressive';
+    } else if (state.timeSinceSeen > 35){
+      mode = 'sweeper';
+    }
+    spawnReinforcement({ mode });
     state.spawnCount++;
   }
 
+
+  if (state.timeSinceSeen > 24 && state.time >= state.nextSweeperSpawn){
+    spawnReinforcement({ mode: 'sweeper' });
+    state.nextSweeperSpawn = state.time + 22 + Math.random() * 16;
+  }
+
   if (interactAvailable && state.interior){
+
     const hid = state.interior.houseId;
     const lvl = state.interior.level;
     const st = state.stairs.find(s => s.houseId===hid && s.level===lvl && p.x >= s.x-6 && p.x <= s.x+s.w+6 && p.y >= s.y-6 && p.y <= s.y+s.h+6);
