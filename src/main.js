@@ -111,7 +111,6 @@ function generateWorld(){
 
   // Lay out village main roads
   for (const village of VILLAGES){
-    addRoad(village.x, village.y + village.h - 180, village.w, 180);
     addRoad(village.x + 160, village.y + village.h/2 - 20, village.w - 320, 40);
   }
 
@@ -741,12 +740,6 @@ function drawTerrain(){
     ctx.fillRect(road.x, road.y, road.w, road.h);
   }
 
-  // Village boundaries for atmosphere
-  ctx.fillStyle = 'rgba(18,24,36,0.4)';
-  for (const village of VILLAGES){
-    if (!rectsOverlap(village, view)) continue;
-    ctx.fillRect(village.x-18, village.y-18, village.w+36, village.h+36);
-  }
 }
 
 function drawTree(tree){
