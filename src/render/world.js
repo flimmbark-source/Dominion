@@ -111,44 +111,15 @@ function drawPlayerGoblin(p, invisible){
 
   const legStartY = 6;
   const legLength = 16;
+  const footAnchor = legStartY + legLength;
 
-  const forwardDir = { x: Math.cos(p.facing), y: Math.sin(p.facing) };
-  const sideDir = { x: -forwardDir.y, y: forwardDir.x };
-
-  const projectPoint = (lateral, vertical, forward = 0, bobWeight = 1) => ({
-    x: p.x + lateral * sideDir.x + forward * forwardDir.x,
-    y: p.y + vertical + lateral * sideDir.y + forward * forwardDir.y + bob * bobWeight
-  });
-
-  const drawFilledEllipse = (lateral, vertical, forward, rx, ry, color, bobWeight = 1) => {
-    const center = projectPoint(lateral, vertical, forward, bobWeight);
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.ellipse(center.x, center.y, rx, ry, 0, 0, TAU);
-    ctx.fill();
-  };
-
-  const drawStrokedEllipse = (lateral, vertical, forward, rx, ry, style, bobWeight = 1) => {
-    const center = projectPoint(lateral, vertical, forward, bobWeight);
-    ctx.strokeStyle = style.color;
-    ctx.lineWidth = style.lineWidth;
-    if (style.dash){
-      ctx.setLineDash(style.dash);
-    }
-    ctx.beginPath();
-    ctx.ellipse(center.x, center.y, rx, ry, 0, 0, TAU);
-    ctx.stroke();
-    if (style.dash){
-      ctx.setLineDash([]);
-    }
-  };
+  ctx.translate(p.x, p.y + bob);
+  ctx.translate(0, footAnchor);
+  ctx.rotate(p.facing + lean);
+  ctx.translate(0, -footAnchor);
 
   const alpha = invisible ? 0.55 : 1;
   ctx.globalAlpha = alpha;
-
-  const hipForward = forwardLean * 0.3;
-  const torsoForward = forwardLean;
-  const shoulderForward = forwardLean * 0.85;
 
   const legs = [
     { offset: -4 + hipSway, swing: strideA, color: '#204b2a' },
@@ -156,7 +127,7 @@ function drawPlayerGoblin(p, invisible){
   ];
   legs.sort((a, b) => a.swing - b.swing);
   for (const leg of legs){
-    drawGoblinLimb(projectPoint, leg.offset, legStartY, legLength, leg.swing, 4, leg.color, 0.85, hipForward, undefined, true);
+    drawGoblinLimb(leg.offset, legStartY, legLength, leg.swing, 4, leg.color, 0.85);
   }
 
   const arms = [
