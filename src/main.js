@@ -336,6 +336,7 @@ const DEFAULT_HOUSE_JITTER = {
   north: { x: 70, y: 30, door: 0.18 },
   south: { x: 70, y: 36, door: 0.18 }
 };
+const HOUSE_MIN_SPACING = 22;
 
 const BASE_HOUSE_LAYOUT = [
   { x:120, y:120, w:140, h:90, side:'north', doorOffset:0.50 },
@@ -385,6 +386,82 @@ function placeVillageHouse(village, spec){
   return { x, y, doorOffset };
 }
 
+function resolveSideHouseCollisions(village, entries){
+  if (entries.length <= 1) return;
+
+  entries.sort((a, b) => a.placement.x - b.placement.x);
+  const leftBound = village.x + VILLAGE_MARGIN;
+  const rightBound = village.x + village.w - VILLAGE_MARGIN;
+
+  const clampEntry = (entry) => {
+    const maxLeft = rightBound - entry.spec.w;
+    entry.placement.x = clamp(entry.placement.x, leftBound, maxLeft);
+  };
+
+  for (let iter = 0; iter < 8; iter++){
+    let changed = false;
+
+    for (const entry of entries){
+      const before = entry.placement.x;
+      clampEntry(entry);
+      if (entry.placement.x !== before) changed = true;
+    }
+
+    for (let i = 1; i < entries.length; i++){
+      const prev = entries[i - 1];
+      const curr = entries[i];
+      const minX = prev.placement.x + prev.spec.w + HOUSE_MIN_SPACING;
+      if (curr.placement.x < minX){
+        const maxLeft = rightBound - curr.spec.w;
+        const nextX = Math.min(minX, maxLeft);
+        if (nextX !== curr.placement.x){
+          curr.placement.x = nextX;
+          changed = true;
+        }
+      }
+    }
+
+    for (let i = entries.length - 2; i >= 0; i--){
+      const next = entries[i + 1];
+      const curr = entries[i];
+      const maxX = next.placement.x - curr.spec.w - HOUSE_MIN_SPACING;
+      if (curr.placement.x > maxX){
+        const nextX = Math.max(maxX, leftBound);
+        if (nextX !== curr.placement.x){
+          curr.placement.x = nextX;
+          changed = true;
+        }
+      }
+    }
+
+    if (!changed) break;
+  }
+
+  let collision = false;
+  for (let i = 1; i < entries.length; i++){
+    const prev = entries[i - 1];
+    const curr = entries[i];
+    if (curr.placement.x < prev.placement.x + prev.spec.w + HOUSE_MIN_SPACING - 0.5){
+      collision = true;
+      break;
+    }
+  }
+
+  if (collision){
+    const available = rightBound - leftBound;
+    const widths = entries.reduce((sum, entry) => sum + entry.spec.w, 0);
+    const totalSpacing = HOUSE_MIN_SPACING * (entries.length - 1);
+    const slack = Math.max(0, available - (widths + totalSpacing));
+    let x = leftBound + slack / 2;
+    for (const entry of entries){
+      entry.placement.x = x;
+      x += entry.spec.w + HOUSE_MIN_SPACING;
+    }
+  }
+
+  entries.sort((a, b) => a.placement.x - b.placement.x);
+}
+
 function initHouses(){
   state.houses = []; state.doors = []; state.houseSolids = []; state.chests = []; state.stairs = [];
   VILLAGES.forEach((village, vIndex) => {
@@ -395,8 +472,8 @@ function initHouses(){
     }
 
     for (const side of ['north', 'south']){
+      resolveSideHouseCollisions(village, housesBySide[side]);
       housesBySide[side]
-        .sort((a, b) => a.placement.x - b.placement.x)
         .forEach(({ spec, placement }) => {
           addHouseWithDoor(
             placement.x,
