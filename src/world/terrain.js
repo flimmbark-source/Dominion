@@ -13,6 +13,7 @@ import {
 import { centerOf, pointInRect, distToSegment, rectsOverlap } from '../utils/geometry.js';
 import { TAU, clamp, lerp, randRange } from '../utils/math.js';
 import { state } from '../state/gameState.js';
+import { getTavernDoorRect } from '../state/tavern.js';
 import { ctx, W, H } from '../game/canvas.js';
 
 const roads = [];
@@ -364,10 +365,11 @@ function drawGoblinTavern(){
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  const doorW = radius * 0.55;
-  const doorH = radius * 0.9;
-  const doorX = cx - doorW / 2;
-  const doorY = cy - doorH / 2 + 8;
+  const doorRect = getTavernDoorRect(tavern);
+  const doorW = doorRect?.w ?? radius * 0.55;
+  const doorH = doorRect?.h ?? radius * 0.9;
+  const doorX = doorRect?.x ?? (cx - doorW / 2);
+  const doorY = doorRect?.y ?? (cy - doorH / 2 + 8);
   ctx.fillStyle = '#090d08';
   ctx.fillRect(doorX, doorY, doorW, doorH);
   ctx.fillStyle = `rgba(220, 190, 110, ${(0.58 * flicker).toFixed(3)})`;

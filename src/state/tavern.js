@@ -1,3 +1,5 @@
+const DEFAULT_STUMP_RADIUS = 46;
+
 const TAVERN_INTERIOR = {
   width: 640,
   height: 360,
@@ -48,4 +50,16 @@ const TAVERN_SOLIDS = (()=>{
   return solids;
 })();
 
-export { TAVERN_INTERIOR, TAVERN_SOLIDS };
+const getTavernDoorRect = (tavern) => {
+  if (!tavern) return null;
+  const stumpRadius = tavern.stump?.radius ?? DEFAULT_STUMP_RADIUS;
+  const cx = tavern.stump?.cx ?? (tavern.x + tavern.w/2);
+  const cy = tavern.stump?.cy ?? (tavern.y + tavern.h/2);
+  const doorW = stumpRadius * 0.55;
+  const doorH = stumpRadius * 0.9;
+  const doorX = cx - doorW / 2;
+  const doorY = cy - doorH / 2 + 8;
+  return { x: doorX, y: doorY, w: doorW, h: doorH };
+};
+
+export { TAVERN_INTERIOR, TAVERN_SOLIDS, getTavernDoorRect };
