@@ -124,8 +124,19 @@ function update(dt){
   state.camera.x = clamp(p.x - W/2, 0, Math.max(0, WORLD.W - W));
   state.camera.y = clamp(p.y - H/2, 0, Math.max(0, WORLD.H - H));
 
-  const insideTavern = pointInRect(p.x, p.y, state.tavern);
-  if (insideTavern){
+  const tavern = state.tavern;
+  let touchingStump = false;
+  if (tavern){
+    const stumpRadius = tavern.stump?.radius ?? 46;
+    const cx = tavern.stump?.cx ?? (tavern.x + tavern.w/2);
+    const cy = tavern.stump?.cy ?? (tavern.y + tavern.h/2);
+    const dx = p.x - cx;
+    const dy = p.y - cy;
+    const contactR = stumpRadius + p.r;
+    touchingStump = (dx*dx + dy*dy) <= contactR * contactR;
+  }
+
+  if (touchingStump){
     if (!state.tavernPlayerInside && state.time >= state.tavernReentryBlockUntil){
       enterTavernInterior();
       return;
