@@ -11,7 +11,6 @@ import {
 import {
   PATH_CLEAR_RADIUS,
   PATH_WIDTH_MAIN,
-  PATH_WIDTH_RING,
   TREE_CANOPY_MAX,
   TREE_CANOPY_MIN,
   TREE_CLEARING_CHANCE,
@@ -159,36 +158,63 @@ function generateWorld(){
     addRoad(village.x + 160, village.y + village.h/2 - 20, village.w - 320, 40);
   }
 
-  // Build dirt paths between the major settlements
-  const heart = centerOf(mainVillage);
-  for (let i=1;i<VILLAGES.length;i++){
-    const other = centerOf(VILLAGES[i]);
-    const dir = { x: other.x - heart.x, y: other.y - heart.y };
-    const dist = Math.hypot(dir.x, dir.y) || 1;
-    const nx = -dir.y / dist;
-    const ny = dir.x / dist;
-    const bend = (i % 2 === 0) ? 1 : -1;
-    const first = {
-      x: heart.x + dir.x * 0.33 + nx * 220 * bend,
-      y: heart.y + dir.y * 0.33 + ny * 220 * bend
-    };
-    const second = {
-      x: heart.x + dir.x * 0.66 - nx * 180 * bend,
-      y: heart.y + dir.y * 0.66 - ny * 180 * bend
-    };
-    const segments = [heart, first, second, other];
-    for (let s=0;s<segments.length-1;s++){
-      const a = segments[s], b = segments[s+1];
-      pushPathSegment(a, b, PATH_WIDTH_MAIN);
+  // Build dirt paths from each village to its closest neighbors
+  const centers = VILLAGES.map(centerOf);
+  const nearest = centers.map(() => new Set());
+
+  for (let i = 0; i < centers.length; i++){
+    let best = Infinity;
+    for (let j = 0; j < centers.length; j++){
+      if (i === j) continue;
+      const dx = centers[j].x - centers[i].x;
+      const dy = centers[j].y - centers[i].y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < best - 1e-6){
+        best = dist;
+        nearest[i].clear();
+        nearest[i].add(j);
+      } else if (Math.abs(dist - best) <= 1e-6){
+        nearest[i].add(j);
+      }
     }
   }
 
-  // Add a ring path linking the frontier villages
-  const frontier = VILLAGES.slice(1);
-  for (let i=0;i<frontier.length;i++){
-    const a = centerOf(frontier[i]);
-    const b = centerOf(frontier[(i+1)%frontier.length]);
-    pushPathSegment(a, b, PATH_WIDTH_RING);
+  function connectVillages(i, j){
+    const a = centers[i];
+    const b = centers[j];
+    const dir = { x: b.x - a.x, y: b.y - a.y };
+    const dist = Math.hypot(dir.x, dir.y);
+    if (dist < 1){
+      pushPathSegment(a, b, PATH_WIDTH_MAIN);
+      return;
+    }
+
+    const nx = -dir.y / dist;
+    const ny = dir.x / dist;
+    const bend = ((i + j) % 2 === 0) ? 1 : -1;
+    const firstOffset = Math.min(220, dist * 0.25);
+    const secondOffset = Math.min(180, dist * 0.25);
+    const first = {
+      x: a.x + dir.x * 0.33 + nx * firstOffset * bend,
+      y: a.y + dir.y * 0.33 + ny * firstOffset * bend
+    };
+    const second = {
+      x: a.x + dir.x * 0.66 - nx * secondOffset * bend,
+      y: a.y + dir.y * 0.66 - ny * secondOffset * bend
+    };
+
+    const segments = [a, first, second, b];
+    for (let s = 0; s < segments.length - 1; s++){
+      pushPathSegment(segments[s], segments[s + 1], PATH_WIDTH_MAIN);
+    }
+  }
+
+  for (let i = 0; i < nearest.length; i++){
+    for (const j of nearest[i]){
+      if (i < j){
+        connectVillages(i, j);
+      }
+    }
   }
 
   // Populate forests everywhere that is not a road, village, or path corridor
