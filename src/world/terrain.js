@@ -783,21 +783,25 @@ function gatherForestSolidsAround(x, y, radius=280){
 function drawTerrain(options = {}){
   const { includeTrees = true, treeFilter = null } = options;
   const view = { x: state.camera.x - 120, y: state.camera.y - 120, w: W + 240, h: H + 240 };
+  const drawingOnlyTrees = treeFilter !== null;
 
-  ctx.fillStyle = '#0d131b';
-  ctx.fillRect(view.x, view.y, view.w, view.h);
+  if (!drawingOnlyTrees){
+    ctx.fillStyle = '#0d131b';
+    ctx.fillRect(view.x, view.y, view.w, view.h);
 
-  for (const zone of terrainZones){
-    const bounds = {
-      x: zone.x - 48,
-      y: zone.y - 48,
-      w: zone.w + 96,
-      h: zone.h + 96
-    };
-    if (!rectsOverlap(bounds, view)) continue;
-    drawZone(zone);
+    for (const zone of terrainZones){
+      const bounds = {
+        x: zone.x - 48,
+        y: zone.y - 48,
+        w: zone.w + 96,
+        h: zone.h + 96
+      };
+      if (!rectsOverlap(bounds, view)) continue;
+      drawZone(zone);
+    }
   }
-  if (includeTrees){
+
+  if (includeTrees || drawingOnlyTrees){
     for (const tree of forestSolids){
       const bounds = {
         x: tree.cx - tree.canopyRadius - 14,
@@ -806,12 +810,13 @@ function drawTerrain(options = {}){
         h: tree.canopyRadius * 2 + 28
       };
       if (!rectsOverlap(bounds, view)) continue;
+      if (!drawingOnlyTrees && !includeTrees) continue;
       if (treeFilter && !treeFilter(tree)) continue;
       drawTree(tree);
     }
   }
 
-  if (treeFilter) return;
+  if (drawingOnlyTrees) return;
 
   ctx.strokeStyle = '#3a2a1c';
   ctx.lineCap = 'round';
@@ -845,17 +850,6 @@ function drawTerrain(options = {}){
     const bounds = { x: prop.x - r, y: prop.y - r, w: r * 2, h: r * 2 };
     if (!rectsOverlap(bounds, view)) continue;
     drawTerrainProp(prop);
-  }
-
-  for (const tree of forestSolids){
-    const bounds = {
-      x: tree.cx - tree.canopyRadius - 14,
-      y: tree.cy - tree.canopyRadius - 14,
-      w: tree.canopyRadius * 2 + 28,
-      h: tree.canopyRadius * 2 + 28
-    };
-    if (!rectsOverlap(bounds, view)) continue;
-    drawTree(tree);
   }
 }
 
