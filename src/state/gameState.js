@@ -41,6 +41,7 @@ const state = {
   npcs: [],
   castle: { x: WORLD.W - 320, y: 360 },
   threat: 0,
+  threatStage: 0,
   threatSpawns: [50, 100, 160],
   spawnCount: 0,
   interior: null,
@@ -50,7 +51,9 @@ const state = {
   lastSeenTime: -Infinity,
   tavernPlayerInside: false,
   shopOwned: new Set(),
-  mapVisible: false
+  mapVisible: false,
+  activeWorldEvent: null,
+  nextNpcId: 1
 };
 
 export { state, mainVillage };

@@ -24,6 +24,7 @@ import {
 } from './systems/shop.js';
 import { enterTavernInterior, leaveTavernInterior } from './systems/tavern.js';
 import { addThreat } from './systems/threat.js';
+import { updateWorldEvents } from './systems/worldEvents.js';
 import { toast } from './ui/toast.js';
 import { pressOnce } from './input/pressOnce.js';
 import { circleRectCollideResolve, pointInRect, segBlockedByAnyRect } from './utils/geometry.js';
@@ -60,6 +61,7 @@ function update(dt){
   if (state.mapVisible) return;
 
   state.time += dt;
+  updateWorldEvents(dt);
 
   const interactPressed = pressOnce('e');
   const inTavernInterior = state.tavernInteriorState.active;
@@ -154,6 +156,7 @@ function update(dt){
 
   updateNPCBehaviors(dt);
   for (const npc of state.npcs){
+    if (npc.hidden) continue;
     const wp = npc.activeTarget || npc.waypoints[npc.wpIndex];
     const dx = wp.x - npc.x, dy = wp.y - npc.y;
     const d = Math.hypot(dx,dy);
@@ -173,7 +176,10 @@ function update(dt){
   }
 
   let seenBy = 0;
-  for (const npc of state.npcs) if (npcSeesPlayer(npc, p)) seenBy++;
+  for (const npc of state.npcs){
+    if (npc.hidden) continue;
+    if (npcSeesPlayer(npc, p)) seenBy++;
+  }
   const seen = seenBy > 0;
   state.lastSeen = seen;
   if (seen){
@@ -185,7 +191,7 @@ function update(dt){
   let inc = seen ? (18 * seenBy) : 0;
   if (seen){
     let minD = Infinity;
-    for (const npc of state.npcs) if (npcSeesPlayer(npc,p)) {
+    for (const npc of state.npcs) if (!npc.hidden && npcSeesPlayer(npc,p)) {
       const dd = Math.hypot(npc.x-p.x, npc.y-p.y);
       if (dd < minD) minD = dd;
     }
@@ -194,10 +200,19 @@ function update(dt){
   }
   if (p.sprinting){
     for (const npc of state.npcs){
-      const hearR = (npc.type === 'scout') ? 180 : 120;
+      if (npc.hidden) continue;
+      let hearR = 120;
+      let threatWeight = 6;
+      if (npc.type === 'scout'){
+        hearR = 180;
+        threatWeight = 10;
+      } else if (npc.type === 'tank'){
+        hearR = 220;
+        threatWeight = 14;
+      }
       const dd = Math.hypot(npc.x-p.x, npc.y-p.y);
       if (dd < hearR && !segBlockedByAnyRect(npc.x,npc.y,p.x,p.y,state.houseSolids)) {
-        inc += (npc.type==='scout'? 10: 6) * (1 - dd/hearR);
+        inc += threatWeight * (1 - dd/hearR);
       }
     }
   }

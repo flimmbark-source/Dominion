@@ -63,15 +63,19 @@ function drawWorldScene(){
   }
 
   for (const npc of state.npcs){
+    if (npc.hidden) continue;
     if (state.debugCones) drawFOV(npc);
     ctx.beginPath();
     ctx.arc(npc.x, npc.y, 8, 0, TAU);
-    ctx.fillStyle = npc.type==='scout' ? '#6fa8dc' : '#9aa5b1';
+    let fillStyle = '#9aa5b1';
+    if (npc.type === 'scout') fillStyle = '#6fa8dc';
+    else if (npc.type === 'tank') fillStyle = '#ff8b63';
+    ctx.fillStyle = fillStyle;
     ctx.fill();
     ctx.beginPath();
     ctx.moveTo(npc.x, npc.y);
     ctx.lineTo(npc.x + Math.cos(npc.facing)*12, npc.y + Math.sin(npc.facing)*12);
-    ctx.strokeStyle = '#a3b9d6';
+    ctx.strokeStyle = npc.type === 'tank' ? '#ffd0b3' : '#a3b9d6';
     ctx.stroke();
   }
 
@@ -442,6 +446,7 @@ function drawCastleEye(stage, threatFrac){
 }
 
 function drawFOV(npc){
+  if (npc.hidden) return;
   ctx.save();
   ctx.translate(npc.x, npc.y);
   ctx.rotate(npc.facing);
@@ -449,7 +454,10 @@ function drawFOV(npc){
   ctx.moveTo(0,0);
   ctx.arc(0,0, npc.fovRange, -npc.fovAngle/2, npc.fovAngle/2);
   ctx.closePath();
-  ctx.fillStyle = npc.type==='scout' ? 'rgba(120,160,255,.10)' : 'rgba(200,200,200,.08)';
+  let fillStyle = 'rgba(200,200,200,.08)';
+  if (npc.type === 'scout') fillStyle = 'rgba(120,160,255,.10)';
+  else if (npc.type === 'tank') fillStyle = 'rgba(255,140,100,.14)';
+  ctx.fillStyle = fillStyle;
   ctx.fill();
   ctx.restore();
 }
@@ -458,12 +466,21 @@ function drawTorchlight(){
   if (!state.debugCones){
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    for (const npc of state.npcs.filter(n=>n.type==='scout')){
-      const grad = ctx.createRadialGradient(npc.x, npc.y, 10, npc.x, npc.y, 70);
-      grad.addColorStop(0, 'rgba(255,220,120,0.12)');
-      grad.addColorStop(1, 'rgba(255,220,120,0)');
+    for (const npc of state.npcs){
+      if (npc.hidden) continue;
+      if (npc.type !== 'scout' && npc.type !== 'tank') continue;
+      const radius = npc.type === 'tank' ? 92 : 70;
+      const innerRadius = npc.type === 'tank' ? 16 : 10;
+      const grad = ctx.createRadialGradient(npc.x, npc.y, innerRadius, npc.x, npc.y, radius);
+      if (npc.type === 'tank'){
+        grad.addColorStop(0, 'rgba(255,180,120,0.18)');
+        grad.addColorStop(1, 'rgba(255,120,80,0)');
+      } else {
+        grad.addColorStop(0, 'rgba(255,220,120,0.12)');
+        grad.addColorStop(1, 'rgba(255,220,120,0)');
+      }
       ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.arc(npc.x, npc.y, 70, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(npc.x, npc.y, radius, 0, TAU); ctx.fill();
     }
     ctx.restore();
   }

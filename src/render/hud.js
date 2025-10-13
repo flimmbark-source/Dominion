@@ -128,6 +128,7 @@ function drawPanel(x, y, w, h){
 
 function drawHUD(){
   drawThreatIndicator();
+  drawWorldEventCallout();
   const panelHeight = 128;
   const baseY = H - panelHeight - 12;
   ctx.save();
@@ -240,6 +241,50 @@ function drawHUD(){
       }
     }
   }
+
+  ctx.restore();
+}
+
+function drawWorldEventCallout(){
+  const evt = state.activeWorldEvent;
+  if (!evt) return;
+
+  const width = 340;
+  const height = 76;
+  const x = (W - width) / 2;
+  const y = 16;
+  const remaining = Math.max(0, evt.expiresAt - state.time);
+
+  ctx.save();
+  ctx.translate(x, y);
+
+  ctx.fillStyle = 'rgba(12,18,28,0.92)';
+  ctx.fillRect(0, 0, width, height);
+  ctx.strokeStyle = '#2a3d58';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, width - 2, height - 2);
+  ctx.strokeStyle = '#425b7f';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(4, 4, width - 8, height - 8);
+
+  ctx.fillStyle = '#ffe7a6';
+  ctx.font = 'bold 16px "Trebuchet MS", system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText(evt.title, 16, 26);
+
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#ffb27c';
+  ctx.font = '12px "Trebuchet MS", system-ui';
+  ctx.fillText(`${Math.ceil(remaining)}s`, width - 16, 26);
+
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#cfe1ff';
+  ctx.font = '12px "Trebuchet MS", system-ui';
+  ctx.fillText(evt.description, 16, 46);
+
+  ctx.fillStyle = '#8ce4ff';
+  ctx.font = '12px "Trebuchet MS", system-ui';
+  ctx.fillText(evt.objective, 16, 64);
 
   ctx.restore();
 }

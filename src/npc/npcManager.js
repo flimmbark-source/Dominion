@@ -5,26 +5,48 @@ import { TAU, clamp } from '../utils/math.js';
 import { gatherForestSolidsAround } from '../world/terrain.js';
 import { toast } from '../ui/toast.js';
 
+const HUNTER_TYPES = new Set(['scout', 'tank']);
+
+const NPC_TEMPLATES = {
+  villager: { speed: 36, fovAngle: Math.PI / 2, fovRange: 120 },
+  scout: { speed: 62, fovAngle: Math.PI / 3, fovRange: 220 },
+  tank: { speed: 58, fovAngle: Math.PI / 1.65, fovRange: 260 }
+};
+
+function applyNpcTypeStats(npc, type){
+  const template = NPC_TEMPLATES[type] || NPC_TEMPLATES.villager;
+  npc.type = type;
+  npc.baseSpeed = template.speed;
+  npc.speed = template.speed;
+  npc.baseFovAngle = template.fovAngle;
+  npc.fovAngle = template.fovAngle;
+  npc.baseFovRange = template.fovRange;
+  npc.fovRange = template.fovRange;
+}
+
 function makeNPC(type, x, y, waypoints=null){
-  const isScout = type === 'scout';
-  return {
+  const npc = {
+    id: state.nextNpcId++,
     type,
     x,
     y,
     facing: 0,
-    speed: isScout ? 62 : 36,
-    baseSpeed: isScout ? 62 : 36,
-    fovAngle: isScout ? (Math.PI/3) : (Math.PI/2),
-    baseFovAngle: isScout ? (Math.PI/3) : (Math.PI/2),
-    fovRange: isScout ? 220 : 120,
-    baseFovRange: isScout ? 220 : 120,
+    speed: 0,
+    baseSpeed: 0,
+    fovAngle: 0,
+    baseFovAngle: 0,
+    fovRange: 0,
+    baseFovRange: 0,
     waypoints: waypoints || [{ x, y }],
     wpIndex: 0,
     dynamicTarget: null,
     dynamicTargetExpire: 0,
     searchCooldown: 0,
-    activeTarget: null
+    activeTarget: null,
+    hidden: false
   };
+  applyNpcTypeStats(npc, type);
+  return npc;
 }
 
 function offsetPoint(villageIndex, x, y){
@@ -44,7 +66,7 @@ function addVillageNPC(type, villageIndex, x, y, localWaypoints){
 
 function patchPatrolRoutes(){
   for (const npc of state.npcs){
-    if (npc.type !== 'scout') continue;
+    if (!HUNTER_TYPES.has(npc.type)) continue;
     if (!npc.waypoints || npc.waypoints.length < 3){
       const b = { x: npc.x, y: npc.y };
       npc.waypoints = [
@@ -79,6 +101,7 @@ function setupInitialNPCs(){
 }
 
 function npcSeesPlayer(npc, player){
+  if (npc.hidden) return false;
   const dx = player.x - npc.x, dy = player.y - npc.y;
   const d = Math.hypot(dx,dy);
   if (d > npc.fovRange) return false;
@@ -126,14 +149,24 @@ function updateNPCBehaviors(dt){
   const threatFactor = clamp(threat / 200, 0, 1);
   const seenRecently = state.lastSeen && (state.time - state.lastSeenTime < 0.1) || (state.time - state.lastSeenTime < 12);
   for (const npc of state.npcs){
-    if (npc.type !== 'scout'){
+    if (npc.hidden){
       npc.activeTarget = npc.waypoints[npc.wpIndex];
       continue;
     }
 
-    npc.speed = npc.baseSpeed * (1 + 0.45 * threatFactor);
-    npc.fovRange = npc.baseFovRange + 120 * threatFactor;
-    npc.fovAngle = npc.baseFovAngle * (1.05 + 0.15 * threatFactor);
+    if (!HUNTER_TYPES.has(npc.type)){
+      npc.activeTarget = npc.waypoints[npc.wpIndex];
+      continue;
+    }
+
+    const speedBonus = npc.type === 'tank' ? 0.35 : 0.45;
+    const rangeBonus = npc.type === 'tank' ? 150 : 120;
+    const angleMultiplierBase = npc.type === 'tank' ? 1.12 : 1.05;
+    const angleThreatBonus = npc.type === 'tank' ? 0.18 : 0.15;
+
+    npc.speed = npc.baseSpeed * (1 + speedBonus * threatFactor);
+    npc.fovRange = npc.baseFovRange + rangeBonus * threatFactor;
+    npc.fovAngle = npc.baseFovAngle * (angleMultiplierBase + angleThreatBonus * threatFactor);
 
     if (npc.dynamicTarget){
       const dist = Math.hypot(npc.dynamicTarget.x - npc.x, npc.dynamicTarget.y - npc.y);
@@ -151,25 +184,27 @@ function updateNPCBehaviors(dt){
         let expire = 0;
 
         if (seenRecently && threatFactor > 0.2){
-          const radius = 60 + 220 * threatFactor;
+          const huntScale = npc.type === 'tank' ? 1.2 : 1;
+          const radius = (60 + 220 * threatFactor) * huntScale;
           const angle = Math.random() * TAU;
           chosen = clampTargetToWorld({
             x: state.lastSeenAt.x + Math.cos(angle) * radius,
             y: state.lastSeenAt.y + Math.sin(angle) * radius
           });
-          expire = state.time + 6 + 6 * threatFactor;
+          expire = state.time + 6 + 6 * threatFactor * huntScale;
         } else if (threatFactor > 0.45){
           const anchor = threatFactor > 0.75 ? state.player : {
             x: mainVillage.x + mainVillage.w / 2,
             y: mainVillage.y + mainVillage.h / 2
           };
-          const radius = 140 + 320 * threatFactor;
+          const huntScale = npc.type === 'tank' ? 1.25 : 1;
+          const radius = (140 + 320 * threatFactor) * huntScale;
           const angle = Math.random() * TAU;
           chosen = clampTargetToWorld({
             x: anchor.x + Math.cos(angle) * radius,
             y: anchor.y + Math.sin(angle) * radius
           });
-          expire = state.time + 5 + 4 * threatFactor;
+          expire = state.time + 5 + 4 * threatFactor * huntScale;
         }
 
         if (chosen){
@@ -186,6 +221,36 @@ function updateNPCBehaviors(dt){
   }
 }
 
+function promoteScoutToTank(){
+  const candidates = state.npcs.filter(npc => npc.type === 'scout' && !npc.hidden);
+  if (!candidates.length) return null;
+  const npc = candidates[Math.floor(Math.random() * candidates.length)];
+  applyNpcTypeStats(npc, 'tank');
+  npc.dynamicTarget = null;
+  npc.dynamicTargetExpire = 0;
+  npc.searchCooldown = 2.5;
+  return npc;
+}
+
+function setVillagerCurfewActive(active){
+  let affected = 0;
+  for (const npc of state.npcs){
+    if (npc.type !== 'villager') continue;
+    npc.hidden = active;
+    if (active){
+      npc.dynamicTarget = null;
+      npc.dynamicTargetExpire = 0;
+      npc.searchCooldown = 0;
+    }
+    affected++;
+  }
+  return affected;
+}
+
+function getNPCById(id){
+  return state.npcs.find(npc => npc.id === id) || null;
+}
+
 export {
   makeNPC,
   addVillageNPC,
@@ -193,5 +258,8 @@ export {
   setupInitialNPCs,
   npcSeesPlayer,
   spawnReinforcement,
-  updateNPCBehaviors
+  updateNPCBehaviors,
+  promoteScoutToTank,
+  setVillagerCurfewActive,
+  getNPCById
 };
