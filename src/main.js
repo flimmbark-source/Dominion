@@ -14,7 +14,15 @@ import { drawTavernInteriorScene } from './render/tavernInterior.js';
 import { drawHUD } from './render/hud.js';
 import { drawShop } from './render/shop.js';
 import { drawWorldMapOverlay } from './render/map.js';
-import { npcSeesPlayer, setupInitialNPCs, spawnReinforcement, updateNPCBehaviors } from './npc/npcManager.js';
+import {
+  npcSeesPlayer,
+  setupInitialNPCs,
+  spawnReinforcement,
+  updateNPCBehaviors,
+  queueNoiseEvent,
+  notifyNPCPlayerSpotted,
+  NPC_STATE
+} from './npc/npcManager.js';
 import {
   useInventorySlot,
   openShop,
@@ -54,6 +62,21 @@ canvas.addEventListener('click', handleShopClick);
 
 let lastT = performance.now();
 
+function emitNoiseEvent(type, origin, options = {}){
+  return queueNoiseEvent({
+    x: origin.x,
+    y: origin.y,
+    radius: options.radius ?? 180,
+    type,
+    source: options.source || type,
+    investigateFor: options.investigateFor ?? 3,
+    maxResponders: options.maxResponders ?? 1,
+    cooldown: options.cooldown ?? 5,
+    duration: options.duration ?? 6,
+    debug: options.debug
+  });
+}
+
 function loop(nowMs){
   const now = nowMs/1000;
   const dt = Math.min(0.033, now - lastT/1000);
@@ -76,6 +99,7 @@ function update(dt){
   const interactPressed = pressOnce('e');
   const pickpocketPressed = pressOnce('r');
   const attackPressed = pressOnce('space');
+  const throwPressed = pressOnce('q');
   let interactAvailable = interactPressed;
   const inTavernInterior = state.tavernInteriorState.active;
 
@@ -104,6 +128,22 @@ function update(dt){
     nx = fixed.x; ny = fixed.y;
   }
   p.x = nx; p.y = ny;
+
+  if (p.sprinting){
+    if (state.time >= p.nextSprintNoiseTime){
+      emitNoiseEvent('sprint', { x: p.x, y: p.y }, {
+        radius: 220,
+        investigateFor: 2.5,
+        maxResponders: 1,
+        cooldown: 3.2,
+        debug: false,
+        source: 'player_sprint'
+      });
+      p.nextSprintNoiseTime = state.time + 1.5;
+    }
+  } else {
+    p.nextSprintNoiseTime = Math.min(p.nextSprintNoiseTime, state.time + 0.6);
+  }
 
   if (inTavernInterior){
     state.interior = null;
@@ -179,24 +219,75 @@ function update(dt){
     }
   }
 
+  if (throwPressed && !inTavernInterior && !state.interior){
+    if (state.time >= p.nextThrowNoiseTime){
+      const throwDist = 200;
+      const target = {
+        x: clamp(p.x + Math.cos(p.facing || 0) * throwDist, 0, WORLD.W),
+        y: clamp(p.y + Math.sin(p.facing || 0) * throwDist, 0, WORLD.H)
+      };
+      emitNoiseEvent('distraction', target, {
+        radius: 240,
+        investigateFor: 4,
+        maxResponders: 1,
+        cooldown: 6,
+        source: 'player_throw'
+      });
+      toast('You toss a distraction into the dark.', 1.6);
+      p.nextThrowNoiseTime = state.time + 6;
+    } else {
+      toast('Your last throw still echoes—wait a moment.', 1.2);
+    }
+  }
+
   updateNPCBehaviors(dt);
   for (const npc of state.npcs){
-    const wp = npc.activeTarget || npc.waypoints[npc.wpIndex];
-    const dx = wp.x - npc.x, dy = wp.y - npc.y;
-    const d = Math.hypot(dx,dy);
-    if (d < 4) {
-      npc.wpIndex = (npc.wpIndex + 1) % npc.waypoints.length;
-    } else {
-      const vx = dx/d * npc.speed, vy = dy/d * npc.speed;
-      let nnx = npc.x + vx*dt, nny = npc.y + vy*dt;
-      const ns = getActiveSolids(npc);
-      for (const h of ns){
-        const fixed = circleRectCollideResolve(nnx,nny,8, h);
-        nnx = fixed.x; nny = fixed.y;
+    if (npc.pauseTimer > 0) continue;
+    const target = npc.activeTarget || npc.waypoints[npc.wpIndex];
+    if (!target) continue;
+    const dx = target.x - npc.x;
+    const dy = target.y - npc.y;
+    const d = Math.hypot(dx, dy);
+    if (d < 4){
+      if (npc.behaviorState === NPC_STATE.PATROL){
+        if (!npc.holdPosition){
+          const [minPause, maxPause] = npc.patrolPauseRange || [0, 0];
+          const pause = maxPause > 0 ? minPause + Math.random() * Math.max(0, maxPause - minPause) : 0;
+          if (pause > 0){
+            npc.pauseTimer = pause;
+            npc.holdPosition = true;
+          } else {
+            npc.wpIndex = (npc.wpIndex + 1) % npc.waypoints.length;
+          }
+        }
+      } else if (npc.behaviorState === NPC_STATE.SUSPICIOUS){
+        if (!npc.arrivedAtInvestigation){
+          npc.arrivedAtInvestigation = true;
+          const linger = npc.investigationTimer || npc.investigateDuration || 2;
+          npc.investigationTimer = linger;
+          if (linger > 0) npc.pauseTimer = Math.max(npc.pauseTimer, linger);
+        }
+      } else if (npc.behaviorState === NPC_STATE.SEARCH){
+        if (npc.searchRoute && npc.searchIndex < npc.searchRoute.length){
+          npc.searchIndex++;
+        }
+        const hold = npc.searchIndex >= (npc.searchRoute?.length || 0) ? 0.75 : 0.4;
+        npc.pauseTimer = Math.max(npc.pauseTimer, hold);
       }
-      npc.x = nnx; npc.y = nny;
-      npc.facing = Math.atan2(vy, vx);
+      continue;
     }
+
+    const vx = dx / d * npc.speed;
+    const vy = dy / d * npc.speed;
+    let nnx = npc.x + vx * dt;
+    let nny = npc.y + vy * dt;
+    const ns = getActiveSolids(npc);
+    for (const h of ns){
+      const fixed = circleRectCollideResolve(nnx, nny, 8, h);
+      nnx = fixed.x; nny = fixed.y;
+    }
+    npc.x = nnx; npc.y = nny;
+    npc.facing = Math.atan2(vy, vx);
   }
 
   if (attackPressed) attemptAttack(p, playerStats);
@@ -204,7 +295,10 @@ function update(dt){
   let seenBy = 0;
   for (const npc of state.npcs){
     if (npc.faction === 'monster') continue;
-    if (npcSeesPlayer(npc, p)) seenBy++;
+    if (npcSeesPlayer(npc, p)){
+      seenBy++;
+      notifyNPCPlayerSpotted(npc, p);
+    }
   }
   const seen = seenBy > 0;
   state.lastSeen = seen;

@@ -12,6 +12,7 @@ import {
 } from '../world/houses.js';
 import { toast } from '../ui/toast.js';
 import { runVillageTemplateValidation } from './villageTemplateValidation.js';
+import { makeNPC, NPC_STATE, queueNoiseEvent } from '../npc/npcManager.js';
 
 function assert(cond, name){
   if (!cond) {
@@ -112,6 +113,13 @@ function runTests(){
   state.interior = null;
 
   runVillageTemplateValidation(assert);
+
+  const scout = makeNPC('scout', 0, 0);
+  assert(scout.behaviorState === NPC_STATE.PATROL, 'scout defaults to PATROL state');
+  const beforeNoise = state.noiseEvents.length;
+  const noiseId = queueNoiseEvent({ x: 0, y: 0, radius: 120, type: 'test_noise', duration: 1, debug: false });
+  assert(state.noiseEvents.length === beforeNoise + 1, 'queueNoiseEvent enqueues noise');
+  state.noiseEvents = state.noiseEvents.filter(ev => ev.id !== noiseId);
 }
 
 export { runTests };

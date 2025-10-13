@@ -1,6 +1,7 @@
 import { state, mainVillage } from '../state/gameState.js';
 import { clamp } from '../utils/math.js';
 import { toast } from '../ui/toast.js';
+import { queueNoiseEvent } from '../npc/npcManager.js';
 import { addThreat } from './threat.js';
 import { BASE_WHISPERS, HIGH_THREAT_WHISPERS, TASK_HINT_WHISPERS } from '../data/villagerDialog.js';
 
@@ -160,6 +161,15 @@ function tryDisarmNearbyTrap(){
     toast('The wire twangs loudly! Lanterns will turn this way soon.', 3);
     player.detection = clamp(player.detection + 24, 0, 100);
     addThreat(16);
+    queueNoiseEvent({
+      x: target.x,
+      y: target.y,
+      radius: 260,
+      type: 'trap_alert',
+      source: target.id,
+      investigateFor: 4.2,
+      maxResponders: 2
+    });
   }
 
   return true;

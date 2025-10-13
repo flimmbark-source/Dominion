@@ -21,7 +21,9 @@ const state = {
     detection: 0,
     invisUntil: 0,
     stats: playerStats,
-    inventory: Array(6).fill(null)
+    inventory: Array(6).fill(null),
+    nextSprintNoiseTime: 0,
+    nextThrowNoiseTime: 0
   },
   houses: [],
   doors: [],
@@ -56,7 +58,10 @@ const state = {
   shopOwned: new Set(),
   mapVisible: false,
   villageTasks: [],
-  pointsOfInterest: []
+  pointsOfInterest: [],
+  noiseEvents: [],
+  alarmLevel: 0,
+  alarmUntil: 0
 };
 
 export { state, mainVillage };
