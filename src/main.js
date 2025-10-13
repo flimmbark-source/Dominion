@@ -24,13 +24,24 @@ const lineIntersectsRect = (x1,y1,x2,y2, rx,ry,rw,rh) => {
 };
 const segBlockedByAnyRect = (x1,y1,x2,y2, rects) => rects.some(r => lineIntersectsRect(x1,y1,x2,y2, r.x, r.y, r.w, r.h));
 
+function canvasPointFromEvent(evt){
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  return {
+    x: (evt.clientX - rect.left) * scaleX,
+    y: (evt.clientY - rect.top) * scaleY
+  };
+}
+
 /** ---------- Input ---------- */
 const keys = new Set();
 window.addEventListener('keydown', e => { keys.add(e.key.toLowerCase()); });
 window.addEventListener('keyup',   e => { keys.delete(e.key.toLowerCase()); });
 
 /** ---------- Game State ---------- */
-const ctx = document.getElementById('game').getContext('2d');
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
 const W = ctx.canvas.width, H = ctx.canvas.height;
 
 const WORLD = { W: 8000, H: 8000 };
@@ -71,14 +82,14 @@ const state = {
     gold: 0, health: 100,
     detection: 0,
     invisUntil: 0,
-    stats: { speed: 120, attack: 10, stealthMult: 1.0 },
+    stats: { speed: 120, attack: 10, stealthMult: 1.0, hasBoots:false, hasCloak:false, hasDagger:false },
     inventory: Array(6).fill(null)
   },
   houses: [],
   doors: [],
   houseSolids: [],
   chests: [],
-  tavern: { x: mainVillage.x + 60, y: mainVillage.y + mainVillage.h - 160, w: 170, h: 120 },
+  tavern: { x: 6460, y: 6280, w: 220, h: 200, stump:{ cx:6570, cy:6380, radius:46 }, glowRadius:180, clearRadius:160 },
   npcs: [],
   castle: { x: WORLD.W - 320, y: 360 },
   threat: 0, // meter still used to spawn scouts but no HUD text
@@ -86,7 +97,9 @@ const state = {
   spawnCount: 0,
   interior: null, // { houseId, level } or null when outside
   stairs: [], // {houseId, level, x,y,w,h, targetLevel, treads?}
-  lastSeen: false
+  lastSeen: false,
+  tavernPlayerInside: false,
+  shopOwned: new Set()
 };
 
 /** ---------- World Setup ---------- */
@@ -253,6 +266,20 @@ function generateWorld(){
         shadowAlpha: 0.16 + Math.random() * 0.05
       });
     }
+  }
+
+  // Secret tavern clearing: carve a soft circle so the stump stands alone
+  const tavern = state.tavern;
+  if (tavern){
+    const clearR = tavern.clearRadius || 140;
+    const cx = tavern.stump?.cx ?? (tavern.x + tavern.w/2);
+    const cy = tavern.stump?.cy ?? (tavern.y + tavern.h/2);
+    const r2 = clearR * clearR;
+    forestSolids = forestSolids.filter(tile => {
+      const dx = tile.cx - cx;
+      const dy = tile.cy - cy;
+      return (dx*dx + dy*dy) > r2;
+    });
   }
 }
 function addHouseWithDoor(x, y, w, h, side /* 'north' | 'south' */, doorOffset=0.5, doorW=22, villageId=0){
@@ -615,28 +642,54 @@ patchPatrolRoutes();
 
 /** ---------- Items / Shop ---------- */
 const ITEMS = [
-  { key:'1', name:'Boots of Speed',   price:100, type:'passive', apply:(p)=>{ p.stats.speed += 40; } },
-  { key:'2', name:'Cloak of Shadows', price:150, type:'passive', apply:(p)=>{ p.stats.stealthMult *= 0.6; } },
-  { key:'3', name:'Poison Dagger',    price:120, type:'passive', apply:(p)=>{ p.stats.attack += 10; } },
-  { key:'4', name:'Invisibility Potion', price:80, type:'consumable', apply:(p)=>{} },
-  { key:'5', name:'Moonleaf Draught', price:90, type:'consumable', apply:(p)=>{} }
+  {
+    id:'boots', key:'1', name:'Boots of the Whipwind', price:100, type:'passive',
+    desc:'Wyvern-sinew laces grant +40 movement speed.',
+    canBuy:(p)=>!p.stats.hasBoots,
+    apply:(p)=>{ p.stats.hasBoots = true; p.stats.speed += 40; }
+  },
+  {
+    id:'cloak', key:'2', name:'Cloak of Nightwhisper', price:150, type:'passive',
+    desc:'Mycelium threads slow detection buildup by 40%.',
+    canBuy:(p)=>!p.stats.hasCloak,
+    apply:(p)=>{ p.stats.hasCloak = true; p.stats.stealthMult *= 0.6; }
+  },
+  {
+    id:'dagger', key:'3', name:'Venom-Barbed Shiv', price:120, type:'passive',
+    desc:'Coated blade boosts attack damage by +10.',
+    canBuy:(p)=>!p.stats.hasDagger,
+    apply:(p)=>{ p.stats.hasDagger = true; p.stats.attack += 10; }
+  },
+  {
+    id:'invis', key:'4', name:'Invisibility Potion', price:80, type:'consumable',
+    desc:'One draught renders you unseen for 6 seconds.',
+    apply:()=>{}
+  },
+  {
+    id:'moonleaf', key:'5', name:'Moonleaf Draught', price:90, type:'consumable',
+    desc:'Herbal brew that restores 30 health.',
+    apply:()=>{}
+  }
 ];
+let shopHitRegions = [];
+let shopHover = null;
 function inventoryAdd(item){
   const idx = state.player.inventory.findIndex(x=>x===null);
   if (idx === -1) return false;
-  state.player.inventory[idx] = {...item, stacks:1};
+  state.player.inventory[idx] = { id:item.id, name:item.name, type:item.type, desc:item.desc, stacks:1 };
   return true;
 }
 function useInventorySlot(slotIdx){
   const it = state.player.inventory[slotIdx];
   if (!it) return;
-  if (it.name === 'Invisibility Potion'){
+  if (it.type === 'passive'){ toast('Already equipped.'); return; }
+  if (it.id === 'invis'){
     const now = state.time;
     if (now < state.player.invisUntil) return;
     state.player.invisUntil = now + 6; // strong but limited
     state.player.inventory[slotIdx] = null;
     toast('You fade from sight...');
-  } else if (it.name === 'Moonleaf Draught'){
+  } else if (it.id === 'moonleaf'){
     state.player.health = clamp(state.player.health + 30, 0, 100);
     state.player.inventory[slotIdx] = null;
     toast('You feel restored (+30 HP).');
@@ -731,9 +784,15 @@ function update(dt){
   state.camera.x = clamp(p.x - W/2, 0, Math.max(0, WORLD.W - W));
   state.camera.y = clamp(p.y - H/2, 0, Math.max(0, WORLD.H - H));
 
-  // Tavern trigger -> open shop
-  if (inRect(p.x, p.y, state.tavern) && !state.pausedForShop){
-    openShop();
+  // Tavern trigger -> open shop once per entry
+  const insideTavern = inRect(p.x, p.y, state.tavern);
+  if (insideTavern){
+    if (!state.tavernPlayerInside && !state.pausedForShop){
+      openShop();
+    }
+    state.tavernPlayerInside = true;
+  } else {
+    state.tavernPlayerInside = false;
   }
 
   // NPCs update: simple patrol/wander
@@ -880,25 +939,72 @@ function pressOnce(k){
   }
 }
 
+function attemptPurchase(item){
+  const p = state.player;
+  if (item.canBuy && !item.canBuy(p)){
+    toast('Already owned.');
+    return;
+  }
+  if (p.gold < item.price){ toast('Not enough gold!'); return; }
+  if (!inventoryAdd(item)){ toast('Inventory full!'); return; }
+  p.gold -= item.price;
+  if (item.apply) item.apply(p);
+  if (item.type === 'passive') state.shopOwned.add(item.id);
+  toast(`Purchased ${item.name}.`);
+}
+
 function openShop(){
   state.pausedForShop = true;
-  toast("Goblin Merchant: What are ya buyin'?", 2);
+  shopHover = null;
+  shopHitRegions = [];
+  canvas.style.cursor = 'default';
+  toast("Goblin Merchant: What are ya buyin'?", 2.2);
+}
+
+function closeShop(){
+  state.pausedForShop = false;
+  shopHover = null;
+  shopHitRegions = [];
+  canvas.style.cursor = 'default';
+  justPressed.clear();
 }
 
 window.addEventListener('keydown', (e)=>{
   if (!state.pausedForShop) return;
   const k = e.key.toLowerCase();
-  if (k === '0' || k === 'escape'){ state.pausedForShop = false; return; }
+  if (k === '0' || k === 'escape'){ closeShop(); return; }
   // Purchase by number keys matching ITEMS key
   const item = ITEMS.find(it => it.key === k);
   if (!item) return;
-  const p = state.player;
-  if (p.gold < item.price){ toast('Not enough gold!'); return; }
-  if (!inventoryAdd(item)){ toast('Inventory full!'); return; }
-  p.gold -= item.price;
-  // Apply passives immediately
-  if (item.type === 'passive') item.apply(p);
-  toast(`Purchased ${item.name}.`);
+  attemptPurchase(item);
+});
+
+canvas.addEventListener('mousemove', (e)=>{
+  if (!state.pausedForShop) return;
+  const pt = canvasPointFromEvent(e);
+  let hovered = null;
+  for (const hit of shopHitRegions){
+    if (inRect(pt.x, pt.y, hit.rect)) { hovered = hit; break; }
+  }
+  shopHover = hovered ? (hovered.type === 'exit' ? 'exit' : hovered.item.id) : null;
+  canvas.style.cursor = hovered ? 'pointer' : 'default';
+});
+
+canvas.addEventListener('mouseleave', ()=>{
+  if (!state.pausedForShop) return;
+  shopHover = null;
+  canvas.style.cursor = 'default';
+});
+
+canvas.addEventListener('click', (e)=>{
+  if (!state.pausedForShop) return;
+  const pt = canvasPointFromEvent(e);
+  for (const hit of shopHitRegions){
+    if (!inRect(pt.x, pt.y, hit.rect)) continue;
+    if (hit.type === 'exit'){ closeShop(); }
+    else if (hit.type === 'item'){ attemptPurchase(hit.item); }
+    break;
+  }
 });
 
 /** ---------- Rendering ---------- */
@@ -983,6 +1089,97 @@ function drawTree(tree){
   ctx.restore();
 }
 
+function drawGoblinTavern(){
+  const tavern = state.tavern;
+  if (!tavern) return;
+  const cx = tavern.stump?.cx ?? (tavern.x + tavern.w/2);
+  const cy = tavern.stump?.cy ?? (tavern.y + tavern.h/2);
+  const glowR = tavern.glowRadius || 160;
+  const view = { x: state.camera.x, y: state.camera.y, w: W, h: H };
+  const area = { x: cx - glowR, y: cy - glowR, w: glowR * 2, h: glowR * 2 };
+  if (!rectsOverlap(area, view)) return;
+
+  const radius = tavern.stump?.radius || 46;
+  const flicker = 0.72 + Math.sin(state.time * 5.2) * 0.05 + Math.sin(state.time * 2.1) * 0.04;
+
+  ctx.save();
+
+  const halo = ctx.createRadialGradient(cx, cy + 12, 12, cx, cy + 12, glowR);
+  halo.addColorStop(0, `rgba(120, 255, 180, ${(0.26 * flicker).toFixed(3)})`);
+  halo.addColorStop(0.45, `rgba(70, 200, 140, ${(0.18 * flicker).toFixed(3)})`);
+  halo.addColorStop(1, 'rgba(5, 12, 8, 0)');
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(cx, cy + 12, glowR, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(34, 52, 26, 0.6)';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + 18, glowR * 0.7, glowR * 0.5, 0, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(72, 56, 30, 0.7)';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + glowR * 0.42, glowR * 0.36, glowR * 0.18, 0, 0, TAU);
+  ctx.fill();
+
+  const doorBeam = ctx.createRadialGradient(cx, cy + 10, 2, cx, cy + 10, glowR * 0.85);
+  doorBeam.addColorStop(0, `rgba(255, 214, 120, ${(0.68 * flicker).toFixed(3)})`);
+  doorBeam.addColorStop(0.45, `rgba(210, 150, 90, ${(0.22 * flicker).toFixed(3)})`);
+  doorBeam.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = doorBeam;
+  ctx.beginPath();
+  ctx.moveTo(cx - 12, cy + 6);
+  ctx.quadraticCurveTo(cx, cy + glowR * 0.45, cx + 12, cy + 6);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#3f2b19';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + 6, radius * 1.08, radius * 0.82, 0, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = '#21140c';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.fillStyle = '#5d3b22';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy - radius * 0.28, radius * 0.9, radius * 0.54, 0, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = '#2f1b0f';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  const doorW = radius * 0.55;
+  const doorH = radius * 0.9;
+  const doorX = cx - doorW / 2;
+  const doorY = cy - doorH / 2 + 8;
+  ctx.fillStyle = '#090d08';
+  ctx.fillRect(doorX, doorY, doorW, doorH);
+  ctx.fillStyle = `rgba(220, 190, 110, ${(0.58 * flicker).toFixed(3)})`;
+  ctx.fillRect(doorX + 4, doorY + doorH - 10, doorW - 8, 6);
+
+  for (let i = 0; i < 5; i++){
+    const angle = state.time * 0.5 + i * (TAU / 5);
+    const mx = cx + Math.cos(angle) * radius * 1.45;
+    const my = cy + Math.sin(angle) * radius * 1.18;
+    const shroom = ctx.createRadialGradient(mx, my, 2, mx, my, 14);
+    shroom.addColorStop(0, 'rgba(160, 255, 200, 0.8)');
+    shroom.addColorStop(1, 'rgba(10, 20, 12, 0)');
+    ctx.fillStyle = shroom;
+    ctx.beginPath();
+    ctx.arc(mx, my, 14, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#6be3a5';
+    ctx.beginPath();
+    ctx.arc(mx, my, 4, 0, TAU);
+    ctx.fill();
+  }
+
+  ctx.lineWidth = 1;
+  ctx.restore();
+}
+
 function draw(){
   const p = state.player;
 
@@ -1037,10 +1234,7 @@ function draw(){
   }
 
   // Tavern area
-  ctx.fillStyle = 'rgba(30,80,40,.25)';
-  ctx.fillRect(state.tavern.x, state.tavern.y, state.tavern.w, state.tavern.h);
-  ctx.strokeStyle = '#3a7a4a';
-  ctx.strokeRect(state.tavern.x+0.5, state.tavern.y+0.5, state.tavern.w-1, state.tavern.h-1);
+  drawGoblinTavern();
 
   // Chests (only when interior and on same level)
   for (const c of state.chests){
@@ -1192,25 +1386,96 @@ function drawHUD(){
 
 function drawShop(){
   ctx.save();
-  ctx.fillStyle = 'rgba(8,10,16,.8)'; ctx.fillRect(0,0,W,H);
-  // Parchment panel
-  const pw=560, ph=280, px=(W-pw)/2, py=(H-ph)/2;
-  ctx.fillStyle = '#2b2a24'; ctx.fillRect(px,py,pw,ph);
-  ctx.strokeStyle = '#4a3d2b'; ctx.strokeRect(px+.5,py+.5,pw-1,ph-1);
-  ctx.fillStyle = '#f4e1b5'; ctx.font = '20px ui-sans-serif';
-  ctx.fillText('Goblin Tavern - Wares', px+20, py+34);
-  ctx.fillStyle = '#ead6a0'; ctx.font = '14px ui-sans-serif';
-  const lines = [
-    'Press number to purchase. 0/Esc to leave.',
-    `Your Gold: ${state.player.gold}`,
-    '',
-    '1) Boots of Speed (100) - Move faster.',
-    '2) Cloak of Shadows (150) - Detect slower.',
-    '3) Poison Dagger (120) - +Damage.',
-    '4) Invisibility Potion (80) - 6s invisible (consumable).',
-    '5) Moonleaf Draught (90) - Heal 30 HP (consumable).'
-  ];
-  lines.forEach((t,i)=> ctx.fillText(t, px+20, py+64 + i*24));
+  ctx.fillStyle = 'rgba(6,8,12,0.82)';
+  ctx.fillRect(0,0,W,H);
+
+  const pw = 620, ph = 360;
+  const px = (W - pw) / 2;
+  const py = (H - ph) / 2;
+  const panelGrad = ctx.createLinearGradient(px, py, px, py + ph);
+  panelGrad.addColorStop(0, '#271c12');
+  panelGrad.addColorStop(1, '#2f2318');
+  ctx.fillStyle = panelGrad;
+  ctx.fillRect(px, py, pw, ph);
+  ctx.strokeStyle = '#8a6d3a';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(px + 1.5, py + 1.5, pw - 3, ph - 3);
+  ctx.lineWidth = 1;
+
+  ctx.fillStyle = '#f6e9c8';
+  ctx.font = '24px "Trebuchet MS", ui-sans-serif';
+  ctx.fillText('Hidden Goblin Tavern', px + 24, py + 40);
+  ctx.fillStyle = '#d7c69a';
+  ctx.font = '16px ui-sans-serif';
+  ctx.fillText('Goblin Merchant: "What are ya buyin\'?"', px + 24, py + 68);
+  ctx.fillText('Left click or press 1-5 to purchase · 0/Esc to slip back outside.', px + 24, py + 94);
+
+  ctx.font = '16px ui-sans-serif';
+  ctx.fillStyle = '#ffde7b';
+  ctx.fillText(`Purse: ${state.player.gold} gold`, px + 24, py + 118);
+
+  shopHitRegions = [];
+  const cardH = 64;
+  const spacing = 16;
+  const listStartY = py + 136;
+  const usedSlots = state.player.inventory.filter(Boolean).length;
+
+  ITEMS.forEach((item, idx)=>{
+    const y = listStartY + idx * (cardH + spacing);
+    const rect = { x: px + 24, y, w: pw - 48, h: cardH };
+    const hovered = shopHover === item.id;
+    const affordable = state.player.gold >= item.price;
+    const owned = item.canBuy ? !item.canBuy(state.player) : false;
+    const quantity = state.player.inventory.filter(it => it && it.id === item.id).length;
+
+    ctx.fillStyle = hovered ? 'rgba(112,85,52,0.55)' : 'rgba(32,24,18,0.74)';
+    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+    ctx.strokeStyle = hovered ? '#d6b36a' : '#8a6d3a';
+    ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
+
+    ctx.fillStyle = '#f6e9c8';
+    ctx.font = '18px ui-sans-serif';
+    ctx.fillText(`${item.key}) ${item.name}`, rect.x + 16, rect.y + 26);
+
+    ctx.fillStyle = '#d9c8a2';
+    ctx.font = '14px ui-sans-serif';
+    ctx.fillText(item.desc, rect.x + 16, rect.y + 46);
+
+    ctx.font = '16px ui-sans-serif';
+    ctx.fillStyle = affordable ? '#ffde7b' : '#c07b6e';
+    ctx.fillText(`${item.price} gold`, rect.x + rect.w - 150, rect.y + 26);
+
+    if (owned){
+      ctx.fillStyle = '#7fe9a6';
+      ctx.fillText('Owned', rect.x + rect.w - 150, rect.y + 46);
+    } else if (item.type === 'consumable' && quantity > 0){
+      ctx.fillStyle = '#9ac8ff';
+      ctx.fillText(`Satchel ×${quantity}`, rect.x + rect.w - 170, rect.y + 46);
+    }
+
+    if (!affordable && !owned){
+      ctx.fillStyle = 'rgba(40,12,12,0.25)';
+      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+    }
+
+    shopHitRegions.push({ type:'item', item, rect });
+  });
+
+  const exitRect = { x: px + pw - 160, y: py + ph - 56, w: 136, h: 36 };
+  const exitHover = shopHover === 'exit';
+  ctx.fillStyle = exitHover ? 'rgba(130,63,50,0.85)' : 'rgba(77,42,37,0.85)';
+  ctx.fillRect(exitRect.x, exitRect.y, exitRect.w, exitRect.h);
+  ctx.strokeStyle = '#ba735a';
+  ctx.strokeRect(exitRect.x + 0.5, exitRect.y + 0.5, exitRect.w - 1, exitRect.h - 1);
+  ctx.fillStyle = '#f4d5a6';
+  ctx.font = '16px ui-sans-serif';
+  ctx.fillText('Leave Tavern', exitRect.x + 14, exitRect.y + 23);
+  shopHitRegions.push({ type:'exit', rect: exitRect });
+
+  ctx.fillStyle = '#d7c69a';
+  ctx.font = '14px ui-sans-serif';
+  ctx.fillText(`Satchel slots used: ${usedSlots}/6`, px + 24, py + ph - 24);
+
   ctx.restore();
 }
 
