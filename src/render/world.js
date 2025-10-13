@@ -40,8 +40,8 @@ function drawWorldScene(){
   ctx.save();
   ctx.translate(-state.camera.x, -state.camera.y);
 
-  drawTerrain({ treeFilter: treeBehindPlayer });
   drawTerrain({ includeTrees: false });
+  drawTerrain({ treeFilter: treeBehindPlayer });
   drawCastle();
 
   for (const h of state.houses){
