@@ -796,6 +796,7 @@ function drawTerrain(options = {}){
     };
     if (!rectsOverlap(bounds, view)) continue;
     drawZone(zone);
+  }
   if (includeTrees){
     for (const tree of forestSolids){
       const bounds = {
