@@ -106,6 +106,61 @@ function distToSegment(px,py, ax,ay,bx,by){
 }
 function centerOf(rect){ return { x: rect.x + rect.w/2, y: rect.y + rect.h/2 }; }
 
+function projectToVillageEdge(point, toward){
+  const result = { x: point.x, y: point.y };
+  for (const village of VILLAGES){
+    if (!pointInRect(result.x, result.y, village)) continue;
+
+    const dx = toward.x - result.x;
+    const dy = toward.y - result.y;
+    const EPS = 1e-6;
+    let bestT = null;
+
+    if (Math.abs(dx) > EPS){
+      const tx = dx > 0 ? (village.x + village.w - result.x) / dx : (village.x - result.x) / dx;
+      if (tx >= 0 && tx <= 1){
+        const y = result.y + dy * tx;
+        if (y >= village.y - EPS && y <= village.y + village.h + EPS){
+          bestT = bestT === null ? tx : Math.min(bestT, tx);
+        }
+      }
+    }
+
+    if (Math.abs(dy) > EPS){
+      const ty = dy > 0 ? (village.y + village.h - result.y) / dy : (village.y - result.y) / dy;
+      if (ty >= 0 && ty <= 1){
+        const x = result.x + dx * ty;
+        if (x >= village.x - EPS && x <= village.x + village.w + EPS){
+          bestT = bestT === null ? ty : Math.min(bestT, ty);
+        }
+      }
+    }
+
+    if (bestT === null) continue;
+
+    const exitX = result.x + dx * bestT;
+    const exitY = result.y + dy * bestT;
+    const len = Math.hypot(dx, dy);
+    if (len > EPS){
+      const remaining = Math.max(0, len - len * bestT);
+      const push = Math.min(3, remaining * 0.5);
+      return {
+        x: exitX + (dx / len) * push,
+        y: exitY + (dy / len) * push
+      };
+    }
+    return { x: exitX, y: exitY };
+  }
+  return result;
+}
+
+function pushPathSegment(a, b, width){
+  const start = projectToVillageEdge(a, b);
+  const end = projectToVillageEdge(b, start);
+  if (start.x === end.x && start.y === end.y) return;
+  pathSegments.push({ a: start, b: end, width });
+}
+
 function generateWorld(){
   roads.length = 0; forestSolids = []; pathSegments.length = 0;
 
@@ -134,7 +189,7 @@ function generateWorld(){
     const segments = [heart, first, second, other];
     for (let s=0;s<segments.length-1;s++){
       const a = segments[s], b = segments[s+1];
-      pathSegments.push({ a, b, width: PATH_WIDTH_MAIN });
+      pushPathSegment(a, b, PATH_WIDTH_MAIN);
     }
   }
 
@@ -143,7 +198,7 @@ function generateWorld(){
   for (let i=0;i<frontier.length;i++){
     const a = centerOf(frontier[i]);
     const b = centerOf(frontier[(i+1)%frontier.length]);
-    pathSegments.push({ a, b, width: PATH_WIDTH_RING });
+    pushPathSegment(a, b, PATH_WIDTH_RING);
   }
 
   // Populate forests everywhere that is not a road, village, or path corridor
