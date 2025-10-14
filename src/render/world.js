@@ -45,36 +45,6 @@ function adjustHexColor(hex, factor){
   return `#${nr.toString(16).padStart(2, '0')}${ng.toString(16).padStart(2, '0')}${nb.toString(16).padStart(2, '0')}`;
 }
 
-const HOUSE_PALETTES = [
-  {
-    base: '#263248',
-    roof: '#3a4c6d',
-    trim: '#dce3f6',
-    accent: '#f6b36b',
-    windowLight: '#cfe1ff',
-    windowDark: '#7ea5e3',
-    door: '#1a2335'
-  },
-  {
-    base: '#3a2a3f',
-    roof: '#554262',
-    trim: '#f3dce9',
-    accent: '#f58a9b',
-    windowLight: '#f9d8ff',
-    windowDark: '#c392d8',
-    door: '#25182d'
-  },
-  {
-    base: '#243734',
-    roof: '#385a4e',
-    trim: '#d5ecdf',
-    accent: '#f3c77a',
-    windowLight: '#c8ffe6',
-    windowDark: '#7ac8a4',
-    door: '#162420'
-  }
-];
-
 function drawPolygon(points){
   ctx.beginPath();
   ctx.moveTo(points[0].x, points[0].y);
@@ -164,242 +134,6 @@ function drawExtrudedRect({
   ctx.restore();
 
   return { top, front, left, right, drop };
-}
-
-function getHousePalette(house, index){
-  const baseIndex = typeof house?.villageId === 'number' ? house.villageId : 0;
-  return HOUSE_PALETTES[(baseIndex + index) % HOUSE_PALETTES.length];
-}
-
-function drawRoofDetails(house, geometry, palette){
-  const { top } = geometry;
-  if (!top?.length) return;
-
-  const ridgeStart = {
-    x: (top[0].x + top[3].x) / 2,
-    y: (top[0].y + top[3].y) / 2
-  };
-  const ridgeEnd = {
-    x: (top[1].x + top[2].x) / 2,
-    y: (top[1].y + top[2].y) / 2
-  };
-
-  ctx.save();
-  ctx.strokeStyle = adjustHexColor(palette.roof, 0.28);
-  ctx.lineWidth = 2.4;
-  ctx.beginPath();
-  ctx.moveTo(ridgeStart.x, ridgeStart.y);
-  ctx.lineTo(ridgeEnd.x, ridgeEnd.y);
-  ctx.stroke();
-
-  const seamCount = Math.max(3, Math.round(house.w / 26));
-  ctx.strokeStyle = adjustHexColor(palette.roof, -0.12);
-  ctx.lineWidth = 1;
-  for (let i = 1; i < seamCount; i++){
-    const t = i / seamCount;
-    const left = {
-      x: top[0].x + (top[1].x - top[0].x) * t,
-      y: top[0].y + (top[1].y - top[0].y) * t
-    };
-    const right = {
-      x: top[3].x + (top[2].x - top[3].x) * t,
-      y: top[3].y + (top[2].y - top[3].y) * t
-    };
-    ctx.beginPath();
-    ctx.moveTo(left.x, left.y);
-    ctx.lineTo(right.x, right.y);
-    ctx.stroke();
-  }
-
-  ctx.restore();
-}
-
-function drawFrontWindows(front, palette, house){
-  const faceWidth = house.w;
-  const faceHeight = front[3].y - front[0].y;
-  if (faceWidth < 36 || faceHeight < 20) return;
-
-  const windowCount = faceWidth > 160 ? 3 : faceWidth > 90 ? 2 : 1;
-  const spacing = faceWidth / (windowCount + 1);
-  const windowWidth = Math.min(26, spacing * 0.6);
-  const verticalMargin = Math.max(10, faceHeight * 0.18);
-  const usableHeight = faceHeight - verticalMargin * 2;
-  if (usableHeight < 12) return;
-  const windowHeight = Math.min(32, usableHeight * 0.9);
-  const topY = front[0].y + verticalMargin + (usableHeight - windowHeight) / 2;
-
-  for (let i = 0; i < windowCount; i++){
-    const centerX = front[0].x + spacing * (i + 1);
-    const x = centerX - windowWidth / 2;
-    const y = topY;
-
-    ctx.save();
-    const frameColor = adjustHexColor(palette.trim, -0.12);
-    ctx.fillStyle = frameColor;
-    const framePadding = 2.5;
-    ctx.fillRect(x - framePadding, y - framePadding, windowWidth + framePadding * 2, windowHeight + framePadding * 2);
-
-    const gradient = ctx.createLinearGradient(x, y, x, y + windowHeight);
-    gradient.addColorStop(0, adjustHexColor(palette.windowLight, 0.25));
-    gradient.addColorStop(0.55, palette.windowLight);
-    gradient.addColorStop(1, palette.windowDark);
-    ctx.fillStyle = gradient;
-    ctx.fillRect(x, y, windowWidth, windowHeight);
-
-    ctx.strokeStyle = adjustHexColor(palette.windowDark, -0.12);
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.moveTo(x, y + windowHeight / 2);
-    ctx.lineTo(x + windowWidth, y + windowHeight / 2);
-    ctx.moveTo(x + windowWidth / 2, y);
-    ctx.lineTo(x + windowWidth / 2, y + windowHeight);
-    ctx.stroke();
-
-    ctx.strokeStyle = adjustHexColor(palette.trim, 0.2);
-    ctx.lineWidth = 1;
-    ctx.strokeRect(
-      x - framePadding + 0.5,
-      y - framePadding + 0.5,
-      windowWidth + framePadding * 2 - 1,
-      windowHeight + framePadding * 2 - 1
-    );
-
-    ctx.restore();
-  }
-}
-
-function drawFacadeDetails(house, geometry, palette){
-  const front = geometry.front;
-  const faceWidth = house.w;
-  const faceHeight = front[3].y - front[0].y;
-  if (faceWidth <= 0 || faceHeight <= 0) return;
-
-  const eaveHeight = Math.min(8, faceHeight * 0.18);
-  const eaveY = front[0].y - eaveHeight;
-  ctx.fillStyle = adjustHexColor(palette.trim, -0.2);
-  ctx.fillRect(front[0].x - 3, eaveY, faceWidth + 6, eaveHeight);
-  ctx.fillStyle = adjustHexColor(palette.trim, 0.12);
-  ctx.fillRect(front[0].x - 3, eaveY + eaveHeight - 2, faceWidth + 6, 2);
-
-  const baseHeight = Math.min(12, faceHeight * 0.22);
-  const baseY = front[3].y - baseHeight;
-  ctx.fillStyle = adjustHexColor(palette.base, -0.35);
-  ctx.fillRect(front[0].x - 2, baseY, faceWidth + 4, baseHeight);
-  ctx.fillStyle = adjustHexColor(palette.base, -0.58);
-  ctx.fillRect(front[0].x - 2, baseY, faceWidth + 4, 2);
-
-  const trimWidth = Math.min(8, faceWidth * 0.12);
-  ctx.fillStyle = adjustHexColor(palette.trim, -0.18);
-  ctx.fillRect(front[0].x - trimWidth / 2, front[0].y - 1, trimWidth, faceHeight + 2);
-  ctx.fillRect(front[1].x - trimWidth / 2, front[1].y - 1, trimWidth, faceHeight + 2);
-
-  drawFrontWindows(front, palette, house);
-}
-
-function drawHouseWithDetails(house, palette){
-  const geometry = drawExtrudedRect({
-    x: house.x,
-    y: house.y,
-    width: house.w,
-    depth: house.h,
-    height: 22,
-    skew: 10,
-    baseColor: palette.base,
-    roofColor: palette.roof,
-    shadowStrength: 0.36
-  });
-  drawRoofDetails(house, geometry, palette);
-  drawFacadeDetails(house, geometry, palette);
-}
-
-function drawDoorWalkway(door, palette){
-  const pad = 6;
-  const walkwayLength = Math.max(20, door.h * 1.6);
-  const x = door.x - pad;
-  const y = door.side === 'north' ? door.y + door.h : door.y - walkwayLength;
-  const width = door.w + pad * 2;
-  const height = walkwayLength;
-
-  ctx.save();
-  const gradient = ctx.createLinearGradient(x, y, x, y + height);
-  if (door.side === 'north'){
-    gradient.addColorStop(0, adjustHexColor(palette.accent, 0.25));
-    gradient.addColorStop(1, adjustHexColor(palette.accent, -0.22));
-  } else {
-    gradient.addColorStop(0, adjustHexColor(palette.accent, -0.22));
-    gradient.addColorStop(1, adjustHexColor(palette.accent, 0.25));
-  }
-  ctx.fillStyle = gradient;
-  ctx.fillRect(x, y, width, height);
-
-  ctx.strokeStyle = adjustHexColor(palette.accent, -0.35);
-  ctx.lineWidth = 1.2;
-  ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
-
-  const stepHeight = 4;
-  const stepCount = 2;
-  const stepSpacing = height / (stepCount + 1);
-  ctx.fillStyle = adjustHexColor(palette.accent, -0.28);
-  for (let i = 1; i <= stepCount; i++){
-    const sy = y + stepSpacing * i - stepHeight / 2;
-    ctx.fillRect(x + 1, sy, width - 2, stepHeight);
-  }
-
-  ctx.restore();
-}
-
-function drawDoorFaceDetails(door, geometry, palette){
-  const front = geometry.front;
-  const faceWidth = door.w;
-  const faceHeight = door.h;
-  if (faceWidth <= 0 || faceHeight <= 0) return;
-
-  const inset = 3;
-  ctx.save();
-  ctx.strokeStyle = adjustHexColor(palette.trim, -0.05);
-  ctx.lineWidth = 2.2;
-  ctx.strokeRect(front[0].x + inset - 0.5, front[0].y + inset - 0.5, faceWidth - inset * 2 + 1, faceHeight - inset * 2 + 1);
-
-  ctx.strokeStyle = adjustHexColor(palette.door, -0.35);
-  ctx.lineWidth = 1.4;
-  const panelWidth = faceWidth - inset * 2 - 6;
-  const upperPanelY = front[0].y + inset + 6;
-  const lowerPanelY = front[0].y + faceHeight / 2 + 4;
-  const panelHeight = Math.max(8, faceHeight * 0.22);
-  ctx.strokeRect(front[0].x + inset + 3, upperPanelY, panelWidth, panelHeight);
-  ctx.strokeRect(front[0].x + inset + 3, lowerPanelY, panelWidth, panelHeight + 2);
-
-  const handleX = front[0].x + faceWidth * 0.72;
-  const handleY = front[0].y + faceHeight * 0.58;
-  ctx.strokeStyle = adjustHexColor(palette.accent, -0.08);
-  ctx.lineWidth = 2.6;
-  ctx.beginPath();
-  ctx.moveTo(handleX, handleY);
-  ctx.lineTo(handleX, handleY + faceHeight * 0.18);
-  ctx.stroke();
-
-  ctx.fillStyle = adjustHexColor(palette.accent, 0.25);
-  ctx.beginPath();
-  ctx.arc(handleX, handleY + faceHeight * 0.06, 2.4, 0, TAU);
-  ctx.fill();
-
-  ctx.restore();
-}
-
-function drawDoorWithDetails(door, palette){
-  drawDoorWalkway(door, palette);
-  const geometry = drawExtrudedRect({
-    x: door.x,
-    y: door.y,
-    width: door.w,
-    depth: door.h,
-    height: 12,
-    skew: 4,
-    baseColor: adjustHexColor(palette.door, -0.1),
-    roofColor: adjustHexColor(palette.door, 0.22),
-    shadowStrength: 0.22
-  });
-  drawDoorFaceDetails(door, geometry, palette);
 }
 
 function drawChest3D(chest){
@@ -505,16 +239,31 @@ function drawWorldScene(){
   drawTerrain({ treeFilter: treeBehindPlayer });
   drawCastle();
 
-  const housePalettes = state.houses.map((h, index) => getHousePalette(h, index));
-
-  state.houses.forEach((h, index) => {
-    const palette = housePalettes[index] ?? HOUSE_PALETTES[0];
-    drawHouseWithDetails(h, palette);
-  });
-
+  for (const h of state.houses){
+    drawExtrudedRect({
+      x: h.x,
+      y: h.y,
+      width: h.w,
+      depth: h.h,
+      height: 18,
+      skew: 9,
+      baseColor: '#1b2638',
+      roofColor: '#2f3f5b',
+      shadowStrength: 0.3
+    });
+  }
   for (const d of state.doors){
-    const palette = housePalettes[d.houseId ?? 0] ?? HOUSE_PALETTES[0];
-    drawDoorWithDetails(d, palette);
+    drawExtrudedRect({
+      x: d.x,
+      y: d.y,
+      width: d.w,
+      depth: d.h,
+      height: 8,
+      skew: 4,
+      baseColor: '#0b0f17',
+      roofColor: '#223047',
+      shadowStrength: 0.22
+    });
   }
 
   if (state.interior && state.interior.level === 1) {
