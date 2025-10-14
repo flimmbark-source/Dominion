@@ -40,6 +40,12 @@ const NPC_ARCHETYPES = {
     counterDamage: 28,
     counterDetection: 40,
     counterThreat: 25,
+    attack: {
+      range: 48,
+      damage: 18,
+      cooldown: 1.6,
+      message: 'The scout slashes you with a sabre!'
+    },
     faction: 'village',
     displayName: 'scout',
     counterMessage: 'The scout whirls and cuts you down! Approach from behind while unseen.',
@@ -56,6 +62,12 @@ const NPC_ARCHETYPES = {
     attackable: true,
     backstabMultiplier: 1.8,
     rewardGold: 8,
+    attack: {
+      range: 42,
+      damage: 7,
+      cooldown: 1.25,
+      message: 'The bogling gnashes at you!'
+    },
     faction: 'monster',
     displayName: 'bogling',
     defaultState: NPC_STATE.PATROL,
@@ -97,6 +109,16 @@ function makeNPC(type, x, y, waypoints=null){
     counterDetection: config.counterDetection ?? 0,
     counterThreat: config.counterThreat ?? 0,
     counterMessage: config.counterMessage || null,
+    attack: config.attack
+      ? {
+        range: config.attack.range ?? 48,
+        damage: config.attack.damage ?? 0,
+        cooldown: Math.max(config.attack.cooldown ?? 1.2, 0.2),
+        message: config.attack.message || null,
+        nextReady: 0,
+        nextMessage: 0
+      }
+      : null,
     faction: config.faction || 'village',
     displayName: config.displayName || type,
     behaviorState: defaultState,

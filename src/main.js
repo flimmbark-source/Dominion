@@ -298,6 +298,29 @@ function update(dt){
     npc.facing = Math.atan2(vy, vx);
   }
 
+  for (const npc of state.npcs){
+    const attack = npc.attack;
+    if (!attack) continue;
+    const engaged = npc.faction === 'monster' || npc.behaviorState === NPC_STATE.ALERT;
+    if (!engaged) continue;
+    const dx = p.x - npc.x;
+    const dy = p.y - npc.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > attack.range) continue;
+    if (state.time < p.invisUntil) continue;
+    if (state.time < (attack.nextReady ?? 0)) continue;
+
+    const damage = Math.max(0, attack.damage ?? 0);
+    if (damage <= 0) continue;
+
+    const cooldown = Math.max(attack.cooldown ?? 1.2, 0.2);
+    state.player.health = clamp(state.player.health - damage, 0, playerStats.maxHealth);
+    attack.nextReady = state.time + cooldown;
+
+    if (attack.message && state.time >= (attack.nextMessage ?? 0)){
+      toast(attack.message, 1.5);
+      attack.nextMessage = state.time + Math.max(cooldown, 1.2);
+    }
   if (attackPressed){
     const swingDuration = 0.32;
     p.attackSwing = {
