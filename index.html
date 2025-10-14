@@ -1,12 +1,17 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Grimm Dominion — Isometric Prototype</title>
+    <meta charset="utf-8" />
+    <title>Grimm Dominion - Vertical Slice (Codespaces/Browser)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script type="module" src="/src/main.js"></script>
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <div id="wrap">
+      <canvas id="game" width="960" height="600"></canvas>
+    </div>
+    <div id="hint">
+      WASD move · Shift sprint · E interact/loot/stairs · 1–6 use items · Enter tavern to open shop · Click/1-5 to buy · 0/Esc close shop · F toggle cones
+    </div>
   </body>
 </html>

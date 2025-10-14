@@ -1,0 +1,4 @@
+html, body { margin:0; height:100%; background:#0b0f17; font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
+#wrap { display:grid; place-items:center; height:100%; }
+canvas { background:#0a0e14; width: 960px; height: 600px; border:1px solid #1c2736; }
+#hint { position:fixed; left:10px; bottom:10px; color:#9fb3c8; font-size:12px; opacity:.85; }
