@@ -14,6 +14,7 @@ import { drawTavernInteriorScene } from './render/tavernInterior.js';
 import { drawHUD } from './render/hud.js';
 import { drawShop } from './render/shop.js';
 import { drawWorldMapOverlay } from './render/map.js';
+import { drawMiniMap } from './render/minimap.js';
 import {
   npcSeesPlayer,
   setupInitialNPCs,
@@ -90,9 +91,13 @@ function loop(nowMs){
 function update(dt){
   const toggleMap = pressOnce('m');
   const escapePressed = pressOnce('escape');
-  if (toggleMap) state.mapVisible = !state.mapVisible;
-  if (state.mapVisible && escapePressed) state.mapVisible = false;
-  if (state.mapVisible) return;
+  if (toggleMap){
+    state.mapMode = state.mapMode === 'large' ? 'minimal' : 'large';
+  }
+  if (state.mapMode === 'large' && escapePressed){
+    state.mapMode = 'minimal';
+  }
+  if (state.mapMode === 'large') return;
 
   state.time += dt;
 
@@ -429,7 +434,11 @@ function draw(){
 
   if (state.pausedForShop) drawShop();
 
-  if (state.mapVisible) drawWorldMapOverlay();
+  if (state.mapMode === 'minimal'){
+    drawMiniMap();
+  } else if (state.mapMode === 'large'){
+    drawWorldMapOverlay();
+  }
 
   if (state.time < state.messageUntil){
     ctx.fillStyle = '#d1e7ff';

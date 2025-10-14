@@ -159,7 +159,7 @@ function drawWorldMapOverlay(){
   ctx.fillStyle = '#9fb3c8';
   ctx.font = '14px system-ui';
   ctx.textAlign = 'center';
-  ctx.fillText('Press M or Esc to close', W / 2, mapY + mapH + 36);
+  ctx.fillText('Press M or Esc to return', W / 2, mapY + mapH + 36);
 
   ctx.restore();
 }

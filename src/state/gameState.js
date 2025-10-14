@@ -56,7 +56,7 @@ const state = {
   nextSweeperSpawn: 0,
   tavernPlayerInside: false,
   shopOwned: new Set(),
-  mapVisible: false,
+  mapMode: 'minimal',
   villageTasks: [],
   pointsOfInterest: [],
   noiseEvents: [],
