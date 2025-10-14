@@ -2,6 +2,7 @@ import { state } from '../state/gameState.js';
 import { TAVERN_INTERIOR } from '../state/tavern.js';
 import { toast } from '../ui/toast.js';
 import { closeShop } from './shop.js';
+import { closeBarkeepConversation } from './barkeepMissions.js';
 
 function enterTavernInterior(){
   if (state.tavernInteriorState.active) return;
@@ -22,6 +23,7 @@ function leaveTavernInterior(){
   const p = state.player;
   const returnPoint = state.tavernInteriorState.returnPoint;
   if (state.pausedForShop) closeShop();
+  closeBarkeepConversation();
   state.tavernInteriorState.active = false;
   state.tavernInteriorState.returnPoint = null;
   state.tavernPlayerInside = false;
