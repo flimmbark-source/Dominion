@@ -3,6 +3,118 @@ import { state } from '../state/gameState.js';
 import { TAVERN_INTERIOR } from '../state/tavern.js';
 import { TAU } from '../utils/math.js';
 import { drawGoblin } from './goblin.js';
+import { getBarkeepDialogueState } from '../systems/barkeepMissions.js';
+
+const toneStyles = {
+  body: { font: '14px "Trebuchet MS", ui-sans-serif', fill: '#f4ffdf', lineHeight: 20 },
+  muted: { font: '13px "Trebuchet MS", ui-sans-serif', fill: '#9fb3cc', lineHeight: 18 },
+  highlight: { font: '14px "Trebuchet MS", ui-sans-serif', fill: '#ffde7b', lineHeight: 20 },
+  note: { font: '13px "Trebuchet MS", ui-sans-serif', fill: '#9fd6c9', lineHeight: 18 },
+  title: { font: '16px "Trebuchet MS", ui-sans-serif', fill: '#ffefb3', lineHeight: 22 }
+};
+
+function wrapTextLines(text, font, maxWidth){
+  if (!text || !text.trim()) return [];
+  ctx.font = font;
+  const words = text.split(' ');
+  const lines = [];
+  let current = '';
+  for (const word of words){
+    const candidate = current ? `${current} ${word}` : word;
+    if (ctx.measureText(candidate).width > maxWidth && current){
+      lines.push(current);
+      current = word;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+function drawBarkeepConversationCard(barkeep, conversation){
+  if (!conversation) return;
+
+  const promptW = 340;
+  const paddingX = 16;
+  const paddingY = 14;
+  const maxWidth = promptW - paddingX * 2;
+  const header = { text: conversation.title || 'Moonlit Barkeep', font: '15px "Trebuchet MS", ui-sans-serif', fill: '#8bd66e', lineHeight: 22 };
+
+  const lineEntries = [header];
+
+  const addGap = (height = 8) => {
+    lineEntries.push({ text: '', font: header.font, fill: 'transparent', lineHeight: height, skip: true });
+  };
+
+  if (Array.isArray(conversation.body)){
+    for (const segment of conversation.body){
+      if (!segment) continue;
+      const style = toneStyles[segment.tone] || toneStyles.body;
+      if (!segment.text || !segment.text.trim()){ addGap(style.lineHeight / 2); continue; }
+      const lines = wrapTextLines(segment.text, style.font, maxWidth);
+      if (!lines.length){ addGap(style.lineHeight / 2); continue; }
+      for (const line of lines){
+        lineEntries.push({ text: line, font: style.font, fill: style.fill, lineHeight: style.lineHeight });
+      }
+    }
+  }
+
+  if (Array.isArray(conversation.options) && conversation.options.length){
+    addGap(10);
+    for (const option of conversation.options){
+      const style = toneStyles[option.tone] || toneStyles.body;
+      const label = option.label || '';
+      const lineText = `[${option.key}] ${label}`;
+      const lines = wrapTextLines(lineText, style.font, maxWidth);
+      const fill = option.disabled ? 'rgba(120,136,160,0.6)' : style.fill;
+      if (!lines.length){ lineEntries.push({ text: lineText, font: style.font, fill, lineHeight: style.lineHeight }); continue; }
+      for (const line of lines){
+        lineEntries.push({ text: line, font: style.font, fill, lineHeight: style.lineHeight });
+      }
+    }
+  }
+
+  if (conversation.footer){
+    addGap(8);
+    const footerFont = '12px "Trebuchet MS", ui-sans-serif';
+    const footerLines = wrapTextLines(conversation.footer, footerFont, maxWidth);
+    if (!footerLines.length){ footerLines.push(conversation.footer); }
+    for (const line of footerLines){
+      lineEntries.push({ text: line, font: footerFont, fill: '#9fd6ff', lineHeight: 16 });
+    }
+  }
+
+  const totalHeight = lineEntries.reduce((sum, entry)=> sum + (entry.lineHeight || 0), 0);
+  const promptH = paddingY * 2 + totalHeight;
+  const promptX = Math.round(barkeep.x - promptW / 2);
+  const desiredY = barkeep.y - barkeep.radius - promptH - 24;
+  const promptY = Math.max(12, Math.round(desiredY));
+
+  ctx.save();
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = 'rgba(14, 20, 32, 0.92)';
+  ctx.fillRect(promptX, promptY, promptW, promptH);
+  ctx.strokeStyle = '#5cc16d';
+  ctx.strokeRect(promptX + 0.5, promptY + 0.5, promptW - 1, promptH - 1);
+
+  let cursorY = promptY + paddingY;
+  const textX = promptX + paddingX;
+  for (const entry of lineEntries){
+    if (!entry) continue;
+    if (entry.skip){
+      cursorY += entry.lineHeight || 0;
+      continue;
+    }
+    ctx.font = entry.font;
+    ctx.fillStyle = entry.fill;
+    ctx.fillText(entry.text, textX, cursorY);
+    cursorY += entry.lineHeight || 0;
+  }
+
+  ctx.restore();
+}
 
 function drawTavernInteriorScene(){
   const p = state.player;
@@ -169,19 +281,24 @@ function drawTavernInteriorScene(){
     drawGoblin(ctx, p, { time: state.time, invisible });
   }
 
-  const distToBarkeep = Math.hypot(p.x - barkeep.x, p.y - barkeep.y);
-  if (distToBarkeep <= barkeep.interactRadius && !state.pausedForShop){
-    const promptW = 260;
-    const promptH = 34;
-    const promptX = barkeep.x - promptW/2;
-    const promptY = barkeep.y - barkeep.radius - 48;
-    ctx.fillStyle = 'rgba(18, 26, 38, 0.86)';
-    ctx.fillRect(promptX, promptY, promptW, promptH);
-    ctx.strokeStyle = '#5cc16d';
-    ctx.strokeRect(promptX + 0.5, promptY + 0.5, promptW - 1, promptH - 1);
-    ctx.fillStyle = '#f4ffdf';
-    ctx.font = '15px "Trebuchet MS", ui-sans-serif';
-    ctx.fillText('Press E to speak with the barkeep', promptX + 12, promptY + 22);
+  const conversation = getBarkeepDialogueState();
+  if (conversation && !state.pausedForShop){
+    drawBarkeepConversationCard(barkeep, conversation);
+  } else {
+    const distToBarkeep = Math.hypot(p.x - barkeep.x, p.y - barkeep.y);
+    if (distToBarkeep <= barkeep.interactRadius && !state.pausedForShop){
+      const promptW = 260;
+      const promptH = 34;
+      const promptX = barkeep.x - promptW/2;
+      const promptY = barkeep.y - barkeep.radius - 48;
+      ctx.fillStyle = 'rgba(18, 26, 38, 0.86)';
+      ctx.fillRect(promptX, promptY, promptW, promptH);
+      ctx.strokeStyle = '#5cc16d';
+      ctx.strokeRect(promptX + 0.5, promptY + 0.5, promptW - 1, promptH - 1);
+      ctx.fillStyle = '#f4ffdf';
+      ctx.font = '15px "Trebuchet MS", ui-sans-serif';
+      ctx.fillText('Press E to speak with the barkeep', promptX + 12, promptY + 22);
+    }
   }
 
   ctx.restore();

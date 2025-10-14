@@ -56,6 +56,13 @@ import {
   updateTrapDisarm
 } from './systems/villageInteractions.js';
 import { initWarState, updateWar } from './systems/war.js';
+import {
+  initBarkeepMissions,
+  isBarkeepDialogueActive,
+  startBarkeepConversation,
+  handleBarkeepDialogueInput,
+  updateBarkeepMissions
+} from './systems/barkeepMissions.js';
 
 setupInput();
 prepareVillageInstances();
@@ -65,6 +72,7 @@ setupInitialNPCs();
 initWarState();
 initVillageInteractions();
 initPointsOfInterest();
+initBarkeepMissions();
 
 window.addEventListener('keydown', handleShopKeyDown);
 canvas.addEventListener('mousemove', handleCanvasMouseMove);
@@ -148,6 +156,7 @@ function respawnPlayer(){
 
   state.interior = null;
   state.tavernInteriorState.active = false;
+  state.tavernInteriorState.dialog = null;
   state.tavernPlayerInside = false;
   state.pausedForShop = false;
 
@@ -243,6 +252,7 @@ function update(dt){
 
   state.time += dt;
   updateDamageNumbers();
+  updateBarkeepMissions();
 
   if (state.player.health <= 0 && !state.deathSequence){
     startDeathSequence();
@@ -253,10 +263,23 @@ function update(dt){
     if (blocking) return;
   }
 
-  const interactPressed = pressOnce('e');
-  const pickpocketPressed = pressOnce('r');
-  const attackPressed = pressOnce('space');
-  const throwPressed = pressOnce('q');
+  let interactPressed = pressOnce('e');
+  let pickpocketPressed = pressOnce('r');
+  let attackPressed = pressOnce('space');
+  let throwPressed = pressOnce('q');
+  const interactForDialogue = interactPressed;
+  let barkeepDialogueActive = isBarkeepDialogueActive();
+  if (barkeepDialogueActive){
+    const barkeepAction = handleBarkeepDialogueInput({ interactPressed: interactForDialogue, escapePressed });
+    if (barkeepAction?.openShop){
+      openShop();
+    }
+    barkeepDialogueActive = isBarkeepDialogueActive();
+    interactPressed = false;
+    pickpocketPressed = false;
+    attackPressed = false;
+    throwPressed = false;
+  }
   let interactAvailable = interactPressed;
   const inTavernInterior = state.tavernInteriorState.active;
 
@@ -280,15 +303,17 @@ function update(dt){
     }
   }
   let ix = 0, iy = 0;
-  if (keys.has('w')) iy -= 1;
-  if (keys.has('s')) iy += 1;
-  if (keys.has('a')) ix -= 1;
-  if (keys.has('d')) ix += 1;
+  if (!barkeepDialogueActive){
+    if (keys.has('w')) iy -= 1;
+    if (keys.has('s')) iy += 1;
+    if (keys.has('a')) ix -= 1;
+    if (keys.has('d')) ix += 1;
+  }
   const m = Math.hypot(ix,iy) || 1;
   const wantSpeed = playerStats.movementSpeed * (keys.has('shift') ? 1.7 : 1.0);
-  p.sprinting = keys.has('shift') && (ix||iy);
-  p.vx = (ix/m) * wantSpeed;
-  p.vy = (iy/m) * wantSpeed;
+  p.sprinting = !barkeepDialogueActive && keys.has('shift') && (ix||iy);
+  p.vx = barkeepDialogueActive ? 0 : (ix/m) * wantSpeed;
+  p.vy = barkeepDialogueActive ? 0 : (iy/m) * wantSpeed;
   if (ix||iy) p.facing = Math.atan2(p.vy, p.vx);
 
   let nx = p.x + p.vx*dt, ny = p.y + p.vy*dt;
@@ -337,7 +362,15 @@ function update(dt){
       const barkeep = TAVERN_INTERIOR.barkeep;
       const dist = Math.hypot(p.x - barkeep.x, p.y - barkeep.y);
       if (dist <= barkeep.interactRadius){
-        openShop();
+        if (!barkeepDialogueActive){
+          startBarkeepConversation();
+          barkeepDialogueActive = true;
+          pickpocketPressed = false;
+          attackPressed = false;
+          throwPressed = false;
+        }
+        interactPressed = false;
+        interactAvailable = false;
       }
     }
 
@@ -383,7 +416,11 @@ function update(dt){
     state.tavernPlayerInside = false;
   }
 
-  if (!inTavernInterior && !state.interior){
+  if (barkeepDialogueActive){
+    interactAvailable = false;
+  }
+
+  if (!inTavernInterior && !state.interior && !barkeepDialogueActive){
     if (interactPressed){
       const spoke = tryTalkToVillager();
       if (!spoke){
@@ -395,7 +432,7 @@ function update(dt){
     }
   }
 
-  if (throwPressed && !inTavernInterior && !state.interior){
+  if (throwPressed && !inTavernInterior && !state.interior && !barkeepDialogueActive){
     if (state.time >= p.nextThrowNoiseTime){
       const throwDist = 200;
       const target = {
@@ -555,7 +592,7 @@ function update(dt){
     };
   }
 
-  if (attackPressed){
+  if (!barkeepDialogueActive && attackPressed){
     attemptAttack(p, playerStats, getEquippedWeaponType(p));
   }
 
@@ -623,7 +660,7 @@ function update(dt){
   if (seen && p.detection > 70) addThreat(5*dt);
   if (!seen) addThreat(-4*dt);
 
-  if (!inTavernInterior){
+  if (!inTavernInterior && !barkeepDialogueActive){
     if (handlePointOfInterestInteraction(interactAvailable && !state.interior)){
       interactAvailable = false;
     }
@@ -646,7 +683,7 @@ function update(dt){
     state.nextSweeperSpawn = state.time + 22 + Math.random() * 16;
   }
 
-  if (interactAvailable && state.interior){
+  if (interactAvailable && !barkeepDialogueActive && state.interior){
 
     const hid = state.interior.houseId;
     const lvl = state.interior.level;
@@ -674,8 +711,10 @@ function update(dt){
     }
   }
 
-  for (let i=0;i<6;i++){
-    if (pressOnce(String(i+1))) useInventorySlot(i);
+  if (!barkeepDialogueActive){
+    for (let i=0;i<6;i++){
+      if (pressOnce(String(i+1))) useInventorySlot(i);
+    }
   }
 
   if (pressOnce('f')) state.debugCones = !state.debugCones;

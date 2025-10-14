@@ -45,7 +45,7 @@ const state = {
     glowRadius: 56,
     stump: { cx: 5230, cy: 4860, radius: 46 }
   },
-  tavernInteriorState: { active: false, returnPoint: null },
+  tavernInteriorState: { active: false, returnPoint: null, dialog: null },
   tavernReentryBlockUntil: 0,
   npcs: [],
   villageInstances: [],
@@ -75,7 +75,8 @@ const state = {
   darkStrategy: null,
   warLastMessageAt: 0,
   damageNumbers: [],
-  deathSequence: null
+  deathSequence: null,
+  barkeepMissions: null
 };
 
 export { state, mainVillage };
