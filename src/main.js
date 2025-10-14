@@ -41,6 +41,7 @@ import { toast } from './ui/toast.js';
 import { pressOnce } from './input/pressOnce.js';
 import { circleRectCollideResolve, pointInRect, segBlockedByAnyRect } from './utils/geometry.js';
 import { clamp } from './utils/math.js';
+import { getWeaponSwingConfig, resolveWeaponType } from './utils/weaponSwing.js';
 import { runTests } from './tests/lightweight.js';
 import {
   initVillageInteractions,
@@ -81,6 +82,20 @@ function emitNoiseEvent(type, origin, options = {}){
     duration: options.duration ?? 6,
     debug: options.debug
   });
+}
+
+function getEquippedWeaponType(player){
+  if (!player || !Array.isArray(player.inventory)){
+    return resolveWeaponType('dagger');
+  }
+
+  for (const item of player.inventory){
+    if (!item) continue;
+    if (item.weaponType) return resolveWeaponType(item.weaponType);
+    if (item.id === 'dagger') return resolveWeaponType('dagger');
+  }
+
+  return resolveWeaponType('dagger');
 }
 
 function loop(nowMs){
@@ -127,6 +142,15 @@ function update(dt){
     const duration = typeof p.attackSwing.duration === 'number' ? p.attackSwing.duration : 0;
     if (state.time >= start + duration){
       p.attackSwing = null;
+    }
+  }
+
+  for (const npc of state.npcs){
+    if (!npc.attackSwing) continue;
+    const swingStart = typeof npc.attackSwing.start === 'number' ? npc.attackSwing.start : 0;
+    const swingDuration = typeof npc.attackSwing.duration === 'number' ? npc.attackSwing.duration : 0;
+    if (state.time >= swingStart + swingDuration){
+      npc.attackSwing = null;
     }
   }
   let ix = 0, iy = 0;
@@ -343,6 +367,14 @@ function update(dt){
 
     const cooldown = Math.max(attack.cooldown ?? 1.2, 0.2);
     attack.nextReady = state.time + cooldown;
+    const weaponType = resolveWeaponType(attack.weaponType);
+    const swingConfig = getWeaponSwingConfig(weaponType);
+    npc.attackSwing = {
+      start: state.time,
+      duration: swingConfig?.duration ?? cooldown,
+      facing: Math.atan2(dy, dx),
+      weaponType
+    };
     targetNpc.health = Math.max(0, targetNpc.health - damage);
 
     if (targetNpc.health <= 0 && !defeated.has(targetNpc)){
@@ -383,17 +415,28 @@ function update(dt){
     const cooldown = Math.max(attack.cooldown ?? 1.2, 0.2);
     state.player.health = clamp(state.player.health - damage, 0, playerStats.maxHealth);
     attack.nextReady = state.time + cooldown;
+    const weaponType = resolveWeaponType(attack.weaponType);
+    const swingConfig = getWeaponSwingConfig(weaponType);
+    npc.attackSwing = {
+      start: state.time,
+      duration: swingConfig?.duration ?? cooldown,
+      facing: Math.atan2(dy, dx),
+      weaponType
+    };
 
     if (attack.message && state.time >= (attack.nextMessage ?? 0)){
       toast(attack.message, 1.5);
       attack.nextMessage = state.time + Math.max(cooldown, 1.2);
     }
   if (attackPressed){
-    const swingDuration = 0.32;
+    const weaponType = getEquippedWeaponType(p);
+    const swingConfig = getWeaponSwingConfig(weaponType);
+    const swingDuration = swingConfig?.duration ?? 0.32;
     p.attackSwing = {
       start: state.time,
       duration: swingDuration,
-      facing: typeof p.facing === 'number' ? p.facing : 0
+      facing: typeof p.facing === 'number' ? p.facing : 0,
+      weaponType
     };
   }
 }
