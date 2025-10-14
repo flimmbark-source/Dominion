@@ -55,7 +55,8 @@ import {
   tryDisarmNearbyTrap,
   tryPickpocketVillager,
   tryTalkToVillager,
-  updateTrapDisarm
+  updateTrapDisarm,
+  updateVillageTaskHints
 } from './systems/villageInteractions.js';
 import { initWarState, updateWar } from './systems/war.js';
 import {
@@ -65,6 +66,7 @@ import {
   handleBarkeepDialogueInput,
   updateBarkeepMissions
 } from './systems/barkeepMissions.js';
+import { updateQuestCues } from './systems/questCues.js';
 
 setupInput();
 prepareVillageInstances();
@@ -333,6 +335,7 @@ function update(dt){
   p.x = nx; p.y = ny;
 
   updateTrapDisarm();
+  updateVillageTaskHints(dt);
 
   if (p.sprinting){
     if (state.time >= p.nextSprintNoiseTime){
@@ -459,6 +462,7 @@ function update(dt){
 
   updateWar(dt);
   updateWorldEvents(dt);
+  updateQuestCues(dt);
   updateNPCBehaviors(dt);
   for (const npc of state.npcs){
     if (npc.pauseTimer > 0) continue;
