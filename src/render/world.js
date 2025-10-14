@@ -12,6 +12,7 @@ import {
   getVillagerPromptData,
   VILLAGER_PICKPOCKET_DISTANCE
 } from '../systems/villageInteractions.js';
+import { getActiveDamageNumbers } from '../systems/damageNumbers.js';
 
 function lerp(a, b, t){
   return a + (b - a) * t;
@@ -182,6 +183,13 @@ function drawChest3D(chest){
 
 function withAlpha(rgb, alpha){
   return `rgba(${rgb}, ${clamp(alpha, 0, 1).toFixed(3)})`;
+}
+
+function easeOutBack(t){
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+  const clamped = clamp(t, 0, 1);
+  return 1 + c3 * Math.pow(clamped - 1, 3) + c1 * Math.pow(clamped - 1, 2);
 }
 
 function drawNpcBladeSwing(facing, config, progress, ease){
@@ -617,6 +625,47 @@ function drawWorldScene(){
   drawTorchlight();
 
   drawTrapDisarmProgress(p);
+
+  drawDamageNumbers();
+
+  ctx.restore();
+}
+
+function drawDamageNumbers(){
+  const numbers = getActiveDamageNumbers();
+  if (!numbers.length) return;
+
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  for (const entry of numbers){
+    const lifetime = entry.lifetime ?? 1.15;
+    const elapsed = state.time - entry.createdAt;
+    if (elapsed < 0 || elapsed > lifetime) continue;
+
+    const progress = clamp(elapsed / lifetime, 0, 1);
+    const rise = 18 + progress * 22;
+    const popT = Math.min(1, elapsed / 0.18);
+    const scale = 0.75 + easeOutBack(popT) * 0.35;
+    const fadeStart = 0.55;
+    const fade = progress < fadeStart
+      ? 1
+      : clamp(1 - (progress - fadeStart) / (1 - fadeStart), 0, 1);
+
+    const fontSize = entry.crit ? 20 : 16;
+    ctx.save();
+    ctx.translate(entry.x, entry.y - rise);
+    ctx.scale(scale, scale);
+    ctx.globalAlpha = fade;
+    ctx.font = `bold ${fontSize}px "Trebuchet MS", system-ui`;
+    ctx.strokeStyle = 'rgba(5, 8, 14, 0.7)';
+    ctx.lineWidth = 3;
+    ctx.strokeText(String(entry.amount), 0, 0);
+    ctx.fillStyle = entry.color || '#f9d776';
+    ctx.fillText(String(entry.amount), 0, 0);
+    ctx.restore();
+  }
 
   ctx.restore();
 }
