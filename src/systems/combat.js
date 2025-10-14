@@ -4,6 +4,7 @@ import { clamp } from '../utils/math.js';
 import { addThreat } from './threat.js';
 import { getWeaponSwingConfig, resolveWeaponType } from '../utils/weaponSwing.js';
 import { addDamageNumber } from './damageNumbers.js';
+import { applyGlobalDamageModifier } from '../utils/balance.js';
 
 const BASE_PLAYER_ATTACK_RANGE = 52;
 const MELEE_RANGE_BONUS = 8;
@@ -105,6 +106,8 @@ function attemptAttack(player, playerStats, weaponType){
     wasBackstab = true;
     damage *= npc.backstabMultiplier;
   }
+
+  damage = applyGlobalDamageModifier(damage);
 
   npc.health = Math.max(0, npc.health - damage);
   addDamageNumber({
