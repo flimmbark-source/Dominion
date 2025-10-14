@@ -68,6 +68,42 @@ function drawWorldMapOverlay(){
     ctx.fillRect(mapX + village.x * scale, mapY + village.y * scale, village.w * scale, village.h * scale);
   }
 
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  for (const village of VILLAGES){
+    const center = toMap(village.x + village.w / 2, village.y + village.h / 2);
+    const label = village.name;
+    const labelFontSize = Math.max(12, Math.round(14 * scale));
+    const labelFont = `${labelFontSize}px system-ui`;
+    ctx.font = labelFont;
+
+    const metrics = ctx.measureText(label);
+    const paddingX = 6;
+    const paddingY = 4;
+    const labelWidth = metrics.width + paddingX * 2;
+    const labelHeight = labelFontSize + paddingY * 2;
+    const labelOffset = Math.max(labelFontSize + 4, 18 * scale);
+    const labelX = center.x;
+    const labelY = center.y + labelOffset;
+
+    ctx.fillStyle = 'rgba(12, 20, 30, 0.82)';
+    ctx.fillRect(labelX - labelWidth / 2, labelY - paddingY, labelWidth, labelHeight);
+    ctx.strokeStyle = '#2d4258';
+    ctx.strokeRect(labelX - labelWidth / 2 + 0.5, labelY - paddingY + 0.5, labelWidth - 1, labelHeight - 1);
+
+    ctx.fillStyle = '#d7e1f0';
+    ctx.fillText(label, labelX, labelY);
+
+    ctx.strokeStyle = '#4a617b';
+    ctx.lineWidth = 1.25;
+    ctx.beginPath();
+    ctx.moveTo(labelX, labelY - paddingY);
+    ctx.lineTo(center.x, center.y + Math.max(3, 8 * scale));
+    ctx.stroke();
+  }
+  ctx.restore();
+
   ctx.fillStyle = '#253f5f';
   for (const house of state.houses){
     ctx.fillRect(mapX + house.x * scale, mapY + house.y * scale, house.w * scale, house.h * scale);
