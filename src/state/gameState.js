@@ -45,6 +45,7 @@ const state = {
   castle: { x: WORLD.W - 320, y: 360 },
   threat: 0,
   threatSpawns: [50, 100, 160],
+  threatGainBlockedUntil: 0,
   spawnCount: 0,
   interior: null,
   stairs: [],

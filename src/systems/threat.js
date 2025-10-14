@@ -2,8 +2,24 @@ import { state } from '../state/gameState.js';
 
 const MAX_THREAT = 200;
 
+function getStageForThreatValue(value){
+  if (value < 40) return 0;
+  if (value < 80) return 1;
+  if (value < 120) return 2;
+  if (value < 160) return 3;
+  return 4;
+}
+
 function addThreat(amount){
+  if (amount > 0 && state.time < state.threatGainBlockedUntil) return;
+
+  const previousStage = getStageForThreatValue(state.threat);
   state.threat = Math.max(0, Math.min(MAX_THREAT, state.threat + amount));
+  const nextStage = getStageForThreatValue(state.threat);
+
+  if (nextStage !== previousStage){
+    state.threatGainBlockedUntil = state.time + 15;
+  }
 }
 
 function getThreatFraction(){
@@ -11,11 +27,7 @@ function getThreatFraction(){
 }
 
 function getThreatStage(){
-  if (state.threat < 40) return 0;
-  if (state.threat < 80) return 1;
-  if (state.threat < 120) return 2;
-  if (state.threat < 160) return 3;
-  return 4;
+  return getStageForThreatValue(state.threat);
 }
 
 export { addThreat, getThreatFraction, getThreatStage, MAX_THREAT };
