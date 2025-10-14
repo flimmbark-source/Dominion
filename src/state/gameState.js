@@ -68,6 +68,7 @@ const state = {
   villageTasks: [],
   pointsOfInterest: [],
   worldEvents: [],
+  proceduralQuests: [],
   quests: [],
   noiseEvents: [],
   alarmLevel: 0,
