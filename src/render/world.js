@@ -29,6 +29,195 @@ function mixHexColor(base, target, t){
   const b = Math.round(lerp(bb, tb, clampT));
   return `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
 }
+
+function adjustHexColor(hex, factor){
+  const normalized = clamp(factor, -1, 1);
+  const base = hex.startsWith('#') ? hex.slice(1) : hex;
+  const r = parseInt(base.slice(0, 2), 16);
+  const g = parseInt(base.slice(2, 4), 16);
+  const b = parseInt(base.slice(4, 6), 16);
+  const target = normalized < 0 ? 0 : 255;
+  const mixAmount = Math.abs(normalized);
+  const mixChannel = channel => Math.round(channel + (target - channel) * mixAmount);
+  const nr = mixChannel(r);
+  const ng = mixChannel(g);
+  const nb = mixChannel(b);
+  return `#${nr.toString(16).padStart(2, '0')}${ng.toString(16).padStart(2, '0')}${nb.toString(16).padStart(2, '0')}`;
+}
+
+function drawPolygon(points){
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++){
+    ctx.lineTo(points[i].x, points[i].y);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawExtrudedRect({
+  x,
+  y,
+  width,
+  depth,
+  height,
+  skew,
+  baseColor,
+  roofColor,
+  shadowStrength = 0.2
+}){
+  const slope = Math.min(depth * 0.75, height * 0.9);
+  const topColor = roofColor ?? adjustHexColor(baseColor, 0.25);
+  const frontColor = adjustHexColor(baseColor, -0.12);
+  const leftColor = adjustHexColor(baseColor, -0.28);
+  const rightColor = adjustHexColor(baseColor, -0.4);
+  const highlightColor = adjustHexColor(topColor, 0.25);
+  const dropStrength = 0.18 + shadowStrength * 0.65;
+
+  const top = [
+    { x: x - skew, y: y - height },
+    { x: x + width - skew, y: y - height },
+    { x: x + width, y },
+    { x: x, y }
+  ];
+
+  const left = [
+    { x: x - skew, y: y - height },
+    { x, y },
+    { x, y: y + depth },
+    { x: x - skew, y: y + depth - slope }
+  ];
+
+  const right = [
+    { x: x + width - skew, y: y - height },
+    { x: x + width, y },
+    { x: x + width, y: y + depth },
+    { x: x + width - skew, y: y + depth - slope }
+  ];
+
+  const front = [
+    { x, y },
+    { x: x + width, y },
+    { x: x + width, y: y + depth },
+    { x, y: y + depth }
+  ];
+
+  const drop = [
+    { x: x + width, y: y + depth },
+    { x: x + width + skew * 0.85, y: y + depth + height * 0.65 },
+    { x: x - skew * 0.35, y: y + depth + height * 0.65 }
+  ];
+
+  ctx.save();
+  ctx.fillStyle = `rgba(0, 0, 0, ${dropStrength.toFixed(3)})`;
+  drawPolygon(drop);
+  ctx.restore();
+
+  ctx.save();
+  ctx.fillStyle = leftColor;
+  drawPolygon(left);
+  ctx.fillStyle = rightColor;
+  drawPolygon(right);
+  ctx.fillStyle = frontColor;
+  drawPolygon(front);
+  ctx.fillStyle = topColor;
+  drawPolygon(top);
+
+  ctx.strokeStyle = highlightColor;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(top[0].x, top[0].y);
+  ctx.lineTo(top[1].x, top[1].y);
+  ctx.lineTo(top[2].x, top[2].y);
+  ctx.stroke();
+
+  ctx.restore();
+
+  return { top, front, left, right, drop };
+}
+
+function drawChest3D(chest){
+  const width = chest.w;
+  const depth = chest.h;
+  const x = chest.x - 9;
+  const y = chest.y - 6;
+  const geometry = drawExtrudedRect({
+    x,
+    y,
+    width,
+    depth,
+    height: 12,
+    skew: 6,
+    baseColor: '#8b5a2b',
+    roofColor: '#c58a3b',
+    shadowStrength: 0.28
+  });
+
+  const top = geometry.top;
+  const front = geometry.front;
+  const lidMidX = (top[0].x + top[1].x) / 2;
+  const lidMidY = (top[0].y + top[1].y) / 2;
+
+  ctx.save();
+  ctx.strokeStyle = adjustHexColor('#8b5a2b', -0.35);
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.moveTo(lidMidX, lidMidY);
+  ctx.lineTo((top[2].x + top[3].x) / 2, (top[2].y + top[3].y) / 2);
+  ctx.stroke();
+
+  const lockWidth = Math.min(10, width * 0.4);
+  const frontTop = front[0].y;
+  const frontBottom = front[2].y;
+  const lockHeight = (frontBottom - frontTop) * 0.35;
+  const lockX = (front[0].x + front[1].x) / 2 - lockWidth / 2;
+  const lockY = frontTop + (frontBottom - frontTop) * 0.45;
+  ctx.fillStyle = '#d9a441';
+  ctx.fillRect(lockX, lockY, lockWidth, lockHeight);
+  ctx.fillStyle = adjustHexColor('#d9a441', -0.35);
+  ctx.fillRect(lockX + lockWidth * 0.4, lockY + lockHeight * 0.35, lockWidth * 0.2, lockHeight * 0.45);
+  ctx.restore();
+}
+
+function drawNpc3D(npc){
+  ctx.save();
+  ctx.translate(npc.x, npc.y);
+
+  const bodyColor = npc.type === 'scout' ? '#6fa8dc' : '#9aa5b1';
+  const highlight = adjustHexColor(bodyColor, 0.35);
+  const shadow = adjustHexColor(bodyColor, -0.4);
+
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+  ctx.beginPath();
+  ctx.ellipse(0, 7, 7.5, 4, 0, 0, TAU);
+  ctx.fill();
+
+  const grad = ctx.createRadialGradient(-3, -6, 2, 0, 0, 11);
+  grad.addColorStop(0, highlight);
+  grad.addColorStop(0.55, bodyColor);
+  grad.addColorStop(1, shadow);
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 8, 11, 0, 0, TAU);
+  ctx.fill();
+
+  const facing = npc.facing ?? 0;
+  const eyeOffsetX = Math.cos(facing) * 4;
+  const eyeOffsetY = Math.sin(facing) * 4 - 1.2;
+  ctx.fillStyle = adjustHexColor(bodyColor, -0.55);
+  ctx.beginPath();
+  ctx.ellipse(eyeOffsetX, eyeOffsetY, 3.2, 3.8, facing, 0, TAU);
+  ctx.fill();
+
+  ctx.strokeStyle = adjustHexColor(bodyColor, -0.5);
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.moveTo(0, -6);
+  ctx.lineTo(Math.cos(facing) * 14, Math.sin(facing) * 14 - 4);
+  ctx.stroke();
+
+  ctx.restore();
+}
 const POI_STYLES = {
   'shady-trader': { outer: '#3b2a16', inner: '#d0a74e' },
   'wandering-merchant': { outer: '#1d2e45', inner: '#7ec6ff' },
@@ -51,16 +240,30 @@ function drawWorldScene(){
   drawCastle();
 
   for (const h of state.houses){
-    ctx.fillStyle = '#1b2638';
-    ctx.fillRect(h.x, h.y, h.w, h.h);
-    ctx.strokeStyle = '#2a3b57';
-    ctx.strokeRect(h.x+0.5, h.y+0.5, h.w-1, h.h-1);
+    drawExtrudedRect({
+      x: h.x,
+      y: h.y,
+      width: h.w,
+      depth: h.h,
+      height: 18,
+      skew: 9,
+      baseColor: '#1b2638',
+      roofColor: '#2f3f5b',
+      shadowStrength: 0.3
+    });
   }
   for (const d of state.doors){
-    ctx.fillStyle = '#0b0f17';
-    ctx.fillRect(d.x, d.y, d.w, d.h);
-    ctx.strokeStyle = '#3b4d6a';
-    ctx.strokeRect(d.x+0.5, d.y+0.5, d.w-1, d.h-1);
+    drawExtrudedRect({
+      x: d.x,
+      y: d.y,
+      width: d.w,
+      depth: d.h,
+      height: 8,
+      skew: 4,
+      baseColor: '#0b0f17',
+      roofColor: '#223047',
+      shadowStrength: 0.22
+    });
   }
 
   if (state.interior && state.interior.level === 1) {
@@ -94,23 +297,12 @@ function drawWorldScene(){
     if (c.looted) continue;
     if (!state.interior) continue;
     if (c.houseId !== state.interior.houseId || c.level !== state.interior.level) continue;
-    ctx.fillStyle = '#8b5a2b';
-    ctx.fillRect(c.x-9, c.y-6, c.w, c.h);
-    ctx.fillStyle = '#d9a441';
-    ctx.fillRect(c.x-9, c.y-1, c.w, 2);
+    drawChest3D(c);
   }
 
   for (const npc of state.npcs){
     if (state.debugCones) drawFOV(npc);
-    ctx.beginPath();
-    ctx.arc(npc.x, npc.y, 8, 0, TAU);
-    ctx.fillStyle = npc.type==='scout' ? '#6fa8dc' : '#9aa5b1';
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(npc.x, npc.y);
-    ctx.lineTo(npc.x + Math.cos(npc.facing)*12, npc.y + Math.sin(npc.facing)*12);
-    ctx.strokeStyle = '#a3b9d6';
-    ctx.stroke();
+    drawNpc3D(npc);
   }
 
   drawInteractionPrompts();
