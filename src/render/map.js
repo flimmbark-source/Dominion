@@ -175,14 +175,16 @@ function drawWorldMapOverlay(){
     ctx.globalAlpha = 1;
   }
 
-  const playerPt = toMap(state.player.x, state.player.y);
-  ctx.fillStyle = '#5cc16d';
-  ctx.beginPath();
-  ctx.arc(playerPt.x, playerPt.y, Math.max(4, state.player.r * scale * 1.6), 0, TAU);
-  ctx.fill();
-  ctx.strokeStyle = '#cfe8d4';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
+  if (!state.player.dead){
+    const playerPt = toMap(state.player.x, state.player.y);
+    ctx.fillStyle = '#5cc16d';
+    ctx.beginPath();
+    ctx.arc(playerPt.x, playerPt.y, Math.max(4, state.player.r * scale * 1.6), 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = '#cfe8d4';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
 
   ctx.restore();
 

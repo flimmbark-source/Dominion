@@ -99,6 +99,107 @@ function emitNoiseEvent(type, origin, options = {}){
   });
 }
 
+const DEATH_MESSAGE_DURATION = 1.6;
+const DEATH_FADE_OUT_DURATION = 1.2;
+const DEATH_FADE_IN_DURATION = 1.2;
+const DEATH_TEXT_FADE_IN_DURATION = 0.35;
+
+function startDeathSequence(){
+  if (state.deathSequence) return;
+
+  const player = state.player;
+  player.health = 0;
+  player.dead = true;
+  player.vx = 0;
+  player.vy = 0;
+  player.sprinting = false;
+  player.attackSwing = null;
+  player.nextAttackReady = state.time;
+  state.pausedForShop = false;
+
+  state.deathSequence = {
+    step: 'message',
+    stepStart: state.time,
+    fade: 0,
+    textAlpha: 0,
+    respawned: false
+  };
+}
+
+function respawnPlayer(){
+  const spawn = state.playerSpawn || { x: state.player.x, y: state.player.y };
+  const player = state.player;
+  const stats = getPlayerStats(player, state.time);
+
+  player.x = spawn.x;
+  player.y = spawn.y;
+  player.vx = 0;
+  player.vy = 0;
+  player.facing = 0;
+  player.attackSwing = null;
+  player.nextAttackReady = state.time + 0.3;
+  player.sprinting = false;
+  player.invisUntil = state.time;
+  player.health = stats.maxHealth ?? player.health;
+  player.detection = 0;
+  player.nextSprintNoiseTime = state.time + 0.6;
+  player.nextThrowNoiseTime = state.time + 0.6;
+  player.dead = false;
+
+  state.interior = null;
+  state.tavernInteriorState.active = false;
+  state.tavernPlayerInside = false;
+  state.pausedForShop = false;
+
+  state.camera.x = clamp(player.x - W/2, 0, Math.max(0, WORLD.W - W));
+  state.camera.y = clamp(player.y - H/2, 0, Math.max(0, WORLD.H - H));
+}
+
+function advanceDeathSequence(dt){
+  const seq = state.deathSequence;
+  if (!seq) return false;
+
+  const elapsed = state.time - (seq.stepStart ?? state.time);
+
+  if (seq.step === 'message'){
+    seq.textAlpha = clamp(elapsed / DEATH_TEXT_FADE_IN_DURATION, 0, 1);
+    seq.fade = 0;
+    if (elapsed >= DEATH_MESSAGE_DURATION){
+      seq.step = 'fadeOut';
+      seq.stepStart = state.time;
+    }
+    return true;
+  }
+
+  if (seq.step === 'fadeOut'){
+    const fadeProgress = clamp(elapsed / DEATH_FADE_OUT_DURATION, 0, 1);
+    seq.fade = fadeProgress;
+    seq.textAlpha = clamp(1 - fadeProgress, 0, 1);
+    if (!seq.respawned && elapsed >= DEATH_FADE_OUT_DURATION){
+      respawnPlayer();
+      seq.respawned = true;
+      seq.step = 'fadeIn';
+      seq.stepStart = state.time;
+      seq.fade = 1;
+      seq.textAlpha = 0;
+    }
+    return true;
+  }
+
+  if (seq.step === 'fadeIn'){
+    const fadeProgress = clamp(elapsed / DEATH_FADE_IN_DURATION, 0, 1);
+    seq.fade = clamp(1 - fadeProgress, 0, 1);
+    if (elapsed >= DEATH_FADE_IN_DURATION){
+      state.deathSequence = null;
+      return false;
+    }
+    return true;
+  }
+
+  state.deathSequence = null;
+  return false;
+}
+
 function getEquippedWeaponType(player){
   if (!player || !Array.isArray(player.inventory)){
     return resolveWeaponType('dagger');
@@ -142,6 +243,15 @@ function update(dt){
 
   state.time += dt;
   updateDamageNumbers();
+
+  if (state.player.health <= 0 && !state.deathSequence){
+    startDeathSequence();
+  }
+
+  if (state.deathSequence){
+    const blocking = advanceDeathSequence(dt);
+    if (blocking) return;
+  }
 
   const interactPressed = pressOnce('e');
   const pickpocketPressed = pressOnce('r');
@@ -610,6 +720,34 @@ function draw(){
       const y = 24 + index * lineHeight;
       ctx.fillText(message.text, messageX, y);
     });
+  }
+
+  drawDeathOverlay();
+}
+
+function drawDeathOverlay(){
+  const seq = state.deathSequence;
+  if (!seq) return;
+
+  const fadeAmount = clamp(seq.fade ?? 0, 0, 1);
+  if (fadeAmount > 0){
+    ctx.fillStyle = `rgba(0, 0, 0, ${fadeAmount})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  const showText = seq.step === 'message' || seq.step === 'fadeOut';
+  const textAlpha = showText ? clamp(seq.textAlpha ?? 0, 0, 1) : 0;
+  if (showText && textAlpha > 0){
+    ctx.save();
+    ctx.globalAlpha = textAlpha;
+    ctx.fillStyle = '#d94040';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 76px "Trebuchet MS", system-ui';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+    ctx.shadowBlur = 24;
+    ctx.fillText('You Died', W / 2, H / 2);
+    ctx.restore();
   }
 }
 

@@ -120,14 +120,16 @@ function drawMiniMap(){
     ctx.fill();
   }
 
-  const playerRadius = Math.max(4, player.r * scale * 1.4);
-  ctx.fillStyle = '#5cc16d';
-  ctx.beginPath();
-  ctx.arc(minimapX + MINIMAP_SIZE / 2, minimapY + MINIMAP_SIZE / 2, playerRadius, 0, TAU);
-  ctx.fill();
-  ctx.strokeStyle = '#cfe8d4';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
+  if (!player.dead){
+    const playerRadius = Math.max(4, player.r * scale * 1.4);
+    ctx.fillStyle = '#5cc16d';
+    ctx.beginPath();
+    ctx.arc(minimapX + MINIMAP_SIZE / 2, minimapY + MINIMAP_SIZE / 2, playerRadius, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = '#cfe8d4';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
 
   ctx.restore();
 
