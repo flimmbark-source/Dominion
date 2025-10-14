@@ -2,13 +2,27 @@ import { state } from '../state/gameState.js';
 import { addThreat } from './threat.js';
 import { toast } from '../ui/toast.js';
 import { pressOnce } from '../input/pressOnce.js';
+import {
+  registerQuestDefinition,
+  getQuestDescriptors,
+  getQuestState,
+  getQuestEntries,
+  activateQuest,
+  completeQuest,
+  markQuestReady,
+  unlockQuest,
+  getQuestIntelHints
+} from './questLog.js';
 
 const missionDefinitions = [
-  {
+  registerQuestDefinition({
     id: 'disarm-traps',
+    source: 'tavern',
+    initialStatus: 'available',
     title: 'Cut Their Tripwires',
     description: 'Disarm the three alarm snares strung around the village square. Each one keeps the villagers jumpy.',
     detail: 'Slip between patrols and disable the traps hidden near the grain cart, the well, and the watch post.',
+    intelHint: 'Tripwires still glint in the village square. Cut them and threat will ease.',
     getProgressText(missionState){
       const traps = Array.isArray(state.villageTasks) ? state.villageTasks.filter(task => task.type === 'trap') : [];
       const total = traps.length;
@@ -27,7 +41,7 @@ const missionDefinitions = [
       }
       return 'He slides a crude map across the bar, marking each tripwire with a green X.';
     },
-    onTurnIn(missionState){
+    onComplete(missionState){
       const traps = Array.isArray(state.villageTasks) ? state.villageTasks.filter(task => task.type === 'trap') : [];
       for (const trap of traps){
         if (trap.missionFocus === missionState.id) delete trap.missionFocus;
@@ -35,12 +49,15 @@ const missionDefinitions = [
       addThreat(-22);
       return '"The village sleeps easier," the barkeep whispers, passing you a weighty pouch. Threat eases.';
     }
-  },
-  {
+  }),
+  registerQuestDefinition({
     id: 'cool-threat',
+    source: 'tavern',
+    initialStatus: 'available',
     title: 'Let the Heat Die Down',
     description: 'Lay low until the village threat drops to a simmer. No dramatic moves—just patience.',
     detail: 'Stay unseen until the threat falls below 20 and the villagers stop searching. The barkeep listens for calm streets.',
+    intelHint: 'Threat runs hot. Fade awhile and come back when their torches gutter out.',
     getProgressText(){
       const threat = Math.round(state.threat);
       const unseen = Math.floor(state.timeSinceSeen ?? 0);
@@ -60,26 +77,22 @@ const missionDefinitions = [
       missionState.data = { ...(missionState.data || {}), calmMetAt: null, notifiedReady: false };
       return '"Fade for a while," he murmurs. "Let their torches gutter out."';
     },
-    onTurnIn(){
+    onComplete(){
       addThreat(-12);
       return 'The barkeep grins. "They\'ve relaxed. Use that breathing room." Threat slips downward.';
     }
-  }
+  })
 ];
 
 const missionById = new Map(missionDefinitions.map(def => [def.id, def]));
 
 function initBarkeepMissions(){
-  if (!Array.isArray(state.barkeepMissions)){
-    state.barkeepMissions = missionDefinitions.map(def => ({
-      id: def.id,
-      status: 'available',
-      acceptedAt: -Infinity,
-      completedAt: -Infinity,
-      readyAt: -Infinity,
-      data: {}
-    }));
-  }
+  missionDefinitions.forEach(def => {
+    const quest = getQuestState(def.id);
+    if (!quest || quest.status === 'hidden'){
+      unlockQuest(def.id);
+    }
+  });
 }
 
 function isBarkeepDialogueActive(){
@@ -131,39 +144,11 @@ function openMissionDetail(id){
 }
 
 function getMissionState(id){
-  return Array.isArray(state.barkeepMissions)
-    ? state.barkeepMissions.find(mission => mission.id === id)
-    : null;
-}
-
-function formatMissionStatus(status){
-  switch (status){
-    case 'available': return 'Available';
-    case 'active': return 'In progress';
-    case 'ready': return 'Ready to turn in';
-    case 'completed': return 'Completed';
-    default: return status || 'Unknown';
-  }
+  return getQuestState(id);
 }
 
 function getMissionDescriptors(){
-  if (!Array.isArray(state.barkeepMissions)) return [];
-  return state.barkeepMissions
-    .map(mission => {
-      const def = missionById.get(mission.id);
-      if (!def) return null;
-      const progress = def.getProgressText ? def.getProgressText(mission) : '';
-      return {
-        id: mission.id,
-        title: def.title,
-        description: def.description,
-        detail: def.detail,
-        status: mission.status,
-        statusLabel: formatMissionStatus(mission.status),
-        progress
-      };
-    })
-    .filter(Boolean);
+  return getQuestDescriptors({ source: 'tavern' });
 }
 
 function pickIntelLine(){
@@ -190,7 +175,14 @@ function pickIntelLine(){
 
   const missionReady = getMissionDescriptors().find(mission => mission.status === 'ready');
   if (missionReady){
-    lines.push(`${missionReady.title} is ready to cash in. He\'ll be pleased to hear it.`);
+    lines.push(`${missionReady.title} is ready to cash in. He'll be pleased to hear it.`);
+  }
+
+  const worldHints = getQuestIntelHints({ source: 'world' }).filter(hint => hint.status !== 'completed');
+  for (const hint of worldHints){
+    if (hint && hint.text){
+      lines.push(hint.text);
+    }
   }
 
   if (!lines.length){
@@ -204,23 +196,16 @@ function pickIntelLine(){
 function acceptMission(missionState, def){
   if (!missionState || !def) return null;
   if (missionState.status === 'completed' || missionState.status === 'ready') return null;
-  missionState.status = 'active';
-  missionState.acceptedAt = state.time;
-  missionState.data = missionState.data || {};
-  missionState.data.notifiedReady = false;
-  if (typeof def.onAccept === 'function'){
-    return def.onAccept(missionState);
-  }
+  const result = activateQuest(def.id, { merge: missionState.data });
+  missionState.data = { ...(missionState.data || {}), notifiedReady: false };
+  if (result.message) return result.message;
   return 'The barkeep nods and scribbles your mark beside the ledger.';
 }
 
 function turnInMission(missionState, def){
   if (!missionState || !def) return null;
-  missionState.status = 'completed';
-  missionState.completedAt = state.time;
-  if (typeof def.onTurnIn === 'function'){
-    return def.onTurnIn(missionState);
-  }
+  const result = completeQuest(def.id, { merge: missionState.data });
+  if (result.message) return result.message;
   return 'He seals the deal with a quiet clink of coin.';
 }
 
@@ -310,10 +295,8 @@ function handleBarkeepDialogueInput({ interactPressed = false, escapePressed = f
           const message = turnInMission(mission, def);
           if (message) dialog.response = message;
           mission.readyAt = state.time;
-          if (def.id === 'disarm-traps' || def.id === 'cool-threat'){
-            mission.data = mission.data || {};
-            mission.data.notifiedReady = true;
-          }
+          mission.data = mission.data || {};
+          mission.data.notifiedReady = true;
           return result;
         }
       }
@@ -329,21 +312,26 @@ function handleBarkeepDialogueInput({ interactPressed = false, escapePressed = f
 }
 
 function updateBarkeepMissions(){
-  if (!Array.isArray(state.barkeepMissions)) return;
-  for (const missionState of state.barkeepMissions){
-    if (!missionState) continue;
-    const def = missionById.get(missionState.id);
-    if (!def) continue;
-    missionState.data = missionState.data || {};
+  const entries = getQuestEntries({ source: 'tavern' });
+  for (const { quest, def } of entries){
+    if (!quest || !def) continue;
+    quest.data = quest.data || {};
 
-    if (missionState.status === 'active' && typeof def.checkReady === 'function'){
-      if (def.checkReady(missionState)){
-        if (missionState.status !== 'ready'){
-          missionState.status = 'ready';
-          missionState.readyAt = state.time;
-        }
-        if (!missionState.data.notifiedReady){
-          missionState.data.notifiedReady = true;
+    if (quest.status === 'ready'){
+      if (!quest.data.notifiedReady){
+        quest.data.notifiedReady = true;
+        toast(`${def.title} is ready to turn in.`, 2.4);
+      }
+      continue;
+    }
+
+    if (quest.status === 'active' && typeof def.checkReady === 'function'){
+      if (def.checkReady(quest)){
+        const result = markQuestReady(quest.id);
+        const updatedQuest = result.quest || quest;
+        updatedQuest.data = updatedQuest.data || {};
+        if (!updatedQuest.data.notifiedReady){
+          updatedQuest.data.notifiedReady = true;
           toast(`${def.title} is ready to turn in.`, 2.4);
         }
       }

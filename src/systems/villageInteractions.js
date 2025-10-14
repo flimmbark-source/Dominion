@@ -3,6 +3,7 @@ import { clamp } from '../utils/math.js';
 import { toast } from '../ui/toast.js';
 import { addThreat } from './threat.js';
 import { BASE_WHISPERS, HIGH_THREAT_WHISPERS, TASK_HINT_WHISPERS } from '../data/villagerDialog.js';
+import { getQuestRumors, unlockQuest } from './questLog.js';
 
 const VILLAGER_TALK_DISTANCE = 72;
 const VILLAGER_PICKPOCKET_DISTANCE = 58;
@@ -53,19 +54,30 @@ function findNearestVillager(maxRange){
 }
 
 function chooseVillagerLine(npc){
-  const pool = [...BASE_WHISPERS];
-  if (state.threat >= 60) pool.push(...HIGH_THREAT_WHISPERS);
-  if (state.villageTasks.some(task => !task.completed)) pool.push(...TASK_HINT_WHISPERS);
-  if (pool.length === 0) return '';
+  const pool = [
+    ...BASE_WHISPERS.map(text => ({ text }))
+  ];
+  if (state.threat >= 60){
+    pool.push(...HIGH_THREAT_WHISPERS.map(text => ({ text })));
+  }
+  if (state.villageTasks.some(task => !task.completed)){
+    pool.push(...TASK_HINT_WHISPERS.map(text => ({ text })));
+  }
+  const questRumors = getQuestRumors();
+  questRumors.forEach(rumor => {
+    if (!rumor || !rumor.text) return;
+    pool.push({ text: rumor.text, questId: rumor.questId, questStatus: rumor.status });
+  });
+  if (pool.length === 0) return null;
 
   let chosen = pool[Math.floor(Math.random() * pool.length)];
   let attempts = 0;
-  while (chosen === npc.lastDialogueLine && attempts < 4){
+  while (chosen && chosen.text === npc.lastDialogueLine && attempts < 4){
     chosen = pool[Math.floor(Math.random() * pool.length)];
     attempts++;
   }
-  npc.lastDialogueLine = chosen;
-  return chosen;
+  npc.lastDialogueLine = chosen ? chosen.text : null;
+  return chosen || null;
 }
 
 function tryTalkToVillager(){
@@ -81,7 +93,13 @@ function tryTalkToVillager(){
   const line = chooseVillagerLine(npc);
   if (!line) return false;
   npc.dialogCooldown = state.time + 5.5;
-  toast(line, 3.6);
+  toast(line.text, 3.6);
+  if (line.questId){
+    const result = unlockQuest(line.questId, { merge: { discoveredBy: 'rumor' } });
+    if (result && result.changed && result.message){
+      toast(result.message, 2.6);
+    }
+  }
   const p = state.player;
   p.detection = clamp(p.detection - 6, 0, 100);
   addThreat(-4);

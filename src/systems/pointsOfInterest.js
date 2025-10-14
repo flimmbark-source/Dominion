@@ -6,6 +6,67 @@ import { addThreat } from './threat.js';
 import { toast } from '../ui/toast.js';
 import { clamp, TAU } from '../utils/math.js';
 import { ITEMS } from '../data/items.js';
+import {
+  registerQuestDefinition,
+  unlockQuest,
+  activateQuest,
+  completeQuest,
+  updateQuestData,
+  adjustDarkMuster
+} from './questLog.js';
+
+const POI_QUEST_BY_TYPE = {
+  'cursed-shrine': 'world-cursed-shrine',
+  'bog-sprite': 'world-bog-sprite'
+};
+
+registerQuestDefinition({
+  id: 'world-cursed-shrine',
+  source: 'world',
+  title: 'The Cursed Shrine',
+  description: 'Strange lights flicker from a shrine hidden in the eastern bog.',
+  detail: 'Offer gold at the shrine to sway its magic and erode the Dark Lord\'s muster.',
+  intelHint: 'I hear strange lights in the eastern bog. Sounds like a shrine stirring.',
+  rumor: 'Lantern bearers swear a cursed shrine woke in the eastern bog. Might be worth a look.',
+  getProgressText(quest){
+    if (quest.status === 'completed') return 'The shrine bows quiet to you now.';
+    return 'Seek the cursed shrine glowing in the eastern bog.';
+  },
+  onDiscover(){
+    return 'Quest added: The Cursed Shrine';
+  },
+  onComplete(quest, def, options){
+    const outcome = options?.outcome === 'blessing' ? 'blessing' : 'curse';
+    adjustDarkMuster(outcome === 'blessing' ? -3 : -2);
+    addThreat(outcome === 'blessing' ? -15 : -12);
+    if (outcome === 'blessing'){
+      return 'The shrine bends toward shadow. Dark muster and village threat recede.';
+    }
+    return 'You break the shrine\'s spite. Dark muster staggers back a step.';
+  }
+});
+
+registerQuestDefinition({
+  id: 'world-bog-sprite',
+  source: 'world',
+  title: 'Bog Sprite Pact',
+  description: 'A sprite flits near the Moonfen bog, trading secrets for gleaming coins.',
+  detail: 'Earn the sprite\'s favor—it hoards whispers that can loosen the Dark Lord\'s grasp.',
+  intelHint: 'A sprite near the eastern bog is chirping about strange lights in the mire.',
+  rumor: 'Someone spotted a fairy near the bog swapping secrets for gold. Sounds like your sort of ally.',
+  getProgressText(quest){
+    if (quest.status === 'completed') return 'The sprite sings in your shadow.';
+    return 'Find the bog sprite and feed it to earn its trust.';
+  },
+  onDiscover(){
+    return 'Quest added: Bog Sprite Pact';
+  },
+  onComplete(){
+    adjustDarkMuster(-1);
+    addThreat(-8);
+    return 'The sprite spreads rumors in your favor. Dark muster dips and the village calms.';
+  }
+});
 
 function initPointsOfInterest(){
   state.pointsOfInterest = POINTS_OF_INTEREST.map(poi => ({
@@ -14,6 +75,14 @@ function initPointsOfInterest(){
     playerInside: false,
     visibleOnMap: !!poi.revealed
   }));
+  state.pointsOfInterest.forEach(poi => {
+    const questId = POI_QUEST_BY_TYPE[poi.type];
+    if (!questId) return;
+    updateQuestData(questId, {
+      poiId: poi.id,
+      location: { x: poi.x, y: poi.y }
+    });
+  });
 }
 
 function directionToTavern(fromX, fromY){
@@ -45,6 +114,21 @@ function revealLinkedLocations(poi){
     const target = state.pointsOfInterest.find(other => other.id === id);
     if (target) target.visibleOnMap = true;
   }
+}
+
+function revealQuestForPoi(poi, reason = 'exploration', { silent = false } = {}){
+  const questId = POI_QUEST_BY_TYPE[poi.type];
+  if (!questId) return null;
+  const result = unlockQuest(questId, {
+    merge: {
+      discoveredBy: reason,
+      poiId: poi.id
+    }
+  });
+  if (!silent && result && result.changed && result.message){
+    toast(result.message, 2.6);
+  }
+  return result;
 }
 
 function giveRandomContraband(){
@@ -94,6 +178,11 @@ function interactWithPointOfInterest(poi){
     const cost = 10;
     if (player.gold < cost){ toast('Offer 10 gold to tempt the spirits.'); return false; }
     player.gold -= cost;
+    revealQuestForPoi(poi, 'interaction', { silent: true });
+    const questId = POI_QUEST_BY_TYPE[poi.type];
+    if (questId){
+      activateQuest(questId, { merge: { resolvedAt: state.time } });
+    }
     const blessing = Math.random() < 0.55;
     if (blessing){
       addTemporaryStatEffect(player, {
@@ -111,6 +200,15 @@ function interactWithPointOfInterest(poi){
       toast('The shrine curses you (+30 detection, -12 HP, threat +20).', 3.4);
     }
     poi.resolved = true;
+    if (questId){
+      const result = completeQuest(questId, {
+        merge: { resolvedAt: state.time, outcome: blessing ? 'blessing' : 'curse' },
+        outcome: blessing ? 'blessing' : 'curse'
+      });
+      if (result && result.changed && result.message){
+        toast(result.message, 3.2);
+      }
+    }
     return true;
   }
 
@@ -123,6 +221,27 @@ function interactWithPointOfInterest(poi){
     toast(`${poi.hint ?? 'It chitters happily.'} (-18 detection, threat +10)`, 4);
     revealLinkedLocations(poi);
     poi.resolved = true;
+    revealQuestForPoi(poi, 'interaction', { silent: true });
+    const questId = POI_QUEST_BY_TYPE[poi.type];
+    if (questId){
+      activateQuest(questId, { merge: { fedAt: state.time } });
+      const result = completeQuest(questId, {
+        merge: { fedAt: state.time },
+        outcome: 'pact'
+      });
+      if (result && result.changed && result.message){
+        toast(result.message, 2.8);
+      }
+    }
+    const shrinePoi = state.pointsOfInterest?.find(item => item.type === 'cursed-shrine');
+    if (shrinePoi){
+      revealQuestForPoi(shrinePoi, 'sprite');
+    } else {
+      const shrineResult = unlockQuest('world-cursed-shrine', { merge: { discoveredBy: 'sprite' } });
+      if (shrineResult && shrineResult.changed && shrineResult.message){
+        toast(shrineResult.message, 2.6);
+      }
+    }
     return true;
   }
 
@@ -140,6 +259,13 @@ function handlePointOfInterestInteraction(interactPressed){
     const inside = dist <= radius;
     if (inside && !poi.playerInside && !poi.resolved && !insideHouse){
       toast(poi.prompt, 1.8);
+    }
+    if (inside && !insideHouse){
+      revealQuestForPoi(poi, 'exploration');
+      const questId = POI_QUEST_BY_TYPE[poi.type];
+      if (questId){
+        updateQuestData(questId, { lastSeenAt: state.time });
+      }
     }
     poi.playerInside = inside;
     if (inside && interactPressed && !consumed && !insideHouse){
