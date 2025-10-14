@@ -471,10 +471,21 @@ function draw(){
 
   if (state.mapVisible) drawWorldMapOverlay();
 
-  if (state.time < state.messageUntil){
+  for (let i = state.messages.length - 1; i >= 0; i--){
+    if (state.time >= state.messages[i].expiresAt){
+      state.messages.splice(i, 1);
+    }
+  }
+
+  if (state.messages.length){
     ctx.fillStyle = '#d1e7ff';
     ctx.font = 'bold 16px system-ui';
-    ctx.fillText(state.message, 16, 24);
+    const lineHeight = 20;
+
+    state.messages.forEach((message, index) => {
+      const y = 24 + index * lineHeight;
+      ctx.fillText(message.text, 16, y);
+    });
   }
 }
 
