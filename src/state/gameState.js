@@ -63,7 +63,10 @@ const state = {
   noiseEvents: [],
   alarmLevel: 0,
   alarmUntil: 0,
-  activeTrapDisarm: null
+  activeTrapDisarm: null,
+  villageDefense: [],
+  darkStrategy: null,
+  warLastMessageAt: 0
 };
 
 export { state, mainVillage };

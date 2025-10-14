@@ -4,7 +4,7 @@ import { segBlockedByAnyRect } from '../utils/geometry.js';
 import { TAU, clamp } from '../utils/math.js';
 import { gatherForestSolidsAround } from '../world/terrain.js';
 import { toast } from '../ui/toast.js';
-import { forEachVillageInstance, prepareVillageInstances } from '../world/villageTemplates.js';
+import { forEachVillageInstance, prepareVillageInstances, getVillageInstance } from '../world/villageTemplates.js';
 
 const NPC_STATE = Object.freeze({
   PATROL: 'PATROL',
@@ -74,13 +74,54 @@ const NPC_ARCHETYPES = {
     patrolPauseRange: [1.2, 2.2],
     investigateDuration: 2,
     hearingRadius: 100
+  },
+  militia: {
+    speed: 52,
+    fovAngle: Math.PI / 2,
+    fovRange: 200,
+    maxHealth: 80,
+    attackable: true,
+    backstabMultiplier: 2.2,
+    rewardGold: 18,
+    attack: {
+      range: 58,
+      damage: 16,
+      cooldown: 1.4,
+      message: 'The militia guard lashes out with a spear!'
+    },
+    faction: 'village',
+    displayName: 'militia guard',
+    defaultState: NPC_STATE.PATROL,
+    patrolPauseRange: [0.6, 1.4],
+    investigateDuration: 3.2,
+    hearingRadius: 220
+  },
+  raider: {
+    speed: 50,
+    fovAngle: Math.PI / 2,
+    fovRange: 180,
+    maxHealth: 60,
+    attackable: true,
+    rewardGold: 22,
+    attack: {
+      range: 54,
+      damage: 14,
+      cooldown: 1.5,
+      message: 'A dark raider strikes you down!'
+    },
+    faction: 'darkLord',
+    displayName: 'dark raider',
+    defaultState: NPC_STATE.PATROL,
+    patrolPauseRange: [0.4, 1.1],
+    investigateDuration: 2.4,
+    hearingRadius: 200
   }
 };
 
-function makeNPC(type, x, y, waypoints=null){
+function makeNPC(type, x, y, waypoints=null, options = {}){
   const config = NPC_ARCHETYPES[type] || NPC_ARCHETYPES.villager;
   const defaultState = config.defaultState || NPC_STATE.PATROL;
-  return {
+  const npc = {
     type,
     x,
     y,
@@ -119,9 +160,9 @@ function makeNPC(type, x, y, waypoints=null){
         nextMessage: 0
       }
       : null,
-    faction: config.faction || 'village',
-    displayName: config.displayName || type,
-    behaviorState: defaultState,
+    faction: options.faction || config.faction || 'village',
+    displayName: options.displayName || config.displayName || type,
+    behaviorState: options.behaviorState || defaultState,
     stateSince: state.time,
     pauseTimer: 0,
     holdPosition: false,
@@ -138,8 +179,26 @@ function makeNPC(type, x, y, waypoints=null){
     sawPlayerAt: -Infinity,
     patrolPauseRange: config.patrolPauseRange || [1.2, 2.8],
     investigateDuration: config.investigateDuration || 2.8,
-    hearingRadius: config.hearingRadius || 120
+    hearingRadius: config.hearingRadius || 120,
+    role: options.role ?? null,
+    homeVillage: options.homeVillage ?? null,
+    targetVillage: options.targetVillage ?? null,
+    raidGoal: options.raidGoal ?? null,
+    chasingTarget: null,
+    activeTargetIsChase: false,
+    activeTargetBeforeChase: null
   };
+
+  if (typeof options.initialPause === 'number' && options.initialPause > 0){
+    npc.pauseTimer = Math.max(npc.pauseTimer, options.initialPause);
+    npc.holdPosition = true;
+  }
+
+  if (options.holdPosition === false){
+    npc.holdPosition = false;
+  }
+
+  return npc;
 }
 
 let nextNoiseId = 1;
@@ -153,10 +212,13 @@ function offsetWaypoints(villageIndex, pts){
   return pts.map(pt => offsetPoint(villageIndex, pt.x, pt.y));
 }
 
-function addVillageNPC(type, villageIndex, x, y, localWaypoints){
+function addVillageNPC(type, villageIndex, x, y, localWaypoints, options = {}){
   const origin = offsetPoint(villageIndex, x, y);
   const worldWaypoints = localWaypoints ? offsetWaypoints(villageIndex, localWaypoints) : null;
-  state.npcs.push(makeNPC(type, origin.x, origin.y, worldWaypoints));
+  const spawnOptions = { homeVillage: villageIndex, ...options };
+  const npc = makeNPC(type, origin.x, origin.y, worldWaypoints, spawnOptions);
+  state.npcs.push(npc);
+  return npc;
 }
 
 function patchPatrolRoutes(){
@@ -188,27 +250,6 @@ function setupInitialNPCs(){
       addVillageNPC(type, villageIndex, spawn.x, spawn.y, route);
     }
   });
-
-  const boglingLoops = [
-    [
-      { x: mainVillage.x - 120, y: mainVillage.y + 460 },
-      { x: mainVillage.x - 80, y: mainVillage.y + 520 },
-      { x: mainVillage.x - 140, y: mainVillage.y + 560 }
-    ],
-    [
-      { x: mainVillage.x + mainVillage.w + 80, y: mainVillage.y + 420 },
-      { x: mainVillage.x + mainVillage.w + 120, y: mainVillage.y + 470 },
-      { x: mainVillage.x + mainVillage.w + 60, y: mainVillage.y + 520 }
-    ],
-    [
-      { x: mainVillage.x + 180, y: mainVillage.y + mainVillage.h + 60 },
-      { x: mainVillage.x + 260, y: mainVillage.y + mainVillage.h + 40 },
-      { x: mainVillage.x + 220, y: mainVillage.y + mainVillage.h + 120 }
-    ]
-  ];
-  for (const loop of boglingLoops){
-    state.npcs.push(makeNPC('bogling', loop[0].x, loop[0].y, loop));
-  }
 
   patchPatrolRoutes();
 }
@@ -453,6 +494,118 @@ function clampTargetToWorld(target){
   };
 }
 
+function findBarracksAnchor(instance){
+  if (!instance) return null;
+  const barracks = instance.template?.houses?.find(h => h.id === 'barracks');
+  if (barracks){
+    return {
+      x: barracks.x + barracks.w / 2,
+      y: barracks.y + barracks.h / 2
+    };
+  }
+  return {
+    x: instance.village.w / 2,
+    y: instance.village.h / 2 + 60
+  };
+}
+
+function spawnVillageDefender(villageIndex, options = {}){
+  const instance = getVillageInstance(villageIndex);
+  if (!instance) return null;
+  const anchor = options.localPosition || findBarracksAnchor(instance);
+  if (!anchor) return null;
+  const patrolRadius = options.patrolRadius ?? 90;
+  const route = options.localRoute || [
+    { x: anchor.x + patrolRadius, y: anchor.y },
+    { x: anchor.x, y: anchor.y + patrolRadius * 0.6 },
+    { x: anchor.x - patrolRadius, y: anchor.y },
+    { x: anchor.x, y: anchor.y - patrolRadius * 0.6 }
+  ];
+  const npc = addVillageNPC('militia', villageIndex, anchor.x, anchor.y, route, {
+    role: 'defender',
+    faction: 'village'
+  });
+  if (npc){
+    npc.patrolPauseRange = [0.45, 1.1];
+  }
+  return npc;
+}
+
+function spawnDarkRaid(targetVillageIndex, count, options = {}){
+  const targetVillage = VILLAGES[targetVillageIndex];
+  if (!targetVillage || count <= 0) return 0;
+  const muster = {
+    x: state.castle.x - 140,
+    y: state.castle.y + (options.musterOffset ?? 20)
+  };
+  const targetCenter = {
+    x: targetVillage.x + targetVillage.w / 2,
+    y: targetVillage.y + targetVillage.h / 2
+  };
+  let spawned = 0;
+  for (let i = 0; i < count; i++){
+    const spread = (i - (count - 1) / 2) * 18;
+    const spawnX = state.castle.x - 60 - Math.random() * 60;
+    const spawnY = state.castle.y + spread;
+    const rally = {
+      x: muster.x + Math.random() * 80 - 40,
+      y: muster.y + Math.random() * 80 - 40
+    };
+    const strike = {
+      x: targetCenter.x + Math.random() * 160 - 80,
+      y: targetCenter.y + Math.random() * 160 - 80
+    };
+    const approach = {
+      x: targetCenter.x + Math.random() * 60 - 30,
+      y: targetCenter.y + Math.random() * 60 - 30
+    };
+    const waypoints = [rally, strike, approach];
+    const npc = makeNPC('raider', spawnX, spawnY, waypoints, {
+      faction: 'darkLord',
+      role: 'raider',
+      targetVillage: targetVillageIndex,
+      raidGoal: approach,
+      initialPause: 2 + Math.random(),
+      behaviorState: NPC_STATE.PATROL
+    });
+    npc.patrolPauseRange = [0.3, 0.8];
+    state.npcs.push(npc);
+    spawned++;
+  }
+  if (spawned > 0 && options.announce !== false){
+    toast(`The Dark Lord musters ${spawned} raiders against ${targetVillage.name}!`, 3);
+  }
+  return spawned;
+}
+
+function onNpcRemoved(npc, options = {}){
+  if (npc.role === 'defender' && typeof npc.homeVillage === 'number'){
+    const garrison = state.villageDefense?.[npc.homeVillage];
+    if (garrison){
+      garrison.activeDefenders = Math.max(0, garrison.activeDefenders - 1);
+    }
+  }
+  if (npc.role === 'raider' && typeof npc.targetVillage === 'number' && state.darkStrategy){
+    const remaining = state.npcs.some(other => other !== npc && other.role === 'raider' && other.targetVillage === npc.targetVillage);
+    if (!remaining && state.darkStrategy.raidTarget === npc.targetVillage){
+      state.darkStrategy.raidTarget = null;
+      state.darkStrategy.raidCooldown = Math.max(state.darkStrategy.raidCooldown || 0, 8);
+      state.darkStrategy.musterGoal = Math.min(14, (state.darkStrategy.musterGoal || 4) + 1);
+      if (options.silent !== true){
+        toast(`${VILLAGES[npc.targetVillage].name} drives off the raiders!`, 2.6);
+      }
+    }
+  }
+}
+
+function removeNPC(npc, options = {}){
+  const idx = state.npcs.indexOf(npc);
+  if (idx === -1) return false;
+  state.npcs.splice(idx, 1);
+  onNpcRemoved(npc, options);
+  return true;
+}
+
 function updateNPCBehaviors(dt){
   const now = state.time;
   const threatFactor = clamp(state.threat / 200, 0, 1);
@@ -464,11 +617,39 @@ function updateNPCBehaviors(dt){
 
   state.noiseEvents = state.noiseEvents.filter(ev => now <= ev.expiresAt);
   const scouts = [];
+  const villageFighters = [];
+  const darkFighters = [];
+
+  const applyChase = (npc, target) => {
+    if (target){
+      if (!npc.activeTargetIsChase){
+        npc.activeTargetBeforeChase = npc.activeTarget;
+      }
+      npc.chasingTarget = target;
+      npc.activeTarget = target;
+      npc.activeTargetIsChase = true;
+    } else {
+      npc.chasingTarget = null;
+      if (npc.activeTargetIsChase){
+        npc.activeTargetIsChase = false;
+        npc.activeTarget = npc.activeTargetBeforeChase || npc.waypoints?.[npc.wpIndex] || npc.activeTarget;
+        npc.activeTargetBeforeChase = null;
+      }
+    }
+  };
 
   for (const npc of state.npcs){
     npc.pauseTimer = Math.max(0, npc.pauseTimer - dt);
     if (npc.assistanceCooldown > 0) npc.assistanceCooldown = Math.max(0, npc.assistanceCooldown - dt);
     if (npc.noiseResponseCooldown > 0) npc.noiseResponseCooldown = Math.max(0, npc.noiseResponseCooldown - dt);
+
+    if (npc.attack){
+      if (npc.faction === 'village'){
+        villageFighters.push(npc);
+      } else if (npc.faction === 'darkLord' || npc.faction === 'monster'){
+        darkFighters.push(npc);
+      }
+    }
 
     if (npc.behaviorState === NPC_STATE.SUSPICIOUS && npc.arrivedAtInvestigation){
       npc.investigationTimer = Math.max(0, npc.investigationTimer - dt);
@@ -545,6 +726,50 @@ function updateNPCBehaviors(dt){
     }
   }
 
+  const assignHostileTargets = (attackers, opponents) => {
+    for (const actor of attackers){
+      if (!actor.attackable && !actor.attack) continue;
+      if (actor.chasingTarget && !state.npcs.includes(actor.chasingTarget)){
+        applyChase(actor, null);
+      }
+      let chosen = null;
+      let bestDist = Infinity;
+      const detectionRange = (actor.fovRange || 140) + 90;
+      for (const foe of opponents){
+        if (!state.npcs.includes(foe)) continue;
+        const dist = Math.hypot(foe.x - actor.x, foe.y - actor.y);
+        if (dist < bestDist && dist <= detectionRange){
+          bestDist = dist;
+          chosen = foe;
+        }
+      }
+      if (chosen){
+        if (actor.chasingTarget !== chosen){
+          applyChase(actor, chosen);
+          if (actor.behaviorState !== NPC_STATE.ALERT){
+            setNPCState(actor, NPC_STATE.ALERT, { reason: 'hostile_detected', force: true });
+          }
+        }
+      } else if (actor.chasingTarget){
+        applyChase(actor, null);
+        if (actor.role === 'raider'){
+          setNPCState(actor, NPC_STATE.PATROL, { reason: 'hostile_lost', force: true });
+        }
+      }
+    }
+  };
+
+  if (villageFighters.length && darkFighters.length){
+    assignHostileTargets(villageFighters, darkFighters);
+    assignHostileTargets(darkFighters, villageFighters);
+  } else {
+    for (const actor of villageFighters.concat(darkFighters)){
+      if (actor.chasingTarget){
+        applyChase(actor, null);
+      }
+    }
+  }
+
   for (const event of state.noiseEvents){
     const maxResponders = event.maxResponders ?? 1;
     event.assigned = event.assigned?.filter(Boolean) || [];
@@ -580,6 +805,9 @@ export {
   setupInitialNPCs,
   npcSeesPlayer,
   spawnReinforcement,
+  spawnVillageDefender,
+  spawnDarkRaid,
+  removeNPC,
   updateNPCBehaviors,
   queueNoiseEvent,
   notifyNPCPlayerSpotted

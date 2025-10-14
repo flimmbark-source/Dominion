@@ -22,6 +22,7 @@ import {
   updateNPCBehaviors,
   queueNoiseEvent,
   notifyNPCPlayerSpotted,
+  removeNPC,
   NPC_STATE
 } from './npc/npcManager.js';
 import {
@@ -48,12 +49,14 @@ import {
   tryTalkToVillager,
   updateTrapDisarm
 } from './systems/villageInteractions.js';
+import { initWarState, updateWar } from './systems/war.js';
 
 setupInput();
 prepareVillageInstances();
 initHouses();
 generateWorld();
 setupInitialNPCs();
+initWarState();
 initVillageInteractions();
 initPointsOfInterest();
 
@@ -256,15 +259,23 @@ function update(dt){
     }
   }
 
+  updateWar(dt);
   updateNPCBehaviors(dt);
   for (const npc of state.npcs){
     if (npc.pauseTimer > 0) continue;
-    const target = npc.activeTarget || npc.waypoints[npc.wpIndex];
+    const chaseTarget = npc.chasingTarget && state.npcs.includes(npc.chasingTarget) ? npc.chasingTarget : null;
+    if (!chaseTarget && npc.chasingTarget){
+      npc.chasingTarget = null;
+    }
+    const target = chaseTarget || npc.activeTarget || npc.waypoints[npc.wpIndex];
     if (!target) continue;
     const dx = target.x - npc.x;
     const dy = target.y - npc.y;
     const d = Math.hypot(dx, dy);
     if (d < 4){
+      if (chaseTarget){
+        continue;
+      }
       if (npc.behaviorState === NPC_STATE.PATROL){
         if (!npc.holdPosition){
           const [minPause, maxPause] = npc.patrolPauseRange || [0, 0];
@@ -306,10 +317,51 @@ function update(dt){
     npc.facing = Math.atan2(vy, vx);
   }
 
+  const battleCasualties = [];
+  const defeated = new Set();
   for (const npc of state.npcs){
     const attack = npc.attack;
     if (!attack) continue;
-    const engaged = npc.faction === 'monster' || npc.behaviorState === NPC_STATE.ALERT;
+    const targetNpc = npc.chasingTarget;
+    if (!targetNpc) continue;
+    if (!state.npcs.includes(targetNpc)) continue;
+    const dx = targetNpc.x - npc.x;
+    const dy = targetNpc.y - npc.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > attack.range) continue;
+    if (state.time < (attack.nextReady ?? 0)) continue;
+
+    const damage = Math.max(0, attack.damage ?? 0);
+    if (damage <= 0) continue;
+
+    const cooldown = Math.max(attack.cooldown ?? 1.2, 0.2);
+    attack.nextReady = state.time + cooldown;
+    targetNpc.health = Math.max(0, targetNpc.health - damage);
+
+    if (targetNpc.health <= 0 && !defeated.has(targetNpc)){
+      defeated.add(targetNpc);
+      battleCasualties.push(targetNpc);
+      if (state.time >= (state.warLastMessageAt || 0) + 6){
+        if (targetNpc.faction === 'village'){
+          toast('A defender falls to the raid!', 2.6);
+        } else if (targetNpc.faction === 'darkLord'){
+          toast('Village steel fells a raider!', 2.6);
+        }
+        state.warLastMessageAt = state.time;
+      }
+    }
+  }
+
+  if (battleCasualties.length){
+    for (const victim of battleCasualties){
+      removeNPC(victim);
+    }
+  }
+
+  for (const npc of state.npcs){
+    const attack = npc.attack;
+    if (!attack) continue;
+    const engaged = npc.faction === 'monster' || npc.faction === 'darkLord' || npc.behaviorState === NPC_STATE.ALERT;
     if (!engaged) continue;
     const dx = p.x - npc.x;
     const dy = p.y - npc.y;
@@ -342,7 +394,7 @@ function update(dt){
 
   let seenBy = 0;
   for (const npc of state.npcs){
-    if (npc.faction === 'monster') continue;
+    if (npc.faction === 'monster' || npc.faction === 'darkLord') continue;
     if (npcSeesPlayer(npc, p)){
       seenBy++;
       notifyNPCPlayerSpotted(npc, p);
@@ -381,7 +433,7 @@ function update(dt){
   }
   if (p.sprinting){
     for (const npc of state.npcs){
-      if (npc.faction === 'monster') continue;
+      if (npc.faction === 'monster' || npc.faction === 'darkLord') continue;
       const hearR = (npc.type === 'scout') ? 180 : 120;
       const dd = Math.hypot(npc.x-p.x, npc.y-p.y);
       if (dd < hearR && !segBlockedByAnyRect(npc.x,npc.y,p.x,p.y,state.houseSolids)) {

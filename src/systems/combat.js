@@ -1,5 +1,5 @@
 import { state } from '../state/gameState.js';
-import { npcSeesPlayer } from '../npc/npcManager.js';
+import { npcSeesPlayer, removeNPC } from '../npc/npcManager.js';
 import { toast } from '../ui/toast.js';
 import { clamp } from '../utils/math.js';
 import { addThreat } from './threat.js';
@@ -50,8 +50,6 @@ function punishFailedBackstab(npc, playerStats){
 }
 
 function handleNpcDefeated(npc, wasBackstab){
-  const idx = state.npcs.indexOf(npc);
-  if (idx !== -1) state.npcs.splice(idx, 1);
   if (npc.threatOnDefeat){
     addThreat(npc.threatOnDefeat);
   }
@@ -68,6 +66,7 @@ function handleNpcDefeated(npc, wasBackstab){
       : `You defeat the ${label}.`;
   }
   toast(message, 2.6);
+  removeNPC(npc, { silent: true });
 }
 
 function attemptAttack(player, playerStats){
