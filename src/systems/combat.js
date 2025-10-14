@@ -3,19 +3,22 @@ import { npcSeesPlayer, removeNPC } from '../npc/npcManager.js';
 import { toast } from '../ui/toast.js';
 import { clamp } from '../utils/math.js';
 import { addThreat } from './threat.js';
+import { getWeaponSwingConfig, resolveWeaponType } from '../utils/weaponSwing.js';
 
-const ATTACK_RANGE = 52;
+const BASE_PLAYER_ATTACK_RANGE = 52;
+const MELEE_RANGE_BONUS = 8;
+const MIN_PLAYER_COOLDOWN = 0.3;
 const BACKSTAB_ALIGNMENT_THRESHOLD = -0.25;
 
-function findAttackTarget(player){
+function findAttackTarget(player, attackRange = BASE_PLAYER_ATTACK_RANGE + MELEE_RANGE_BONUS){
   let best = null;
-  let bestDist = ATTACK_RANGE;
+  let bestDist = attackRange;
   for (const npc of state.npcs){
     if (!npc.attackable) continue;
     const dx = npc.x - player.x;
     const dy = npc.y - player.y;
     const dist = Math.hypot(dx, dy);
-    if (dist > ATTACK_RANGE) continue;
+    if (dist > attackRange) continue;
     if (!best || dist < bestDist){
       best = npc;
       bestDist = dist;
@@ -69,12 +72,33 @@ function handleNpcDefeated(npc, wasBackstab){
   removeNPC(npc, { silent: true });
 }
 
-function attemptAttack(player, playerStats){
-  const npc = findAttackTarget(player);
+function attemptAttack(player, playerStats, weaponType){
+  const nextReady = player.nextAttackReady ?? 0;
+  if (state.time < nextReady){
+    toast('Your weapon needs a moment to recover.', 1.2);
+    return false;
+  }
+
+  const resolvedWeaponType = resolveWeaponType(weaponType);
+  const swingConfig = getWeaponSwingConfig(resolvedWeaponType);
+  const attackRange = swingConfig.playerRange ?? (BASE_PLAYER_ATTACK_RANGE + MELEE_RANGE_BONUS);
+  const npc = findAttackTarget(player, attackRange);
   if (!npc){
     toast('No target in reach.', 1.5);
     return false;
   }
+
+  const swingDuration = swingConfig.playerDuration ?? swingConfig.duration ?? 0.32;
+  const cooldown = Math.max(swingConfig.playerCooldown ?? swingConfig.duration ?? 0.32, MIN_PLAYER_COOLDOWN);
+  const facing = Math.atan2(npc.y - player.y, npc.x - player.x);
+
+  player.nextAttackReady = state.time + cooldown;
+  player.attackSwing = {
+    start: state.time,
+    duration: swingDuration,
+    facing,
+    weaponType: resolvedWeaponType
+  };
 
   const seesPlayer = npcSeesPlayer(npc, player);
   const alignment = computeFacingAlignment(npc, player);

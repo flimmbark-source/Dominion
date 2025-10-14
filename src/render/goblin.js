@@ -3,6 +3,209 @@ import { getWeaponSwingConfig } from '../utils/weaponSwing.js';
 
 const DEFAULT_PLAYER_BLADE = getWeaponSwingConfig('dagger').playerBlade || {};
 
+function drawPlayerBladeSwing(ctx, hand, swingFacing, swingProgress, swingEase, swingConfig, invisible){
+  const bladeConfig = swingConfig.playerBlade || DEFAULT_PLAYER_BLADE;
+
+  const angleOffset = (bladeConfig.baseAngleOffset ?? -1.05) + swingProgress * (bladeConfig.angleSweep ?? 1.9);
+  const bladeAngle = swingFacing + angleOffset;
+  const guardDistance = (bladeConfig.guardDistance ?? 3.4) + swingEase * (bladeConfig.guardDistanceBonus ?? 0);
+  const bladeLength = (bladeConfig.bladeLength ?? 17) + swingEase * (bladeConfig.bladeLengthBonus ?? 0);
+  const normalAngle = bladeAngle + Math.PI / 2;
+  const bladeHalfWidth = (bladeConfig.bladeHalfWidth ?? 1.6) + swingEase * (bladeConfig.bladeHalfWidthBonus ?? 0);
+  const guardX = hand.x + Math.cos(bladeAngle) * guardDistance;
+  const guardY = hand.y + Math.sin(bladeAngle) * guardDistance;
+  const tipX = guardX + Math.cos(bladeAngle) * bladeLength;
+  const tipY = guardY + Math.sin(bladeAngle) * bladeLength;
+  const baseLeftX = guardX + Math.cos(normalAngle) * bladeHalfWidth;
+  const baseLeftY = guardY + Math.sin(normalAngle) * bladeHalfWidth;
+  const baseRightX = guardX - Math.cos(normalAngle) * bladeHalfWidth;
+  const baseRightY = guardY - Math.sin(normalAngle) * bladeHalfWidth;
+
+  ctx.save();
+  ctx.lineJoin = 'round';
+
+  const bladeFill = invisible
+    ? (bladeConfig.invisibleBladeFill || bladeConfig.bladeFill || '#f7f9f3')
+    : (bladeConfig.bladeFill || '#f7f9f3');
+  const bladeStroke = invisible
+    ? (bladeConfig.invisibleBladeStroke || bladeConfig.bladeStroke || '#d6ddd1')
+    : (bladeConfig.bladeStroke || '#d6ddd1');
+  ctx.fillStyle = bladeFill;
+  ctx.strokeStyle = bladeStroke;
+  ctx.lineWidth = 1.2 + (bladeConfig.outlineBonus ?? 0) * swingEase;
+  ctx.beginPath();
+  ctx.moveTo(baseLeftX, baseLeftY);
+  ctx.lineTo(tipX, tipY);
+  ctx.lineTo(baseRightX, baseRightY);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  const handleLength = bladeConfig.handleLength ?? 3.2;
+  const handleBackX = hand.x - Math.cos(bladeAngle) * handleLength;
+  const handleBackY = hand.y - Math.sin(bladeAngle) * handleLength;
+  const handleColor = invisible
+    ? (bladeConfig.invisibleHandleColor || bladeConfig.handleColor || '#3a3228')
+    : (bladeConfig.handleColor || '#3a3228');
+  ctx.strokeStyle = handleColor;
+  ctx.lineWidth = 2.4 + (bladeConfig.handleWidthBonus ?? 0) * swingEase;
+  ctx.beginPath();
+  ctx.moveTo(handleBackX, handleBackY);
+  ctx.lineTo(hand.x + Math.cos(bladeAngle) * 0.6, hand.y + Math.sin(bladeAngle) * 0.6);
+  ctx.stroke();
+
+  const guardHalfWidth = (bladeConfig.guardWidth ?? 7.2) / 2;
+  const guardColor = invisible
+    ? (bladeConfig.invisibleGuardColor || bladeConfig.guardColor || '#caa86e')
+    : (bladeConfig.guardColor || '#caa86e');
+  ctx.strokeStyle = guardColor;
+  ctx.lineWidth = 2.2 + (bladeConfig.guardWidthBonus ?? 0) * swingEase;
+  ctx.beginPath();
+  ctx.moveTo(guardX + Math.cos(normalAngle) * guardHalfWidth, guardY + Math.sin(normalAngle) * guardHalfWidth);
+  ctx.lineTo(guardX - Math.cos(normalAngle) * guardHalfWidth, guardY - Math.sin(normalAngle) * guardHalfWidth);
+  ctx.stroke();
+
+  const trailRadius = (bladeConfig.trailRadius ?? 16) + swingEase * (bladeConfig.trailRadiusBonus ?? 0);
+  const trailStart = swingFacing + (bladeConfig.trailStart ?? -1.25);
+  const trailSweep = bladeConfig.trailSweep ?? 1.95;
+  const trailEnd = trailStart + swingProgress * trailSweep;
+  const trailAlphaBase = bladeConfig.trailAlphaBase ?? 0.55;
+  const trailAlphaBonus = bladeConfig.trailAlphaBonus ?? 0.35;
+  const trailAlpha = (trailAlphaBase + swingEase * trailAlphaBonus) * (1 - swingProgress * 0.65);
+  const trailWidth = (bladeConfig.trailWidth ?? 2.8) + swingEase * (bladeConfig.trailWidthBonus ?? 0);
+  const trailColorRgb = invisible
+    ? (bladeConfig.invisibleTrailColor || bladeConfig.trailColor)
+    : bladeConfig.trailColor;
+
+  if (trailColorRgb && trailAlpha > 0){
+    const clampedAlpha = Math.max(0, Math.min(1, trailAlpha));
+    ctx.strokeStyle = `rgba(${trailColorRgb}, ${clampedAlpha.toFixed(3)})`;
+    ctx.lineWidth = trailWidth;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(hand.x, hand.y, trailRadius, trailStart, trailEnd, false);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawPlayerThrustSwing(ctx, hand, swingFacing, swingProgress, swingEase, swingConfig, invisible){
+  const thrustConfig = swingConfig.playerThrust || {};
+  const retract = thrustConfig.retractDistance ?? swingConfig.retractDistance ?? -6;
+  const thrustDistance = thrustConfig.thrustDistance ?? swingConfig.thrustDistance ?? 32;
+  const gripOffset = thrustConfig.gripOffset ?? -4;
+  const travel = retract + (thrustDistance - retract) * swingProgress;
+  const baseX = hand.x + Math.cos(swingFacing) * (gripOffset + travel);
+  const baseY = hand.y + Math.sin(swingFacing) * (gripOffset + travel);
+  const shaftLength = (thrustConfig.shaftLength ?? 34) + swingEase * (thrustConfig.shaftLengthBonus ?? 0);
+  const shaftWidth = (thrustConfig.shaftWidth ?? swingConfig.width ?? 3) + swingEase * (thrustConfig.shaftWidthBonus ?? 0);
+  const tipLength = (thrustConfig.tipLength ?? swingConfig.tipLength ?? 10) + swingEase * (thrustConfig.tipLengthBonus ?? 0);
+  const tipWidth = (thrustConfig.tipWidth ?? swingConfig.tipWidth ?? 6) + swingEase * (thrustConfig.tipWidthBonus ?? 0);
+  const tipX = baseX + Math.cos(swingFacing) * (shaftLength + tipLength);
+  const tipY = baseY + Math.sin(swingFacing) * (shaftLength + tipLength);
+  const shaftEndX = tipX - Math.cos(swingFacing) * tipLength;
+  const shaftEndY = tipY - Math.sin(swingFacing) * tipLength;
+
+  const normalAngle = swingFacing + Math.PI / 2;
+
+  const trailColor = invisible
+    ? (thrustConfig.invisibleTrailColor || 'rgba(180, 220, 240, 0.3)')
+    : (thrustConfig.trailColor || 'rgba(120, 190, 255, 0.35)');
+
+  ctx.save();
+  ctx.lineCap = 'round';
+
+  if (trailColor){
+    ctx.globalAlpha = 0.6 + swingEase * 0.25;
+    ctx.strokeStyle = trailColor;
+    ctx.lineWidth = shaftWidth + 2.6;
+    ctx.beginPath();
+    ctx.moveTo(hand.x, hand.y);
+    ctx.lineTo(tipX, tipY);
+    ctx.stroke();
+  }
+
+  ctx.globalAlpha = 1;
+  const shaftColor = invisible
+    ? (thrustConfig.invisibleShaftColor || '#c8b48d')
+    : (thrustConfig.shaftColor || '#c8b48d');
+  ctx.strokeStyle = shaftColor;
+  ctx.lineWidth = shaftWidth;
+  ctx.beginPath();
+  ctx.moveTo(baseX, baseY);
+  ctx.lineTo(shaftEndX, shaftEndY);
+  ctx.stroke();
+
+  const tipColor = invisible
+    ? (thrustConfig.invisibleTipColor || '#f4f8ff')
+    : (thrustConfig.tipColor || '#f4f8ff');
+  ctx.fillStyle = tipColor;
+  ctx.beginPath();
+  ctx.moveTo(tipX, tipY);
+  ctx.lineTo(shaftEndX + Math.cos(normalAngle) * (tipWidth / 2), shaftEndY + Math.sin(normalAngle) * (tipWidth / 2));
+  ctx.lineTo(shaftEndX - Math.cos(normalAngle) * (tipWidth / 2), shaftEndY - Math.sin(normalAngle) * (tipWidth / 2));
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawPlayerClawSwipe(ctx, hand, swingFacing, swingProgress, swingEase, swingConfig, invisible){
+  const clawConfig = swingConfig.playerClaws || {};
+  const fingerCount = Math.max(1, Math.round(clawConfig.fingerCount ?? 3));
+  const spacing = (clawConfig.spacing ?? 4) + swingEase * (clawConfig.spacingBonus ?? 0);
+  const startOffset = (clawConfig.startOffset ?? -2) + swingProgress * (clawConfig.travel ?? 16);
+  const length = (clawConfig.length ?? 26) + swingEase * (clawConfig.lengthBonus ?? 0);
+  const normalAngle = swingFacing + Math.PI / 2;
+  const glowColor = invisible
+    ? (clawConfig.invisibleGlow || 'rgba(170, 220, 208, 0.6)')
+    : (clawConfig.glowColor || 'rgba(255, 180, 130, 0.6)');
+  const strokeColor = invisible
+    ? (clawConfig.invisibleColor || 'rgba(210, 242, 226, 0.85)')
+    : (clawConfig.color || 'rgba(255, 200, 170, 0.9)');
+  const lineWidth = (clawConfig.lineWidth ?? 2.4) + swingEase * (clawConfig.lineWidthBonus ?? 0);
+
+  const startBaseX = hand.x + Math.cos(swingFacing) * startOffset;
+  const startBaseY = hand.y + Math.sin(swingFacing) * startOffset;
+  const endOffset = startOffset + length;
+
+  ctx.save();
+  ctx.lineCap = 'round';
+
+  ctx.strokeStyle = glowColor;
+  ctx.lineWidth = lineWidth + 2.2;
+  ctx.globalAlpha = 0.65 + swingEase * 0.2;
+  for (let i = 0; i < fingerCount; i++){
+    const offset = (i - (fingerCount - 1) / 2) * spacing;
+    const startX = startBaseX + Math.cos(normalAngle) * offset;
+    const startY = startBaseY + Math.sin(normalAngle) * offset;
+    const endX = hand.x + Math.cos(swingFacing) * endOffset + Math.cos(normalAngle) * offset;
+    const endY = hand.y + Math.sin(swingFacing) * endOffset + Math.sin(normalAngle) * offset;
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = strokeColor;
+  ctx.lineWidth = lineWidth;
+  ctx.globalAlpha = 0.95;
+  for (let i = 0; i < fingerCount; i++){
+    const offset = (i - (fingerCount - 1) / 2) * spacing;
+    const startX = startBaseX + Math.cos(normalAngle) * offset;
+    const startY = startBaseY + Math.sin(normalAngle) * offset;
+    const endX = hand.x + Math.cos(swingFacing) * endOffset + Math.cos(normalAngle) * offset;
+    const endY = hand.y + Math.sin(swingFacing) * endOffset + Math.sin(normalAngle) * offset;
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
 function drawGoblin(ctx, p, options = {}){
   const {
     time = 0,
@@ -258,90 +461,18 @@ function drawGoblin(ctx, p, options = {}){
     const hand = rightArmLimb.end;
     const weaponType = swing?.weaponType;
     const swingConfig = getWeaponSwingConfig(weaponType);
-    const bladeConfig = swingConfig.playerBlade || DEFAULT_PLAYER_BLADE;
 
-    const angleOffset = (bladeConfig.baseAngleOffset ?? -1.05) + swingProgress * (bladeConfig.angleSweep ?? 1.9);
-    const bladeAngle = swingFacing + angleOffset;
-    const guardDistance = (bladeConfig.guardDistance ?? 3.4) + swingEase * (bladeConfig.guardDistanceBonus ?? 0);
-    const bladeLength = (bladeConfig.bladeLength ?? 17) + swingEase * (bladeConfig.bladeLengthBonus ?? 0);
-    const normalAngle = bladeAngle + Math.PI / 2;
-    const bladeHalfWidth = (bladeConfig.bladeHalfWidth ?? 1.6) + swingEase * (bladeConfig.bladeHalfWidthBonus ?? 0);
-    const guardX = hand.x + Math.cos(bladeAngle) * guardDistance;
-    const guardY = hand.y + Math.sin(bladeAngle) * guardDistance;
-    const tipX = guardX + Math.cos(bladeAngle) * bladeLength;
-    const tipY = guardY + Math.sin(bladeAngle) * bladeLength;
-    const baseLeftX = guardX + Math.cos(normalAngle) * bladeHalfWidth;
-    const baseLeftY = guardY + Math.sin(normalAngle) * bladeHalfWidth;
-    const baseRightX = guardX - Math.cos(normalAngle) * bladeHalfWidth;
-    const baseRightY = guardY - Math.sin(normalAngle) * bladeHalfWidth;
-
-    ctx.save();
-    ctx.lineJoin = 'round';
-
-    const bladeFill = invisible
-      ? (bladeConfig.invisibleBladeFill || bladeConfig.bladeFill || '#f7f9f3')
-      : (bladeConfig.bladeFill || '#f7f9f3');
-    const bladeStroke = invisible
-      ? (bladeConfig.invisibleBladeStroke || bladeConfig.bladeStroke || '#d6ddd1')
-      : (bladeConfig.bladeStroke || '#d6ddd1');
-    ctx.fillStyle = bladeFill;
-    ctx.strokeStyle = bladeStroke;
-    ctx.lineWidth = 1.2 + (bladeConfig.outlineBonus ?? 0) * swingEase;
-    ctx.beginPath();
-    ctx.moveTo(baseLeftX, baseLeftY);
-    ctx.lineTo(tipX, tipY);
-    ctx.lineTo(baseRightX, baseRightY);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    const handleLength = bladeConfig.handleLength ?? 3.2;
-    const handleBackX = hand.x - Math.cos(bladeAngle) * handleLength;
-    const handleBackY = hand.y - Math.sin(bladeAngle) * handleLength;
-    const handleColor = invisible
-      ? (bladeConfig.invisibleHandleColor || bladeConfig.handleColor || '#3a3228')
-      : (bladeConfig.handleColor || '#3a3228');
-    ctx.strokeStyle = handleColor;
-    ctx.lineWidth = 2.4 + (bladeConfig.handleWidthBonus ?? 0) * swingEase;
-    ctx.beginPath();
-    ctx.moveTo(handleBackX, handleBackY);
-    ctx.lineTo(hand.x + Math.cos(bladeAngle) * 0.6, hand.y + Math.sin(bladeAngle) * 0.6);
-    ctx.stroke();
-
-    const guardHalfWidth = (bladeConfig.guardWidth ?? 7.2) / 2;
-    const guardColor = invisible
-      ? (bladeConfig.invisibleGuardColor || bladeConfig.guardColor || '#caa86e')
-      : (bladeConfig.guardColor || '#caa86e');
-    ctx.strokeStyle = guardColor;
-    ctx.lineWidth = 2.2 + (bladeConfig.guardWidthBonus ?? 0) * swingEase;
-    ctx.beginPath();
-    ctx.moveTo(guardX + Math.cos(normalAngle) * guardHalfWidth, guardY + Math.sin(normalAngle) * guardHalfWidth);
-    ctx.lineTo(guardX - Math.cos(normalAngle) * guardHalfWidth, guardY - Math.sin(normalAngle) * guardHalfWidth);
-    ctx.stroke();
-
-    const trailRadius = (bladeConfig.trailRadius ?? 16) + swingEase * (bladeConfig.trailRadiusBonus ?? 0);
-    const trailStart = swingFacing + (bladeConfig.trailStart ?? -1.25);
-    const trailSweep = bladeConfig.trailSweep ?? 1.95;
-    const trailEnd = trailStart + swingProgress * trailSweep;
-    const trailAlphaBase = bladeConfig.trailAlphaBase ?? 0.55;
-    const trailAlphaBonus = bladeConfig.trailAlphaBonus ?? 0.35;
-    const trailAlpha = (trailAlphaBase + swingEase * trailAlphaBonus) * (1 - swingProgress * 0.65);
-    const trailWidth = (bladeConfig.trailWidth ?? 2.8) + swingEase * (bladeConfig.trailWidthBonus ?? 0);
-    const trailColorRgb = invisible
-      ? (bladeConfig.invisibleTrailColor || bladeConfig.trailColor)
-      : bladeConfig.trailColor;
-
-    if (trailColorRgb && trailAlpha > 0){
-      const clampedAlpha = Math.max(0, Math.min(1, trailAlpha));
-      ctx.strokeStyle = `rgba(${trailColorRgb}, ${clampedAlpha.toFixed(3)})`;
-      ctx.lineWidth = trailWidth;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.arc(hand.x, hand.y, trailRadius, trailStart, trailEnd, false);
-      ctx.stroke();
+    switch (swingConfig.style){
+      case 'thrust':
+        drawPlayerThrustSwing(ctx, hand, swingFacing, swingProgress, swingEase, swingConfig, invisible);
+        break;
+      case 'bite':
+        drawPlayerClawSwipe(ctx, hand, swingFacing, swingProgress, swingEase, swingConfig, invisible);
+        break;
+      default:
+        drawPlayerBladeSwing(ctx, hand, swingFacing, swingProgress, swingEase, swingConfig, invisible);
+        break;
     }
-
-    ctx.restore();
   }
 
   ctx.globalAlpha = 1;

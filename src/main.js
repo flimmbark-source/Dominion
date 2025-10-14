@@ -442,19 +442,11 @@ function update(dt){
       toast(attack.message, 1.5);
       attack.nextMessage = state.time + Math.max(cooldown, 1.2);
     }
-  if (attackPressed){
-    const weaponType = getEquippedWeaponType(p);
-    const swingConfig = getWeaponSwingConfig(weaponType);
-    const swingDuration = swingConfig?.duration ?? 0.32;
-    p.attackSwing = {
-      start: state.time,
-      duration: swingDuration,
-      facing: typeof p.facing === 'number' ? p.facing : 0,
-      weaponType
-    };
   }
-}
-  if (attackPressed) attemptAttack(p, playerStats);
+
+  if (attackPressed){
+    attemptAttack(p, playerStats, getEquippedWeaponType(p));
+  }
 
   let seenBy = 0;
   for (const npc of state.npcs){
