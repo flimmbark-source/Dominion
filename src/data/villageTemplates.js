@@ -283,6 +283,7 @@ const crossroadsMarket = {
     { id: 'inn', x: 120, y: 120, w: 150, h: 110, side: 'north', doorOffset: 0.5, jitter: { x: 40, y: 24, door: 0.16 } },
     { id: 'smithy', x: 320, y: 140, w: 160, h: 110, side: 'north', doorOffset: 0.32, jitter: { x: 42, y: 20, door: 0.12 } },
     { id: 'guild', x: 560, y: 130, w: 150, h: 110, side: 'north', doorOffset: 0.66, jitter: { x: 38, y: 22, door: 0.12 } },
+    { id: 'barracks', x: 740, y: 118, w: 150, h: 120, side: 'north', doorOffset: 0.48, jitter: { x: 36, y: 20, door: 0.12 } },
     { id: 'baker', x: 140, y: 320, w: 150, h: 110, side: 'south', doorOffset: 0.42, jitter: { x: 38, y: 26, door: 0.14 } },
     { id: 'apothecary', x: 360, y: 340, w: 160, h: 110, side: 'south', doorOffset: 0.5, jitter: { x: 36, y: 24, door: 0.16 } },
     { id: 'fletcher', x: 600, y: 330, w: 170, h: 120, side: 'south', doorOffset: 0.58, jitter: { x: 36, y: 22, door: 0.14 } }
@@ -584,6 +585,7 @@ const riversideSanctum = {
     { id: 'abbot-hall', x: 140, y: 120, w: 150, h: 110, side: 'north', doorOffset: 0.48, jitter: { x: 36, y: 20, door: 0.12 } },
     { id: 'scribe-hut', x: 320, y: 110, w: 150, h: 100, side: 'north', doorOffset: 0.62, jitter: { x: 34, y: 18, door: 0.12 } },
     { id: 'watch', x: 560, y: 130, w: 150, h: 110, side: 'north', doorOffset: 0.42, jitter: { x: 30, y: 18, door: 0.12 } },
+    { id: 'barracks', x: 740, y: 126, w: 150, h: 118, side: 'north', doorOffset: 0.5, jitter: { x: 32, y: 20, door: 0.12 } },
     { id: 'boat-house', x: 160, y: 340, w: 150, h: 110, side: 'south', doorOffset: 0.36, jitter: { x: 32, y: 24, door: 0.14 } },
     { id: 'pilgrim-dorm', x: 380, y: 360, w: 160, h: 110, side: 'south', doorOffset: 0.52, jitter: { x: 34, y: 24, door: 0.16 } },
     { id: 'fisher-row', x: 620, y: 340, w: 170, h: 120, side: 'south', doorOffset: 0.58, jitter: { x: 34, y: 22, door: 0.16 } }
