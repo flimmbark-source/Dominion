@@ -2,7 +2,7 @@ import './style.css';
 
 import { WORLD } from './data/world.js';
 import { setupInput, keys } from './input.js';
-import { canvas, ctx, W, H } from './game/canvas.js';
+import { canvas, ctx, W, H, resizeCanvas } from './game/canvas.js';
 import { state } from './state/gameState.js';
 import { getPlayerStats } from './state/playerStats.js';
 import { TAVERN_INTERIOR, getTavernDoorRect } from './state/tavern.js';
@@ -63,6 +63,7 @@ canvas.addEventListener('mouseleave', handleShopMouseLeave);
 canvas.addEventListener('click', handleShopClick);
 
 let lastT = performance.now();
+let lastKnownPixelRatio = window.devicePixelRatio || 1;
 
 function emitNoiseEvent(type, origin, options = {}){
   return queueNoiseEvent({
@@ -83,6 +84,12 @@ function loop(nowMs){
   const now = nowMs/1000;
   const dt = Math.min(0.033, now - lastT/1000);
   lastT = nowMs;
+
+  const currentPixelRatio = window.devicePixelRatio || 1;
+  if (Math.abs(currentPixelRatio - lastKnownPixelRatio) > 0.001){
+    resizeCanvas();
+    lastKnownPixelRatio = currentPixelRatio;
+  }
 
   if (!state.pausedForShop) update(dt);
   draw();
