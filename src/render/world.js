@@ -617,8 +617,10 @@ function drawWorldScene(){
 
   drawInteractionPrompts();
 
-  const invisible = state.time < p.invisUntil;
-  drawGoblin(ctx, p, { time: state.time, invisible });
+  if (!p.dead){
+    const invisible = state.time < p.invisUntil;
+    drawGoblin(ctx, p, { time: state.time, invisible });
+  }
 
   drawTerrain({ treeFilter: treeInFrontOfPlayer });
 

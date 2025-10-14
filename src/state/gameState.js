@@ -6,6 +6,10 @@ import { W, H } from '../game/canvas.js';
 const mainVillage = VILLAGES[0];
 
 const playerStats = createPlayerStats();
+const playerSpawn = {
+  x: mainVillage.x + 180,
+  y: mainVillage.y + 460
+};
 
 const state = {
   time: 0,
@@ -13,8 +17,9 @@ const state = {
   debugCones: true,
   messages: [],
   camera: { x: mainVillage.x + mainVillage.w/2 - W/2, y: mainVillage.y + mainVillage.h/2 - H/2 },
+  playerSpawn: { ...playerSpawn },
   player: {
-    x: mainVillage.x + 180, y: mainVillage.y + 460, r: 10, facing: 0,
+    x: playerSpawn.x, y: playerSpawn.y, r: 10, facing: 0,
     vx: 0, vy: 0, sprinting: false,
     gold: 0, health: playerStats.base.maxHealth,
     detection: 0,
@@ -24,7 +29,8 @@ const state = {
     stats: playerStats,
     inventory: Array(6).fill(null),
     nextSprintNoiseTime: 0,
-    nextThrowNoiseTime: 0
+    nextThrowNoiseTime: 0,
+    dead: false
   },
   houses: [],
   doors: [],
@@ -68,7 +74,8 @@ const state = {
   villageDefense: [],
   darkStrategy: null,
   warLastMessageAt: 0,
-  damageNumbers: []
+  damageNumbers: [],
+  deathSequence: null
 };
 
 export { state, mainVillage };

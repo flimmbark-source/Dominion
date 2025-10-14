@@ -164,8 +164,10 @@ function drawTavernInteriorScene(){
   ctx.arc(barkeep.x + 6, barkeep.y + barkeepBob - 4, 3, 0, TAU);
   ctx.fill();
 
-  const invisible = state.time < p.invisUntil;
-  drawGoblin(ctx, p, { time: state.time, invisible });
+  if (!p.dead){
+    const invisible = state.time < p.invisUntil;
+    drawGoblin(ctx, p, { time: state.time, invisible });
+  }
 
   const distToBarkeep = Math.hypot(p.x - barkeep.x, p.y - barkeep.y);
   if (distToBarkeep <= barkeep.interactRadius && !state.pausedForShop){
