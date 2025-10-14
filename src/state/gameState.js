@@ -67,7 +67,8 @@ const state = {
   activeTrapDisarm: null,
   villageDefense: [],
   darkStrategy: null,
-  warLastMessageAt: 0
+  warLastMessageAt: 0,
+  damageNumbers: []
 };
 
 export { state, mainVillage };

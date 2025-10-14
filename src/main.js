@@ -40,6 +40,7 @@ import {
 import { enterTavernInterior, leaveTavernInterior } from './systems/tavern.js';
 import { addThreat } from './systems/threat.js';
 import { attemptAttack } from './systems/combat.js';
+import { addDamageNumber, updateDamageNumbers } from './systems/damageNumbers.js';
 import { initPointsOfInterest, handlePointOfInterestInteraction } from './systems/pointsOfInterest.js';
 import { toast } from './ui/toast.js';
 import { pressOnce } from './input/pressOnce.js';
@@ -140,6 +141,7 @@ function update(dt){
   if (state.mapMode === 'large') return;
 
   state.time += dt;
+  updateDamageNumbers();
 
   const interactPressed = pressOnce('e');
   const pickpocketPressed = pressOnce('r');
@@ -390,18 +392,16 @@ function update(dt){
       weaponType
     };
     targetNpc.health = Math.max(0, targetNpc.health - damage);
+    addDamageNumber({
+      x: targetNpc.x,
+      y: targetNpc.y,
+      amount: damage,
+      color: targetNpc.faction === 'village' ? '#ff6b6b' : '#f9d776'
+    });
 
     if (targetNpc.health <= 0 && !defeated.has(targetNpc)){
       defeated.add(targetNpc);
       battleCasualties.push(targetNpc);
-      if (state.time >= (state.warLastMessageAt || 0) + 6){
-        if (targetNpc.faction === 'village'){
-          toast('A defender falls to the raid!', 2.6);
-        } else if (targetNpc.faction === 'darkLord'){
-          toast('Village steel fells a raider!', 2.6);
-        }
-        state.warLastMessageAt = state.time;
-      }
     }
   }
 
@@ -428,6 +428,12 @@ function update(dt){
 
     const cooldown = Math.max(attack.cooldown ?? 1.2, 0.2);
     state.player.health = clamp(state.player.health - damage, 0, playerStats.maxHealth);
+    addDamageNumber({
+      x: p.x,
+      y: p.y,
+      amount: damage,
+      color: '#ff6b6b'
+    });
     attack.nextReady = state.time + cooldown;
     const weaponType = resolveWeaponType(attack.weaponType);
     const swingConfig = getWeaponSwingConfig(weaponType);
@@ -437,11 +443,6 @@ function update(dt){
       facing: Math.atan2(dy, dx),
       weaponType
     };
-
-    if (attack.message && state.time >= (attack.nextMessage ?? 0)){
-      toast(attack.message, 1.5);
-      attack.nextMessage = state.time + Math.max(cooldown, 1.2);
-    }
   }
 
   if (attackPressed){
