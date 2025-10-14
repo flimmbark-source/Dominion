@@ -552,10 +552,13 @@ function draw(){
     ctx.fillStyle = '#d1e7ff';
     ctx.font = 'bold 16px system-ui';
     const lineHeight = 20;
+    const threatIndicatorWidth = 72;
+    const threatIndicatorPadding = 12;
+    const messageX = 16 + threatIndicatorWidth + threatIndicatorPadding;
 
     state.messages.forEach((message, index) => {
       const y = 24 + index * lineHeight;
-      ctx.fillText(message.text, 16, y);
+      ctx.fillText(message.text, messageX, y);
     });
   }
 }
