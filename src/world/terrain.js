@@ -23,6 +23,49 @@ import {
   OPPOSITE_DIRECTION
 } from './villageTemplates.js';
 
+const BASE_GROUND_COLOR = '#0d131b';
+
+function clamp01(v){
+  if (v <= 0) return 0;
+  if (v >= 1) return 1;
+  return v;
+}
+
+function hexToRgb(hex){
+  const cleaned = hex.startsWith('#') ? hex.slice(1) : hex;
+  const value = cleaned.padStart(6, '0');
+  return {
+    r: parseInt(value.slice(0, 2), 16),
+    g: parseInt(value.slice(2, 4), 16),
+    b: parseInt(value.slice(4, 6), 16)
+  };
+}
+
+function mixHexColor(a, b, t){
+  const amount = clamp01(t);
+  const ca = hexToRgb(a);
+  const cb = hexToRgb(b);
+  const lerp = (x, y) => Math.round(x + (y - x) * amount)
+    .toString(16)
+    .padStart(2, '0');
+  return `#${lerp(ca.r, cb.r)}${lerp(ca.g, cb.g)}${lerp(ca.b, cb.b)}`;
+}
+
+function roundedRectPath(x, y, w, h, radius){
+  const r = Math.max(0, Math.min(radius, Math.min(w, h) / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
 const roads = [];
 let forestSolids = [];
 const pathSegments = [];
@@ -34,37 +77,47 @@ const ZONE_STYLES = {
   eerieForest: {
     base: '#121a26',
     overlay: ['rgba(46, 72, 102, 0.26)', 'rgba(8, 12, 18, 0.55)'],
+    overlayAlpha: 0.55,
     border: 'rgba(110, 160, 190, 0.16)',
     dash: [14, 12],
-    tileSize: 160
+    tileSize: 160,
+    cornerRadius: 80
   },
   hauntedRuins: {
     base: '#17141d',
     overlay: ['rgba(92, 78, 102, 0.3)', 'rgba(10, 8, 14, 0.55)'],
+    overlayAlpha: 0.58,
     border: 'rgba(178, 148, 198, 0.18)',
     dash: [8, 10],
-    tileSize: 144
+    tileSize: 144,
+    cornerRadius: 76
   },
   mireSwamp: {
     base: '#0f1814',
     overlay: ['rgba(78, 116, 94, 0.22)', 'rgba(6, 10, 8, 0.55)'],
+    overlayAlpha: 0.5,
     border: 'rgba(126, 182, 140, 0.18)',
     dash: [18, 14],
-    tileSize: 176
+    tileSize: 176,
+    cornerRadius: 88
   },
   safeZone: {
     base: '#112118',
     overlay: ['rgba(82, 160, 120, 0.24)', 'rgba(10, 24, 16, 0.46)'],
+    overlayAlpha: 0.45,
     border: 'rgba(160, 220, 180, 0.35)',
     dash: [6, 10],
-    tileSize: 120
+    tileSize: 120,
+    cornerRadius: 68
   },
   tensionZone: {
     base: '#231214',
     overlay: ['rgba(210, 82, 64, 0.22)', 'rgba(40, 12, 10, 0.5)'],
+    overlayAlpha: 0.5,
     border: 'rgba(220, 126, 106, 0.42)',
     dash: [10, 8],
-    tileSize: 120
+    tileSize: 120,
+    cornerRadius: 70
   }
 };
 
@@ -72,11 +125,14 @@ function ensureZonePattern(type){
   if (zonePatternCache.has(type)) return zonePatternCache.get(type);
   const style = ZONE_STYLES[type];
   if (!style){
-    zonePatternCache.set(type, '#101820');
+    zonePatternCache.set(type, BASE_GROUND_COLOR);
     return zonePatternCache.get(type);
   }
+
+  const baseColor = mixHexColor(style.base ?? BASE_GROUND_COLOR, BASE_GROUND_COLOR, 0.55);
+
   if (typeof document === 'undefined' || !document.createElement){
-    zonePatternCache.set(type, style.base);
+    zonePatternCache.set(type, baseColor);
     return zonePatternCache.get(type);
   }
 
@@ -85,7 +141,7 @@ function ensureZonePattern(type){
   tile.width = size;
   tile.height = size;
   const g = tile.getContext('2d');
-  g.fillStyle = style.base;
+  g.fillStyle = baseColor;
   g.fillRect(0, 0, size, size);
 
   switch (type){
@@ -568,45 +624,65 @@ function generateWorld(){
 function drawZone(zone){
   const style = ZONE_STYLES[zone.type];
   const fill = ensureZonePattern(zone.type);
+  const radius = style?.cornerRadius ?? Math.min(zone.w, zone.h) * 0.18;
+  const baseFill = fill || style?.base || BASE_GROUND_COLOR;
 
   ctx.save();
-  ctx.fillStyle = fill || style?.base || '#101820';
+  roundedRectPath(zone.x, zone.y, zone.w, zone.h, radius);
+  ctx.clip();
+
+  ctx.fillStyle = baseFill;
   ctx.fillRect(zone.x, zone.y, zone.w, zone.h);
 
   if (style?.overlay){
     const overlay = ctx.createLinearGradient(zone.x, zone.y, zone.x + zone.w, zone.y + zone.h);
     overlay.addColorStop(0, style.overlay[0]);
     overlay.addColorStop(1, style.overlay[1]);
+    ctx.save();
+    if (typeof style.overlayAlpha === 'number'){
+      ctx.globalAlpha = style.overlayAlpha;
+    }
     ctx.fillStyle = overlay;
     ctx.fillRect(zone.x, zone.y, zone.w, zone.h);
+    ctx.restore();
   }
+
+  const tint = ctx.createLinearGradient(zone.x, zone.y, zone.x + zone.w, zone.y + zone.h);
+  tint.addColorStop(0, 'rgba(8, 12, 18, 0.12)');
+  tint.addColorStop(1, 'rgba(6, 10, 16, 0.2)');
+  ctx.fillStyle = tint;
+  ctx.fillRect(zone.x, zone.y, zone.w, zone.h);
 
   const centerX = zone.x + zone.w / 2;
   const centerY = zone.y + zone.h / 2;
   const vignette = ctx.createRadialGradient(
     centerX,
     centerY,
-    Math.min(zone.w, zone.h) * 0.12,
+    Math.min(zone.w, zone.h) * 0.18,
     centerX,
     centerY,
-    Math.max(zone.w, zone.h) * 0.78
+    Math.max(zone.w, zone.h) * 0.9
   );
   vignette.addColorStop(0, 'rgba(0,0,0,0)');
-  vignette.addColorStop(1, 'rgba(4, 6, 8, 0.45)');
+  vignette.addColorStop(1, 'rgba(6, 10, 14, 0.48)');
   ctx.fillStyle = vignette;
   ctx.fillRect(zone.x, zone.y, zone.w, zone.h);
 
+  ctx.restore();
+
   if (style?.border){
+    ctx.save();
+    roundedRectPath(zone.x + 0.5, zone.y + 0.5, zone.w - 1, zone.h - 1, Math.max(0, radius - 1));
     ctx.strokeStyle = style.border;
     ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.75;
     if (style.dash){
       ctx.setLineDash(style.dash);
     }
-    ctx.strokeRect(zone.x + 0.5, zone.y + 0.5, zone.w - 1, zone.h - 1);
+    ctx.stroke();
     ctx.setLineDash([]);
+    ctx.restore();
   }
-
-  ctx.restore();
 }
 
 function drawTerrainProp(prop){
