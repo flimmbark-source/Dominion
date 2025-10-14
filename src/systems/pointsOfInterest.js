@@ -7,66 +7,23 @@ import { toast } from '../ui/toast.js';
 import { clamp, TAU } from '../utils/math.js';
 import { ITEMS } from '../data/items.js';
 import {
-  registerQuestDefinition,
   unlockQuest,
   activateQuest,
   completeQuest,
-  updateQuestData,
-  adjustDarkMuster
+  updateQuestData
 } from './questLog.js';
+import {
+  canResolveEventPoi,
+  completeWorldEvent,
+  getWorldEventState,
+  hasWorldEventCompletedPhase
+} from './worldEvents.js';
 
 const POI_QUEST_BY_TYPE = {
-  'cursed-shrine': 'world-cursed-shrine',
-  'bog-sprite': 'world-bog-sprite'
+  'cursed-shrine-core': 'world-mire-whispers',
+  'runestone-cache': 'world-fae-witness',
+  'ember-ambush': 'world-ember-watch'
 };
-
-registerQuestDefinition({
-  id: 'world-cursed-shrine',
-  source: 'world',
-  title: 'The Cursed Shrine',
-  description: 'Strange lights flicker from a shrine hidden in the eastern bog.',
-  detail: 'Offer gold at the shrine to sway its magic and erode the Dark Lord\'s muster.',
-  intelHint: 'I hear strange lights in the eastern bog. Sounds like a shrine stirring.',
-  rumor: 'Lantern bearers swear a cursed shrine woke in the eastern bog. Might be worth a look.',
-  getProgressText(quest){
-    if (quest.status === 'completed') return 'The shrine bows quiet to you now.';
-    return 'Seek the cursed shrine glowing in the eastern bog.';
-  },
-  onDiscover(){
-    return 'Quest added: The Cursed Shrine';
-  },
-  onComplete(quest, def, options){
-    const outcome = options?.outcome === 'blessing' ? 'blessing' : 'curse';
-    adjustDarkMuster(outcome === 'blessing' ? -3 : -2);
-    addThreat(outcome === 'blessing' ? -15 : -12);
-    if (outcome === 'blessing'){
-      return 'The shrine bends toward shadow. Dark muster and village threat recede.';
-    }
-    return 'You break the shrine\'s spite. Dark muster staggers back a step.';
-  }
-});
-
-registerQuestDefinition({
-  id: 'world-bog-sprite',
-  source: 'world',
-  title: 'Bog Sprite Pact',
-  description: 'A sprite flits near the Moonfen bog, trading secrets for gleaming coins.',
-  detail: 'Earn the sprite\'s favor—it hoards whispers that can loosen the Dark Lord\'s grasp.',
-  intelHint: 'A sprite near the eastern bog is chirping about strange lights in the mire.',
-  rumor: 'Someone spotted a fairy near the bog swapping secrets for gold. Sounds like your sort of ally.',
-  getProgressText(quest){
-    if (quest.status === 'completed') return 'The sprite sings in your shadow.';
-    return 'Find the bog sprite and feed it to earn its trust.';
-  },
-  onDiscover(){
-    return 'Quest added: Bog Sprite Pact';
-  },
-  onComplete(){
-    adjustDarkMuster(-1);
-    addThreat(-8);
-    return 'The sprite spreads rumors in your favor. Dark muster dips and the village calms.';
-  }
-});
 
 function initPointsOfInterest(){
   state.pointsOfInterest = POINTS_OF_INTEREST.map(poi => ({
@@ -119,6 +76,7 @@ function revealLinkedLocations(poi){
 function revealQuestForPoi(poi, reason = 'exploration', { silent = false } = {}){
   const questId = POI_QUEST_BY_TYPE[poi.type];
   if (!questId) return null;
+  if (poi.eventId && !canResolveEventPoi(poi)) return null;
   const result = unlockQuest(questId, {
     merge: {
       discoveredBy: reason,
@@ -174,74 +132,82 @@ function interactWithPointOfInterest(poi){
     return success;
   }
 
-  if (poi.type === 'cursed-shrine'){
-    const cost = 10;
-    if (player.gold < cost){ toast('Offer 10 gold to tempt the spirits.'); return false; }
-    player.gold -= cost;
-    revealQuestForPoi(poi, 'interaction', { silent: true });
+  if (poi.type === 'cursed-shrine-core'){
+    if (!canResolveEventPoi(poi)){
+      toast('The shrine rejects you—the swamp still withholds its offerings.', 2.6);
+      return false;
+    }
+    if (!hasWorldEventCompletedPhase(poi.eventId, 'exploration')){
+      toast('The spirits still demand the reagents whispered in the mire.', 2.6);
+      return false;
+    }
     const questId = POI_QUEST_BY_TYPE[poi.type];
+    revealQuestForPoi(poi, 'interaction', { silent: true });
     if (questId){
       activateQuest(questId, { merge: { resolvedAt: state.time } });
     }
-    const blessing = Math.random() < 0.55;
-    if (blessing){
-      addTemporaryStatEffect(player, {
-        id: 'cursed-shrine-blessing',
-        mult: { stealthFactor: 0.6 },
-        duration: 90
-      }, state.time);
-      getPlayerStats(player, state.time);
-      player.detection = clamp(player.detection - 25, 0, 100);
-      toast('A whispering wind cloaks you (-25 detection, stealth boost for 90s).', 3.4);
-    } else {
-      player.detection = clamp(player.detection + 30, 0, 100);
-      player.health = Math.max(0, player.health - 12);
-      addThreat(20);
-      toast('The shrine curses you (+30 detection, -12 HP, threat +20).', 3.4);
-    }
+    const stats = getPlayerStats(player, state.time);
+    player.detection = clamp(player.detection - 22, 0, 100);
+    player.health = clamp(player.health + 18, 0, stats.maxHealth);
+    addTemporaryStatEffect(player, {
+      id: 'shrine-ward',
+      mult: { stealthFactor: 0.7 },
+      duration: 120
+    }, state.time);
+    toast('Moonblossom incense clears the ward (-22 detection, +18 HP, stealth boon).', 3.6);
     poi.resolved = true;
-    if (questId){
-      const result = completeQuest(questId, {
-        merge: { resolvedAt: state.time, outcome: blessing ? 'blessing' : 'curse' },
-        outcome: blessing ? 'blessing' : 'curse'
-      });
-      if (result && result.changed && result.message){
-        toast(result.message, 3.2);
-      }
-    }
+    poi.visibleOnMap = true;
+    completeWorldEvent(poi.eventId);
     return true;
   }
 
-  if (poi.type === 'bog-sprite'){
-    const cost = 5;
-    if (player.gold < cost){ toast('Toss 5 gold to feed the sprite.'); return false; }
-    player.gold -= cost;
-    player.detection = clamp(player.detection - 18, 0, 100);
-    addThreat(10);
-    toast(`${poi.hint ?? 'It chitters happily.'} (-18 detection, threat +10)`, 4);
-    revealLinkedLocations(poi);
+  if (poi.type === 'runestone-cache'){
+    if (!canResolveEventPoi(poi)){
+      toast('The fae trail has not settled here yet.', 2.4);
+      return false;
+    }
+    if (!hasWorldEventCompletedPhase(poi.eventId, 'exploration')){
+      toast('Without the fairy\'s clue you cannot read the twisted oak.', 2.6);
+      return false;
+    }
+    const eventState = getWorldEventState(poi.eventId);
+    const guardsActive = eventState?.guards?.some(guard => state.npcs.includes(guard) && guard.health > 0);
+    if (guardsActive && state.player.detection >= 45){
+      toast('Unseen eyes circle the oak—thin the patrol or lower your detection.', 3);
+      return false;
+    }
+    state.player.detection = clamp(state.player.detection + 14, 0, 100);
+    addThreat(12);
+    state.player.gold += 10;
+    toast('You slip rune shards into your pouch (+10 gold, detection +14, threat +12).', 3.2);
     poi.resolved = true;
-    revealQuestForPoi(poi, 'interaction', { silent: true });
-    const questId = POI_QUEST_BY_TYPE[poi.type];
-    if (questId){
-      activateQuest(questId, { merge: { fedAt: state.time } });
-      const result = completeQuest(questId, {
-        merge: { fedAt: state.time },
-        outcome: 'pact'
-      });
-      if (result && result.changed && result.message){
-        toast(result.message, 2.8);
-      }
+    poi.visibleOnMap = true;
+    completeWorldEvent(poi.eventId);
+    return true;
+  }
+
+  if (poi.type === 'ember-ambush'){
+    if (!canResolveEventPoi(poi)){
+      toast('You need a clearer read on the ambush before acting.', 2.4);
+      return false;
     }
-    const shrinePoi = state.pointsOfInterest?.find(item => item.type === 'cursed-shrine');
-    if (shrinePoi){
-      revealQuestForPoi(shrinePoi, 'sprite');
+    const eventState = getWorldEventState(poi.eventId);
+    const guardsActive = eventState?.guards?.some(guard => state.npcs.includes(guard) && guard.health > 0);
+    if (guardsActive && state.player.detection >= 50){
+      toast('The raiders stay alert—disrupt them or drop your detection.', 2.8);
+      return false;
+    }
+    if (guardsActive){
+      toast('You sabotage the powder kegs while the patrol looks away.', 2.6);
+      state.player.detection = clamp(state.player.detection + 20, 0, 100);
     } else {
-      const shrineResult = unlockQuest('world-cursed-shrine', { merge: { discoveredBy: 'sprite' } });
-      if (shrineResult && shrineResult.changed && shrineResult.message){
-        toast(shrineResult.message, 2.6);
-      }
+      toast('With the raiders routed, you secure the supplies for Moonfen.', 2.8);
+      state.player.detection = clamp(state.player.detection - 10, 0, 100);
     }
+    addThreat(-6);
+    poi.resolved = true;
+    poi.visibleOnMap = true;
+    completeWorldEvent(poi.eventId);
     return true;
   }
 
@@ -258,12 +224,14 @@ function handlePointOfInterestInteraction(interactPressed){
     const radius = poi.radius ?? 60;
     const inside = dist <= radius;
     if (inside && !poi.playerInside && !poi.resolved && !insideHouse){
-      toast(poi.prompt, 1.8);
+      if (!poi.eventId || canResolveEventPoi(poi)){
+        toast(poi.prompt, 1.8);
+      }
     }
     if (inside && !insideHouse){
       revealQuestForPoi(poi, 'exploration');
       const questId = POI_QUEST_BY_TYPE[poi.type];
-      if (questId){
+      if (questId && (!poi.eventId || canResolveEventPoi(poi))){
         updateQuestData(questId, { lastSeenAt: state.time });
       }
     }
