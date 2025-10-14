@@ -39,9 +39,6 @@ const NPC_ARCHETYPES = {
     backstabMultiplier: 3.2,
     rewardGold: 30,
     threatOnDefeat: 25,
-    counterDamage: 28,
-    counterDetection: 40,
-    counterThreat: 25,
     attack: {
       range: 48,
       damage: 18,
@@ -51,7 +48,6 @@ const NPC_ARCHETYPES = {
     },
     faction: 'village',
     displayName: 'scout',
-    counterMessage: 'The scout whirls and cuts you down! Approach from behind while unseen.',
     defaultState: NPC_STATE.PATROL,
     patrolPauseRange: [1.4, 4.2],
     investigateDuration: 3.6,
@@ -152,10 +148,6 @@ function makeNPC(type, x, y, waypoints=null, options = {}){
     backstabMultiplier: config.backstabMultiplier ?? 1,
     rewardGold: config.rewardGold ?? 0,
     threatOnDefeat: config.threatOnDefeat ?? 0,
-    counterDamage: config.counterDamage ?? 0,
-    counterDetection: config.counterDetection ?? 0,
-    counterThreat: config.counterThreat ?? 0,
-    counterMessage: config.counterMessage || null,
     attack: config.attack
       ? {
         range: (config.attack.range ?? 48) + MELEE_RANGE_BONUS,

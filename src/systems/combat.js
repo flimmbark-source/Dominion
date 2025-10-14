@@ -1,6 +1,5 @@
 import { state } from '../state/gameState.js';
 import { npcSeesPlayer, removeNPC } from '../npc/npcManager.js';
-import { clamp } from '../utils/math.js';
 import { addThreat } from './threat.js';
 import { getWeaponSwingConfig, resolveWeaponType } from '../utils/weaponSwing.js';
 import { addDamageNumber } from './damageNumbers.js';
@@ -35,25 +34,6 @@ function computeFacingAlignment(npc, player){
   const len = Math.hypot(toPlayerX, toPlayerY);
   if (!len) return 1;
   return (dirX * (toPlayerX / len)) + (dirY * (toPlayerY / len));
-}
-
-function punishFailedBackstab(npc, playerStats){
-  const damage = npc.counterDamage ?? 0;
-  if (damage > 0){
-    state.player.health = clamp(state.player.health - damage, 0, playerStats.maxHealth);
-    addDamageNumber({
-      x: state.player.x,
-      y: state.player.y,
-      amount: damage,
-      color: '#ff6b6b'
-    });
-  }
-  if (npc.counterDetection){
-    state.player.detection = clamp(state.player.detection + npc.counterDetection, 0, 100);
-  }
-  if (npc.counterThreat){
-    addThreat(npc.counterThreat);
-  }
 }
 
 function handleNpcDefeated(npc, wasBackstab){
@@ -96,7 +76,6 @@ function attemptAttack(player, playerStats, weaponType){
 
   if (npc.backstabOnly){
     if (seesPlayer || alignment > BACKSTAB_ALIGNMENT_THRESHOLD){
-      punishFailedBackstab(npc, playerStats);
       return false;
     }
     wasBackstab = true;
