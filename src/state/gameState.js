@@ -20,6 +20,7 @@ const state = {
     detection: 0,
     invisUntil: 0,
     attackSwing: null,
+    nextAttackReady: 0,
     stats: playerStats,
     inventory: Array(6).fill(null),
     nextSprintNoiseTime: 0,

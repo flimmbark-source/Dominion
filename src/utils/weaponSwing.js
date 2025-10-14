@@ -39,7 +39,9 @@ const WEAPON_SWING_CONFIGS = {
       invisibleBladeStroke: 'rgba(200, 220, 210, 0.82)',
       invisibleGuardColor: 'rgba(186, 202, 192, 0.82)',
       invisibleHandleColor: 'rgba(70, 94, 82, 0.82)'
-    }
+    },
+    playerRange: 60,
+    playerCooldown: 0.45
   },
   sabre: {
     style: 'blade',
@@ -81,7 +83,9 @@ const WEAPON_SWING_CONFIGS = {
       invisibleBladeStroke: 'rgba(170, 190, 230, 0.82)',
       invisibleGuardColor: 'rgba(210, 198, 150, 0.82)',
       invisibleHandleColor: 'rgba(60, 74, 104, 0.82)'
-    }
+    },
+    playerRange: 62,
+    playerCooldown: 0.55
   },
   axe: {
     style: 'blade',
@@ -123,7 +127,9 @@ const WEAPON_SWING_CONFIGS = {
       invisibleBladeStroke: 'rgba(222, 160, 120, 0.82)',
       invisibleGuardColor: 'rgba(150, 110, 80, 0.82)',
       invisibleHandleColor: 'rgba(86, 60, 40, 0.82)'
-    }
+    },
+    playerRange: 60,
+    playerCooldown: 0.65
   },
   spear: {
     style: 'thrust',
@@ -136,7 +142,29 @@ const WEAPON_SWING_CONFIGS = {
     tipWidth: 6,
     color: '200, 235, 255',
     glowColor: '110, 190, 255',
-    tipColor: '255, 255, 255'
+    tipColor: '255, 255, 255',
+    playerDuration: 0.45,
+    playerCooldown: 0.6,
+    playerRange: 74,
+    playerThrust: {
+      shaftLength: 36,
+      shaftLengthBonus: 12,
+      shaftWidth: 2.4,
+      shaftWidthBonus: 0.8,
+      gripOffset: -6,
+      retractDistance: -6,
+      thrustDistance: 34,
+      tipLength: 11,
+      tipLengthBonus: 4,
+      tipWidth: 6,
+      tipWidthBonus: 2,
+      shaftColor: '#c8b48d',
+      invisibleShaftColor: 'rgba(210, 222, 214, 0.75)',
+      tipColor: '#f4f8ff',
+      invisibleTipColor: 'rgba(220, 240, 250, 0.8)',
+      trailColor: 'rgba(120, 190, 255, 0.35)',
+      invisibleTrailColor: 'rgba(150, 210, 240, 0.3)'
+    }
   },
   bite: {
     style: 'bite',
@@ -148,7 +176,25 @@ const WEAPON_SWING_CONFIGS = {
     thickness: 2.6,
     thicknessBonus: 1.4,
     color: '255, 215, 190',
-    glowColor: '255, 120, 70'
+    glowColor: '255, 120, 70',
+    playerDuration: 0.34,
+    playerCooldown: 0.5,
+    playerRange: 58,
+    playerClaws: {
+      lineWidth: 2.6,
+      lineWidthBonus: 1.4,
+      spacing: 4.2,
+      spacingBonus: 2.4,
+      startOffset: -2,
+      travel: 18,
+      length: 28,
+      lengthBonus: 10,
+      color: 'rgba(255, 200, 170, 0.9)',
+      glowColor: 'rgba(255, 180, 130, 0.6)',
+      invisibleColor: 'rgba(210, 242, 226, 0.85)',
+      invisibleGlow: 'rgba(170, 220, 208, 0.6)',
+      fingerCount: 3
+    }
   }
 };
 

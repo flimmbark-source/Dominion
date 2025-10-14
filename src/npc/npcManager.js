@@ -6,6 +6,8 @@ import { gatherForestSolidsAround } from '../world/terrain.js';
 import { toast } from '../ui/toast.js';
 import { forEachVillageInstance, prepareVillageInstances, getVillageInstance } from '../world/villageTemplates.js';
 
+const MELEE_RANGE_BONUS = 8;
+
 const NPC_STATE = Object.freeze({
   PATROL: 'PATROL',
   SUSPICIOUS: 'SUSPICIOUS',
@@ -156,7 +158,7 @@ function makeNPC(type, x, y, waypoints=null, options = {}){
     counterMessage: config.counterMessage || null,
     attack: config.attack
       ? {
-        range: config.attack.range ?? 48,
+        range: (config.attack.range ?? 48) + MELEE_RANGE_BONUS,
         damage: config.attack.damage ?? 0,
         cooldown: Math.max(config.attack.cooldown ?? 1.2, 0.2),
         message: config.attack.message || null,
