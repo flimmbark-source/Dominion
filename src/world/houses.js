@@ -281,7 +281,14 @@ function initHouses(){
   });
 
   rebuildHouseSolids();
-  state.doors = state.houses.map(h => ({ x: h.door.x, y: h.door.y, w: h.door.w, h: h.door.h, side: h.side }));
+  state.doors = state.houses.map((h, index) => ({
+    x: h.door.x,
+    y: h.door.y,
+    w: h.door.w,
+    h: h.door.h,
+    side: h.side,
+    houseId: index
+  }));
 
   state.houses.forEach((h, i) => {
     const p = randomInHouseInterior(h, 16);
