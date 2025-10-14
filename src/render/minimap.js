@@ -3,10 +3,10 @@ import { state } from '../state/gameState.js';
 import { VILLAGES } from '../data/world.js';
 import { TAU } from '../utils/math.js';
 
-const MINIMAP_SIZE = 200;
+const MINIMAP_SIZE = 180;
 const MINIMAP_MARGIN = 20;
-const VIEW_RADIUS = 650;
-const ENTITY_RADIUS = 600;
+const VIEW_RADIUS = 850;
+const ENTITY_RADIUS = 800;
 const MINIMAP_POI_COLORS = {
   'shady-trader': '#d0a74e',
   'wandering-merchant': '#7ec6ff',
