@@ -33,6 +33,10 @@ import {
   handleShopMouseLeave,
   handleShopClick
 } from './systems/shop.js';
+import {
+  handleInventoryMouseMove,
+  handleInventoryMouseLeave
+} from './systems/inventoryHover.js';
 import { enterTavernInterior, leaveTavernInterior } from './systems/tavern.js';
 import { addThreat } from './systems/threat.js';
 import { attemptAttack } from './systems/combat.js';
@@ -61,9 +65,19 @@ initVillageInteractions();
 initPointsOfInterest();
 
 window.addEventListener('keydown', handleShopKeyDown);
-canvas.addEventListener('mousemove', handleShopMouseMove);
-canvas.addEventListener('mouseleave', handleShopMouseLeave);
+canvas.addEventListener('mousemove', handleCanvasMouseMove);
+canvas.addEventListener('mouseleave', handleCanvasMouseLeave);
 canvas.addEventListener('click', handleShopClick);
+
+function handleCanvasMouseMove(evt){
+  handleInventoryMouseMove(evt);
+  handleShopMouseMove(evt);
+}
+
+function handleCanvasMouseLeave(){
+  handleInventoryMouseLeave();
+  handleShopMouseLeave();
+}
 
 let lastT = performance.now();
 let lastKnownPixelRatio = window.devicePixelRatio || 1;

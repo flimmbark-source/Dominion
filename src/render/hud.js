@@ -2,6 +2,12 @@ import { ctx, W, H } from '../game/canvas.js';
 import { state } from '../state/gameState.js';
 import { getPlayerStats } from '../state/playerStats.js';
 import { clamp, TAU } from '../utils/math.js';
+import {
+  setInventorySlotRects,
+  getHoveredInventorySlot,
+  getHoveredInventoryItem,
+  getHoveredInventorySlotRect
+} from '../systems/inventoryHover.js';
 import { drawItemIcon } from './itemIcons.js';
 import { getThreatFraction, getThreatStage } from '../systems/threat.js';
 
@@ -219,12 +225,21 @@ function drawHUD(){
 
   const slotsX = inventoryPanelX + inventoryPaddingX;
   const slotY = inventoryPanelY + inventoryPaddingY;
+  const slotRects = [];
+  const hoveredSlot = state.pausedForShop ? null : getHoveredInventorySlot();
   for (let i=0;i<slotCount;i++){
     const x = slotsX + i*slotSize;
     ctx.fillStyle = '#6e8bb6';
     ctx.font = '11px "Trebuchet MS", system-ui';
     ctx.fillText(String(i+1), x+6, slotY+14);
+    slotRects.push({ x, y: slotY, w: slotSize, h: slotSize });
     const it = state.player.inventory[i];
+    if (hoveredSlot === i && it){
+      ctx.strokeStyle = '#ffd25a';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x + 3.5, slotY + 3.5, slotSize - 7, slotSize - 7);
+      ctx.lineWidth = 1;
+    }
     if (it){
       if (it.icon){
         drawItemIcon(ctx, it.icon, x + 24, slotY + 24, 32);
@@ -239,6 +254,71 @@ function drawHUD(){
         ctx.textBaseline = 'alphabetic';
       }
     }
+  }
+  setInventorySlotRects(slotRects);
+
+  const hoveredItem = hoveredSlot === null ? null : getHoveredInventoryItem();
+  const hoveredRect = hoveredSlot === null ? null : getHoveredInventorySlotRect();
+  if (hoveredItem && hoveredRect){
+    const paddingX = 12;
+    const paddingY = 10;
+    const lineHeight = 16;
+    const titleLineHeight = 20;
+    const titleFont = '13px "Trebuchet MS", system-ui';
+    const bodyFont = '12px "Trebuchet MS", system-ui';
+    const title = hoveredItem.name || 'Unknown Item';
+    const descText = hoveredItem.desc || '';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.font = titleFont;
+    const titleWidth = ctx.measureText(title).width;
+    ctx.font = bodyFont;
+    const words = descText ? descText.split(/\s+/g) : [];
+    const lines = [];
+    let current = '';
+    const maxWidth = 220;
+    for (const word of words){
+      const next = current ? `${current} ${word}` : word;
+      if (ctx.measureText(next).width <= maxWidth){
+        current = next;
+      } else {
+        if (current) lines.push(current);
+        current = word;
+      }
+    }
+    if (current) lines.push(current);
+    const lineWidths = lines.map(line => ctx.measureText(line).width);
+    const textWidth = Math.max(titleWidth, lineWidths.length ? Math.max(...lineWidths) : 0);
+    const boxWidth = Math.min(Math.max(textWidth + paddingX * 2, 160), 280);
+    let boxHeight = paddingY * 2 + titleLineHeight;
+    if (lines.length){
+      boxHeight += lines.length * lineHeight + 4;
+    }
+    const desiredX = hoveredRect.x + hoveredRect.w / 2 - boxWidth / 2;
+    const tooltipX = clamp(desiredX, 12, W - boxWidth - 12);
+    let tooltipY = hoveredRect.y - boxHeight - 12;
+    if (tooltipY < 12){
+      tooltipY = hoveredRect.y + hoveredRect.h + 12;
+    }
+
+    ctx.fillStyle = 'rgba(15, 20, 32, 0.92)';
+    ctx.fillRect(tooltipX, tooltipY, boxWidth, boxHeight);
+    ctx.strokeStyle = 'rgba(120, 164, 255, 0.8)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(tooltipX + 0.5, tooltipY + 0.5, boxWidth - 1, boxHeight - 1);
+    let textY = tooltipY + paddingY;
+    ctx.font = titleFont;
+    ctx.fillStyle = '#ffe0a0';
+    ctx.fillText(title, tooltipX + paddingX, textY);
+    textY += titleLineHeight;
+    if (lines.length){
+      ctx.font = bodyFont;
+      ctx.fillStyle = '#e6efff';
+      lines.forEach((line, index) => {
+        ctx.fillText(line, tooltipX + paddingX, textY + index * lineHeight);
+      });
+    }
+    ctx.textBaseline = 'alphabetic';
   }
 
   ctx.restore();
