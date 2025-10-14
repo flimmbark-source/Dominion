@@ -43,6 +43,7 @@ import { attemptAttack } from './systems/combat.js';
 import { addDamageNumber, updateDamageNumbers } from './systems/damageNumbers.js';
 import { initPointsOfInterest, handlePointOfInterestInteraction } from './systems/pointsOfInterest.js';
 import { initWorldEvents, updateWorldEvents, handleWorldEventInteraction } from './systems/worldEvents.js';
+import { initProceduralQuests } from './systems/proceduralQuests.js';
 import { toast } from './ui/toast.js';
 import { pressOnce } from './input/pressOnce.js';
 import { circleRectCollideResolve, pointInRect, segBlockedByAnyRect } from './utils/geometry.js';
@@ -74,6 +75,7 @@ initWarState();
 initVillageInteractions();
 initPointsOfInterest();
 initWorldEvents();
+initProceduralQuests();
 initBarkeepMissions();
 
 window.addEventListener('keydown', handleShopKeyDown);
