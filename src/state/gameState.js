@@ -11,8 +11,7 @@ const state = {
   time: 0,
   pausedForShop: false,
   debugCones: true,
-  message: '',
-  messageUntil: 0,
+  messages: [],
   camera: { x: mainVillage.x + mainVillage.w/2 - W/2, y: mainVillage.y + mainVillage.h/2 - H/2 },
   player: {
     x: mainVillage.x + 180, y: mainVillage.y + 460, r: 10, facing: 0,
