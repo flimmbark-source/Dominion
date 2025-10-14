@@ -44,7 +44,8 @@ const NPC_ARCHETYPES = {
       range: 48,
       damage: 18,
       cooldown: 1.6,
-      message: 'The scout slashes you with a sabre!'
+      message: 'The scout slashes you with a sabre!',
+      weaponType: 'sabre'
     },
     faction: 'village',
     displayName: 'scout',
@@ -66,7 +67,8 @@ const NPC_ARCHETYPES = {
       range: 42,
       damage: 7,
       cooldown: 1.25,
-      message: 'The bogling gnashes at you!'
+      message: 'The bogling gnashes at you!',
+      weaponType: 'bite'
     },
     faction: 'monster',
     displayName: 'bogling',
@@ -87,7 +89,8 @@ const NPC_ARCHETYPES = {
       range: 58,
       damage: 16,
       cooldown: 1.4,
-      message: 'The militia guard lashes out with a spear!'
+      message: 'The militia guard lashes out with a spear!',
+      weaponType: 'spear'
     },
     faction: 'village',
     displayName: 'militia guard',
@@ -107,7 +110,8 @@ const NPC_ARCHETYPES = {
       range: 54,
       damage: 14,
       cooldown: 1.5,
-      message: 'A dark raider strikes you down!'
+      message: 'A dark raider strikes you down!',
+      weaponType: 'axe'
     },
     faction: 'darkLord',
     displayName: 'dark raider',
@@ -156,6 +160,7 @@ function makeNPC(type, x, y, waypoints=null, options = {}){
         damage: config.attack.damage ?? 0,
         cooldown: Math.max(config.attack.cooldown ?? 1.2, 0.2),
         message: config.attack.message || null,
+        weaponType: config.attack.weaponType || 'slash',
         nextReady: 0,
         nextMessage: 0
       }
@@ -186,7 +191,8 @@ function makeNPC(type, x, y, waypoints=null, options = {}){
     raidGoal: options.raidGoal ?? null,
     chasingTarget: null,
     activeTargetIsChase: false,
-    activeTargetBeforeChase: null
+    activeTargetBeforeChase: null,
+    attackSwing: null
   };
 
   if (typeof options.initialPause === 'number' && options.initialPause > 0){

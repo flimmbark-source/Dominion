@@ -1,6 +1,7 @@
 import { ctx } from '../game/canvas.js';
 import { state } from '../state/gameState.js';
 import { clamp, TAU } from '../utils/math.js';
+import { getWeaponSwingConfig } from '../utils/weaponSwing.js';
 import { getThreatFraction, getThreatStage } from '../systems/threat.js';
 import { drawTerrain, drawGoblinTavern } from '../world/terrain.js';
 import { drawGoblin } from './goblin.js';
@@ -179,6 +180,175 @@ function drawChest3D(chest){
   ctx.restore();
 }
 
+function withAlpha(rgb, alpha){
+  return `rgba(${rgb}, ${clamp(alpha, 0, 1).toFixed(3)})`;
+}
+
+function drawNpcBladeSwing(facing, config, progress, ease){
+  const relativeStart = config.arcStart ?? -1.2;
+  const relativeEnd = config.arcEnd ?? 1.2;
+  const arcStart = facing + relativeStart;
+  const arcEnd = facing + relativeStart + (relativeEnd - relativeStart) * progress;
+  const radius = (config.radius ?? 18) + ease * (config.radiusBonus ?? 0);
+  const width = (config.strokeWidth ?? 3) + ease * (config.strokeWidthBonus ?? 0);
+  const glowWidth = width * 1.6;
+  const glowColor = withAlpha(config.glowColor ?? '255, 232, 168', 0.35 + ease * 0.3);
+  const trailColor = withAlpha(config.color ?? '255, 255, 214', 0.65 + ease * 0.25);
+
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.strokeStyle = glowColor;
+  ctx.lineWidth = glowWidth;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(0, 0, radius * 0.92, arcStart, arcEnd, false);
+  ctx.stroke();
+
+  ctx.strokeStyle = trailColor;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, arcStart, arcEnd, false);
+  ctx.stroke();
+
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function drawNpcThrustSwing(facing, config, progress, ease){
+  const retract = config.retractDistance ?? -6;
+  const thrust = config.thrustDistance ?? 28;
+  const travel = retract + (thrust - retract) * (0.3 + ease * 0.7);
+  const startX = Math.cos(facing) * retract * (0.6 + progress * 0.4);
+  const startY = Math.sin(facing) * retract * (0.6 + progress * 0.4);
+  const endX = Math.cos(facing) * travel;
+  const endY = Math.sin(facing) * travel;
+  const width = (config.width ?? 3.2) + ease * (config.widthBonus ?? 0);
+  const glowWidth = width * 1.8;
+  const glowColor = withAlpha(config.glowColor ?? '110, 190, 255', 0.28 + ease * 0.32);
+  const shaftColor = withAlpha(config.color ?? '200, 235, 255', 0.45 + ease * 0.35);
+
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.strokeStyle = glowColor;
+  ctx.lineWidth = glowWidth;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(startX, startY);
+  ctx.lineTo(endX, endY);
+  ctx.stroke();
+
+  ctx.strokeStyle = shaftColor;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  ctx.moveTo(startX, startY);
+  ctx.lineTo(endX, endY);
+  ctx.stroke();
+
+  const tipLength = config.tipLength ?? 10;
+  const tipWidth = config.tipWidth ?? 6;
+  const tipColor = withAlpha(config.tipColor ?? '255, 255, 255', 0.35 + ease * 0.45);
+  ctx.fillStyle = tipColor;
+  ctx.beginPath();
+  ctx.moveTo(endX, endY);
+  ctx.lineTo(
+    endX - Math.cos(facing - 0.55) * tipLength,
+    endY - Math.sin(facing - 0.55) * tipLength
+  );
+  ctx.lineTo(
+    endX - Math.cos(facing + 0.55) * tipLength,
+    endY - Math.sin(facing + 0.55) * tipLength
+  );
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function drawNpcBiteSwing(facing, config, progress, ease){
+  const radius = (config.radius ?? 12) + ease * (config.radiusBonus ?? 0);
+  const open = (config.openBase ?? 0.6) + ease * (config.openBonus ?? 0.7);
+  const thickness = (config.thickness ?? 2.4) + ease * (config.thicknessBonus ?? 1.2);
+  const glowColor = withAlpha(config.glowColor ?? '255, 120, 70', 0.3 + ease * 0.35);
+  const biteColor = withAlpha(config.color ?? '255, 215, 190', 0.55 + ease * 0.25);
+
+  const topStart = facing - open;
+  const topEnd = facing - open * 0.1;
+  const bottomStart = facing + open * 0.1;
+  const bottomEnd = facing + open;
+
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.strokeStyle = glowColor;
+  ctx.lineWidth = thickness * 1.7;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius * 0.92, topStart, topEnd, false);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0, radius * 0.92, bottomStart, bottomEnd, false);
+  ctx.stroke();
+
+  ctx.strokeStyle = biteColor;
+  ctx.lineWidth = thickness;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, topStart, topEnd, false);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, bottomStart, bottomEnd, false);
+  ctx.stroke();
+
+  const biteFill = withAlpha(config.color ?? '255, 215, 190', 0.25 + ease * 0.2);
+  ctx.fillStyle = biteFill;
+  ctx.beginPath();
+  ctx.moveTo(Math.cos(topEnd) * radius, Math.sin(topEnd) * radius);
+  ctx.lineTo(Math.cos(facing) * radius * 1.05, Math.sin(facing) * radius * 1.05);
+  ctx.lineTo(Math.cos(bottomStart) * radius, Math.sin(bottomStart) * radius);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function drawNpcWeaponSwing(npc){
+  const swing = npc.attackSwing;
+  if (!swing) return;
+  const start = typeof swing.start === 'number' ? swing.start : 0;
+  const duration = typeof swing.duration === 'number' ? swing.duration : 0;
+  if (duration <= 0) return;
+  const elapsed = state.time - start;
+  if (elapsed < 0 || elapsed > duration) return;
+
+  const progress = clamp(elapsed / duration, 0, 1);
+  const ease = Math.sin(progress * Math.PI);
+  const config = getWeaponSwingConfig(swing.weaponType);
+  const facing = swing.facing ?? npc.facing ?? 0;
+
+  ctx.save();
+  ctx.translate(npc.x, npc.y);
+  ctx.globalAlpha = clamp(0.55 + ease * 0.35, 0, 1);
+
+  switch (config.style){
+    case 'thrust':
+      drawNpcThrustSwing(facing, config, progress, ease);
+      break;
+    case 'bite':
+      drawNpcBiteSwing(facing, config, progress, ease);
+      break;
+    default:
+      drawNpcBladeSwing(facing, config, progress, ease);
+      break;
+  }
+
+  ctx.restore();
+}
+
+function drawNpc3D(npc){
+  ctx.save();
+  ctx.translate(npc.x, npc.y);
+
+  const bodyColor = npc.type === 'scout' ? '#6fa8dc' : '#9aa5b1';
+  const highlight = adjustHexColor(bodyColor, 0.35);
+  const shadow = adjustHexColor(bodyColor, -0.4);
+
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+  ctx.beginPath();
+  ctx.ellipse(0, 7, 7.5, 4, 0, 0, TAU);
+  ctx.fill();
 const FACTION_BODY_COLORS = {
   village: '#6d9f5b',
   darkLord: '#a13b52',
@@ -446,6 +616,7 @@ function drawWorldScene(){
   for (const npc of state.npcs){
     if (state.debugCones) drawFOV(npc);
     drawNpc3D(npc);
+    drawNpcWeaponSwing(npc);
   }
 
   drawInteractionPrompts();
