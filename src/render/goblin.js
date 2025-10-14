@@ -9,6 +9,15 @@ function drawGoblin(ctx, p, options = {}){
     leanOverride
   } = options;
 
+  const swing = p.attackSwing;
+  const swingStart = swing?.start ?? 0;
+  const swingDuration = swing?.duration ?? 0;
+  const swingElapsed = time - swingStart;
+  const swingActive = !!swing && swingDuration > 0 && swingElapsed >= 0 && swingElapsed <= swingDuration;
+  const swingProgress = swingActive ? Math.min(Math.max(swingElapsed / swingDuration, 0), 1) : 0;
+  const swingFacing = swing?.facing ?? (p.facing ?? 0);
+  const swingEase = swingActive ? Math.sin(Math.min(Math.max(swingProgress, 0), 1) * Math.PI) : 0;
+
   const vx = p.vx ?? 0;
   const vy = p.vy ?? 0;
   const facing = p.facing ?? 0;
@@ -84,6 +93,7 @@ function drawGoblin(ctx, p, options = {}){
   const headForward = shoulderForward - 1.2 - lean * 6;
 
   const limbs = [];
+  let rightArmLimb = null;
 
   function enqueueLimb({
     baseRight,
@@ -98,7 +108,8 @@ function drawGoblin(ctx, p, options = {}){
     liftFoot,
     thickness,
     color,
-    depthBias
+    depthBias,
+    tag
   }){
     const start = projectPoint(baseRight, baseUp, baseForward);
     const control = projectPoint(
@@ -112,7 +123,9 @@ function drawGoblin(ctx, p, options = {}){
       baseForward + stride * swingForward
     );
 
-    limbs.push({ start, control, end, thickness, color, depth: end.y + depthBias });
+    const limb = { start, control, end, thickness, color, depth: end.y + depthBias, tag };
+    limbs.push(limb);
+    return limb;
   }
 
   const legPhaseLeft = gait(cycle);
@@ -169,7 +182,7 @@ function drawGoblin(ctx, p, options = {}){
     depthBias: -forwardDot * 8 - 12
   });
 
-  enqueueLimb({
+  rightArmLimb = enqueueLimb({
     baseRight: shoulderSpacing + sideDot * 0.8,
     baseUp: shoulderHeight,
     baseForward: shoulderForward,
@@ -182,7 +195,8 @@ function drawGoblin(ctx, p, options = {}){
     liftFoot: 2.6,
     thickness: 3.2,
     color: '#275739',
-    depthBias: forwardDot * 8 + 12
+    depthBias: forwardDot * 8 + 12,
+    tag: 'rightArm'
   });
 
   limbs.sort((a, b) => a.depth - b.depth);
@@ -236,6 +250,68 @@ function drawGoblin(ctx, p, options = {}){
   ctx.beginPath();
   ctx.ellipse(leftEye.x, leftEye.y, 2, 2.2, 0, 0, TAU);
   ctx.fill();
+
+  if (swingActive && rightArmLimb){
+    const hand = rightArmLimb.end;
+    const angleOffset = -1.05 + swingProgress * 1.9;
+    const bladeAngle = swingFacing + angleOffset;
+    const guardDistance = 3.4 + swingEase * 2.2;
+    const bladeLength = 17 + swingEase * 8;
+    const normalAngle = bladeAngle + Math.PI / 2;
+    const bladeHalfWidth = 1.6 + swingEase * 1.4;
+    const guardX = hand.x + Math.cos(bladeAngle) * guardDistance;
+    const guardY = hand.y + Math.sin(bladeAngle) * guardDistance;
+    const tipX = guardX + Math.cos(bladeAngle) * bladeLength;
+    const tipY = guardY + Math.sin(bladeAngle) * bladeLength;
+    const baseLeftX = guardX + Math.cos(normalAngle) * bladeHalfWidth;
+    const baseLeftY = guardY + Math.sin(normalAngle) * bladeHalfWidth;
+    const baseRightX = guardX - Math.cos(normalAngle) * bladeHalfWidth;
+    const baseRightY = guardY - Math.sin(normalAngle) * bladeHalfWidth;
+
+    ctx.save();
+    ctx.lineJoin = 'round';
+    ctx.fillStyle = invisible ? 'rgba(238, 246, 241, 0.82)' : '#f7f9f3';
+    ctx.strokeStyle = invisible ? 'rgba(200, 220, 210, 0.82)' : '#d6ddd1';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(baseLeftX, baseLeftY);
+    ctx.lineTo(tipX, tipY);
+    ctx.lineTo(baseRightX, baseRightY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    const handleBackX = hand.x - Math.cos(bladeAngle) * 3.2;
+    const handleBackY = hand.y - Math.sin(bladeAngle) * 3.2;
+    ctx.strokeStyle = invisible ? 'rgba(70, 94, 82, 0.82)' : '#3a3228';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(handleBackX, handleBackY);
+    ctx.lineTo(hand.x + Math.cos(bladeAngle) * 0.6, hand.y + Math.sin(bladeAngle) * 0.6);
+    ctx.stroke();
+
+    ctx.strokeStyle = invisible ? 'rgba(186, 202, 192, 0.82)' : '#caa86e';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(guardX + Math.cos(normalAngle) * 3.6, guardY + Math.sin(normalAngle) * 3.6);
+    ctx.lineTo(guardX - Math.cos(normalAngle) * 3.6, guardY - Math.sin(normalAngle) * 3.6);
+    ctx.stroke();
+
+    const trailRadius = 16 + swingEase * 12;
+    const trailStart = swingFacing - 1.25;
+    const trailEnd = trailStart + swingProgress * 1.95;
+    const trailAlpha = (0.55 + swingEase * 0.35) * (1 - swingProgress * 0.65);
+    ctx.strokeStyle = invisible
+      ? `rgba(210, 244, 228, ${(trailAlpha * 0.7).toFixed(3)})`
+      : `rgba(255, 255, 214, ${trailAlpha.toFixed(3)})`;
+    ctx.lineWidth = 2.8 + swingEase * 1.6;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(hand.x, hand.y, trailRadius, trailStart, trailEnd, false);
+    ctx.stroke();
+
+    ctx.restore();
+  }
 
   ctx.globalAlpha = 1;
 

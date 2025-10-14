@@ -20,6 +20,7 @@ const state = {
     gold: 0, health: playerStats.base.maxHealth,
     detection: 0,
     invisUntil: 0,
+    attackSwing: null,
     stats: playerStats,
     inventory: Array(6).fill(null),
     nextSprintNoiseTime: 0,
