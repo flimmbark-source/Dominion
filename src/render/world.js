@@ -179,19 +179,13 @@ function drawChest3D(chest){
   ctx.restore();
 }
 
-function drawNpc3D(npc){
-  ctx.save();
-  ctx.translate(npc.x, npc.y);
+const FACTION_BODY_COLORS = {
+  village: '#6d9f5b',
+  darkLord: '#a13b52',
+  monster: '#6d5cc2'
+};
 
-  const bodyColor = npc.type === 'scout' ? '#6fa8dc' : '#9aa5b1';
-  const highlight = adjustHexColor(bodyColor, 0.35);
-  const shadow = adjustHexColor(bodyColor, -0.4);
-
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
-  ctx.beginPath();
-  ctx.ellipse(0, 7, 7.5, 4, 0, 0, TAU);
-  ctx.fill();
-
+function drawVillagerSilhouette({ bodyColor, highlight, shadow }){
   const grad = ctx.createRadialGradient(-3, -6, 2, 0, 0, 11);
   grad.addColorStop(0, highlight);
   grad.addColorStop(0.55, bodyColor);
@@ -200,8 +194,9 @@ function drawNpc3D(npc){
   ctx.beginPath();
   ctx.ellipse(0, 0, 8, 11, 0, 0, TAU);
   ctx.fill();
+}
 
-  const facing = npc.facing ?? 0;
+function drawVillagerDetails({ bodyColor, facing }){
   const eyeOffsetX = Math.cos(facing) * 4;
   const eyeOffsetY = Math.sin(facing) * 4 - 1.2;
   ctx.fillStyle = adjustHexColor(bodyColor, -0.55);
@@ -215,6 +210,154 @@ function drawNpc3D(npc){
   ctx.moveTo(0, -6);
   ctx.lineTo(Math.cos(facing) * 14, Math.sin(facing) * 14 - 4);
   ctx.stroke();
+}
+
+function drawDarkLordSilhouette({ bodyColor, highlight, shadow }){
+  ctx.save();
+  const capeColor = adjustHexColor(bodyColor, -0.3);
+  ctx.fillStyle = capeColor;
+  ctx.beginPath();
+  ctx.moveTo(0, -10);
+  ctx.quadraticCurveTo(12, 4, 7, 16);
+  ctx.lineTo(-7, 16);
+  ctx.quadraticCurveTo(-12, 4, 0, -10);
+  ctx.fill();
+
+  const grad = ctx.createLinearGradient(0, -14, 0, 16);
+  grad.addColorStop(0, highlight);
+  grad.addColorStop(0.45, bodyColor);
+  grad.addColorStop(1, shadow);
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.moveTo(0, -14);
+  ctx.lineTo(9, 4);
+  ctx.lineTo(4, 16);
+  ctx.lineTo(-4, 16);
+  ctx.lineTo(-9, 4);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = adjustHexColor(bodyColor, -0.2);
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-6, -2);
+  ctx.lineTo(-2, 14);
+  ctx.moveTo(6, -2);
+  ctx.lineTo(2, 14);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawDarkLordDetails({ bodyColor }){
+  const visorBase = adjustHexColor(bodyColor, 0.45);
+  const visorGlow = adjustHexColor(bodyColor, 0.65);
+  ctx.fillStyle = visorBase;
+  ctx.fillRect(-6, -4, 12, 4.5);
+  ctx.fillStyle = visorGlow;
+  ctx.fillRect(-4.5, -3, 9, 2.4);
+
+  ctx.fillStyle = adjustHexColor(bodyColor, -0.55);
+  ctx.beginPath();
+  ctx.moveTo(-6, -5);
+  ctx.lineTo(-2, -9);
+  ctx.lineTo(2, -9);
+  ctx.lineTo(6, -5);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawMonsterSilhouette({ bodyColor, highlight, shadow }){
+  ctx.save();
+  const grad = ctx.createRadialGradient(0, -4, 2, 0, 2, 14);
+  grad.addColorStop(0, highlight);
+  grad.addColorStop(0.5, bodyColor);
+  grad.addColorStop(1, shadow);
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.moveTo(0, -12);
+  ctx.bezierCurveTo(7, -15, 11, -6, 10, 0);
+  ctx.quadraticCurveTo(11, 10, 0, 14);
+  ctx.quadraticCurveTo(-11, 10, -10, 0);
+  ctx.bezierCurveTo(-11, -6, -7, -15, 0, -12);
+  ctx.closePath();
+  ctx.fill();
+
+  const bellyColor = adjustHexColor(bodyColor, 0.2);
+  ctx.fillStyle = bellyColor;
+  ctx.beginPath();
+  ctx.ellipse(0, 4, 6, 8, 0, 0, TAU);
+  ctx.fill();
+
+  const hornColor = adjustHexColor(bodyColor, -0.25);
+  ctx.fillStyle = hornColor;
+  ctx.beginPath();
+  ctx.moveTo(-4, -11);
+  ctx.lineTo(-8, -18);
+  ctx.lineTo(-5, -11);
+  ctx.closePath();
+  ctx.moveTo(4, -11);
+  ctx.lineTo(8, -18);
+  ctx.lineTo(5, -11);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawMonsterDetails({ bodyColor }){
+  const eyeWhite = '#f7f7f7';
+  const pupil = adjustHexColor(bodyColor, -0.55);
+  ctx.fillStyle = eyeWhite;
+  ctx.beginPath();
+  ctx.ellipse(-3.5, -2, 2.2, 3, 0, 0, TAU);
+  ctx.ellipse(3.5, -2, 2.2, 3, 0, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = pupil;
+  ctx.beginPath();
+  ctx.ellipse(-3.5, -1.2, 1.1, 1.5, 0, 0, TAU);
+  ctx.ellipse(3.5, -1.2, 1.1, 1.5, 0, 0, TAU);
+  ctx.fill();
+
+  ctx.strokeStyle = adjustHexColor(bodyColor, -0.4);
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.arc(0, 3.5, 4.5, 0.2, Math.PI - 0.2, false);
+  ctx.stroke();
+}
+
+const NPC_SILHOUETTES = {
+  village: drawVillagerSilhouette,
+  darkLord: drawDarkLordSilhouette,
+  monster: drawMonsterSilhouette
+};
+
+const NPC_DETAILS = {
+  village: drawVillagerDetails,
+  darkLord: drawDarkLordDetails,
+  monster: drawMonsterDetails
+};
+
+function drawNpc3D(npc){
+  ctx.save();
+  ctx.translate(npc.x, npc.y);
+
+  const factionBase = FACTION_BODY_COLORS[npc.faction] || '#9aa5b1';
+  const bodyColor = npc.type === 'scout'
+    ? adjustHexColor(factionBase, 0.2)
+    : factionBase;
+  const highlight = adjustHexColor(bodyColor, 0.35);
+  const shadow = adjustHexColor(bodyColor, -0.4);
+
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+  ctx.beginPath();
+  ctx.ellipse(0, 7, 7.5, 4, 0, 0, TAU);
+  ctx.fill();
+
+  const renderSilhouette = NPC_SILHOUETTES[npc.faction] || drawVillagerSilhouette;
+  renderSilhouette({ bodyColor, highlight, shadow });
+
+  const detailRenderer = NPC_DETAILS[npc.faction] || drawVillagerDetails;
+  detailRenderer({ bodyColor, highlight, shadow, facing: npc.facing ?? 0 });
 
   ctx.restore();
 }
