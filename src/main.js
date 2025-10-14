@@ -105,6 +105,14 @@ function update(dt){
 
   const p = state.player;
   const playerStats = getPlayerStats(p, state.time);
+
+  if (p.attackSwing){
+    const start = typeof p.attackSwing.start === 'number' ? p.attackSwing.start : 0;
+    const duration = typeof p.attackSwing.duration === 'number' ? p.attackSwing.duration : 0;
+    if (state.time >= start + duration){
+      p.attackSwing = null;
+    }
+  }
   let ix = 0, iy = 0;
   if (keys.has('w')) iy -= 1;
   if (keys.has('s')) iy += 1;
@@ -313,6 +321,13 @@ function update(dt){
       toast(attack.message, 1.5);
       attack.nextMessage = state.time + Math.max(cooldown, 1.2);
     }
+  if (attackPressed){
+    const swingDuration = 0.32;
+    p.attackSwing = {
+      start: state.time,
+      duration: swingDuration,
+      facing: typeof p.facing === 'number' ? p.facing : 0
+    };
   }
 
   if (attackPressed) attemptAttack(p, playerStats);
