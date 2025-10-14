@@ -98,7 +98,7 @@ function drawShop(){
 
     ctx.fillStyle = '#f6e9c8';
     ctx.font = '18px ui-sans-serif';
-    ctx.fillText(`${item.key}) ${item.name}`, titleX, rect.y + 26);
+    ctx.fillText(item.name, titleX, rect.y + 26);
 
     ctx.textAlign = 'right';
     ctx.font = '16px ui-sans-serif';
@@ -117,8 +117,10 @@ function drawShop(){
 
     ctx.fillStyle = '#b18f58';
     ctx.font = '13px ui-sans-serif';
-    const limitLine = owned ? 'Already owned' : `${quantity} owned`;
-    ctx.fillText(limitLine, bodyX, descEndY + 26);
+    const limitLine = owned ? 'Already owned' : (quantity > 0 ? `${quantity} owned` : '');
+    if (limitLine){
+      ctx.fillText(limitLine, bodyX, descEndY + 26);
+    }
 
     if (item.type === 'passive' && state.shopOwned.has(item.id)){
       ctx.fillStyle = '#9aa5b1';
