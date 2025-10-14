@@ -61,7 +61,8 @@ const state = {
   pointsOfInterest: [],
   noiseEvents: [],
   alarmLevel: 0,
-  alarmUntil: 0
+  alarmUntil: 0,
+  activeTrapDisarm: null
 };
 
 export { state, mainVillage };

@@ -1,13 +1,14 @@
 import { state, mainVillage } from '../state/gameState.js';
 import { clamp } from '../utils/math.js';
 import { toast } from '../ui/toast.js';
-import { queueNoiseEvent } from '../npc/npcManager.js';
 import { addThreat } from './threat.js';
 import { BASE_WHISPERS, HIGH_THREAT_WHISPERS, TASK_HINT_WHISPERS } from '../data/villagerDialog.js';
 
 const VILLAGER_TALK_DISTANCE = 72;
 const VILLAGER_PICKPOCKET_DISTANCE = 58;
 const TRAP_INTERACT_DISTANCE = 78;
+
+const TRAP_DISARM_DURATION = 3.2;
 
 const trapSpecs = [
   { id: 'grain-cart-snare', x: 220, y: 412, label: 'Alarm snare beside the grain cart.' },
@@ -16,6 +17,7 @@ const trapSpecs = [
 ];
 
 function initVillageInteractions(){
+  state.activeTrapDisarm = null;
   state.villageTasks = trapSpecs.map(spec => ({
     id: spec.id,
     type: 'trap',
@@ -25,7 +27,8 @@ function initVillageInteractions(){
     label: spec.label,
     completed: false,
     completedAt: -Infinity,
-    cooldownUntil: 0
+    cooldownUntil: 0,
+    disarming: false
   }));
 }
 
@@ -140,39 +143,54 @@ function tryDisarmNearbyTrap(){
   }
 
   if (!target) return false;
-  if (state.time < target.cooldownUntil){
-    toast('Your tools still tremble—give the trap a moment to settle.', 2.2);
+  if (target.disarming) return true;
+
+  if (state.activeTrapDisarm){
+    if (state.activeTrapDisarm.trap === target) return true;
+    toast('Focus—finish the trap you\'re already working on.', 1.8);
     return true;
   }
 
-  const calm = clamp(1 - player.detection / 120, 0, 1);
-  const threatPenalty = clamp(state.threat / 180, 0, 0.55);
-  const successChance = clamp(0.5 + calm * 0.35 - threatPenalty, 0.15, 0.9);
-  const roll = Math.random();
+  target.disarming = true;
+  state.activeTrapDisarm = {
+    trap: target,
+    trapId: target.id,
+    startedAt: state.time,
+    duration: TRAP_DISARM_DURATION,
+    endsAt: state.time + TRAP_DISARM_DURATION
+  };
+  toast('You steady your tools and begin working through the mechanism.', 2.2);
+  return true;
+}
 
-  if (roll < successChance){
-    target.completed = true;
-    target.completedAt = state.time;
+function updateTrapDisarm(){
+  const active = state.activeTrapDisarm;
+  if (!active) return;
+
+  const trap = active.trap;
+  if (!trap || trap.completed){
+    state.activeTrapDisarm = null;
+    if (trap) trap.disarming = false;
+    return;
+  }
+
+  const player = state.player;
+  const dist = Math.hypot(trap.x - player.x, trap.y - player.y);
+  if (dist > TRAP_INTERACT_DISTANCE + 12){
+    trap.disarming = false;
+    state.activeTrapDisarm = null;
+    return;
+  }
+
+  if (state.time >= active.endsAt){
+    trap.completed = true;
+    trap.completedAt = state.time;
+    trap.disarming = false;
+    state.activeTrapDisarm = null;
     toast('You snip the tripwire. The village grows a shade calmer.', 3);
     player.detection = clamp(player.detection - 12, 0, 100);
     addThreat(-14);
-  } else {
-    target.cooldownUntil = state.time + 12;
-    toast('The wire twangs loudly! Lanterns will turn this way soon.', 3);
-    player.detection = clamp(player.detection + 24, 0, 100);
-    addThreat(16);
-    queueNoiseEvent({
-      x: target.x,
-      y: target.y,
-      radius: 260,
-      type: 'trap_alert',
-      source: target.id,
-      investigateFor: 4.2,
-      maxResponders: 2
-    });
   }
-
-  return true;
 }
 
 function getVillagerPromptData(){
@@ -195,7 +213,8 @@ function getNearbyTrapPrompt(){
     if (task.type !== 'trap' || task.completed) continue;
     const dist = Math.hypot(task.x - player.x, task.y - player.y);
     if (dist <= TRAP_INTERACT_DISTANCE){
-      prompt = { trap: task, dist };
+      const disarming = !!(state.activeTrapDisarm && state.activeTrapDisarm.trap === task);
+      prompt = { trap: task, dist, disarming };
       break;
     }
   }
@@ -210,6 +229,7 @@ export {
   getVillageTraps,
   getVillagerPromptData,
   getNearbyTrapPrompt,
+  updateTrapDisarm,
   VILLAGER_TALK_DISTANCE,
   VILLAGER_PICKPOCKET_DISTANCE,
   TRAP_INTERACT_DISTANCE
