@@ -45,7 +45,8 @@ import {
   initVillageInteractions,
   tryDisarmNearbyTrap,
   tryPickpocketVillager,
-  tryTalkToVillager
+  tryTalkToVillager,
+  updateTrapDisarm
 } from './systems/villageInteractions.js';
 
 setupInput();
@@ -141,6 +142,8 @@ function update(dt){
     nx = fixed.x; ny = fixed.y;
   }
   p.x = nx; p.y = ny;
+
+  updateTrapDisarm();
 
   if (p.sprinting){
     if (state.time >= p.nextSprintNoiseTime){

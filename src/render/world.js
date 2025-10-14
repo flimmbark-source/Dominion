@@ -314,6 +314,8 @@ function drawWorldScene(){
 
   drawTorchlight();
 
+  drawTrapDisarmProgress(p);
+
   ctx.restore();
 }
 
@@ -403,10 +405,50 @@ function drawInteractionPrompts(){
 
   const trapPrompt = getNearbyTrapPrompt();
   if (trapPrompt){
-    const { trap } = trapPrompt;
+    const { trap, disarming } = trapPrompt;
     const cooling = state.time < trap.cooldownUntil;
-    drawInteractionLabel(trap.x, trap.y - 30, cooling ? 'Trap settling' : 'E: Disable trap', cooling ? 'warning' : 'default');
+    let text = 'E: Disable trap';
+    let style = 'default';
+    if (disarming){
+      text = 'Disarming trap';
+    } else if (cooling){
+      text = 'Trap settling';
+      style = 'warning';
+    }
+    drawInteractionLabel(trap.x, trap.y - 30, text, style);
   }
+}
+
+function drawTrapDisarmProgress(p){
+  const active = state.activeTrapDisarm;
+  if (!active || !active.trap || active.trap.completed) return;
+
+  const trap = active.trap;
+  if (!trap.disarming) return;
+
+  const total = active.duration || 0;
+  if (total <= 0) return;
+
+  const remaining = clamp((active.endsAt - state.time) / total, 0, 1);
+  const barWidth = 48;
+  const barHeight = 6;
+  const left = p.x - barWidth / 2;
+  const top = p.y - p.r - 24;
+  const innerLeft = left + 1;
+  const innerWidth = barWidth - 2;
+  const fillWidth = innerWidth * remaining;
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(10, 16, 24, 0.85)';
+  ctx.fillRect(left, top, barWidth, barHeight);
+  ctx.strokeStyle = '#f2d16b';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(left + 0.5, top + 0.5, barWidth - 1, barHeight - 1);
+  if (fillWidth > 0){
+    ctx.fillStyle = '#f7d66b';
+    ctx.fillRect(innerLeft, top + 1, fillWidth, barHeight - 2);
+  }
+  ctx.restore();
 }
 
 function drawPointsOfInterest(){
