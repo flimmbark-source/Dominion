@@ -29,7 +29,8 @@ function initVillageInteractions(){
     completed: false,
     completedAt: -Infinity,
     cooldownUntil: 0,
-    disarming: false
+    disarming: false,
+    hintAge: 0
   }));
 }
 
@@ -170,6 +171,7 @@ function tryDisarmNearbyTrap(){
   }
 
   target.disarming = true;
+  target.hintAge = 0;
   state.activeTrapDisarm = {
     trap: target,
     trapId: target.id,
@@ -204,10 +206,28 @@ function updateTrapDisarm(){
     trap.completed = true;
     trap.completedAt = state.time;
     trap.disarming = false;
+    trap.hintAge = 0;
     state.activeTrapDisarm = null;
     toast('You snip the tripwire. The village grows a shade calmer.', 3);
     player.detection = clamp(player.detection - 12, 0, 100);
     addThreat(-14);
+  }
+}
+
+function updateVillageTaskHints(dt){
+  if (!Array.isArray(state.villageTasks)) return;
+  for (const task of state.villageTasks){
+    if (!task) continue;
+    if (task.completed){
+      task.hintAge = 0;
+      continue;
+    }
+    if (state.activeTrapDisarm && state.activeTrapDisarm.trapId === task.id){
+      task.hintAge = 0;
+      continue;
+    }
+    const age = Math.min((task.hintAge ?? 0) + dt, 120);
+    task.hintAge = age;
   }
 }
 
@@ -248,6 +268,7 @@ export {
   getVillagerPromptData,
   getNearbyTrapPrompt,
   updateTrapDisarm,
+  updateVillageTaskHints,
   VILLAGER_TALK_DISTANCE,
   VILLAGER_PICKPOCKET_DISTANCE,
   TRAP_INTERACT_DISTANCE

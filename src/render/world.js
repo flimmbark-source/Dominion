@@ -601,6 +601,7 @@ function drawWorldScene(){
 
   drawGoblinTavern();
   drawVillageTrapMarkers();
+  drawQuestCues();
   drawDiegeticWorldEvents();
   drawPointsOfInterest();
 
@@ -697,45 +698,96 @@ function drawInteractionLabel(x, y, text, style='default'){
 function drawVillageTrapMarkers(){
   const traps = getVillageTraps();
   if (!traps) return;
+  const cycle = state.time;
+  const player = state.player;
   for (const trap of traps){
-    const pulse = Math.sin(state.time * 3.2 + trap.x * 0.015);
+    ctx.save();
+    const dist = Math.hypot(trap.x - player.x, trap.y - player.y);
+    const missionFocus = trap.missionFocus === 'disarm-traps';
+    const patience = clamp(((trap.hintAge ?? 0) / 25), 0, 1);
+    const proximity = clamp(1 - dist / 280, 0, 1);
+    const base = missionFocus ? 0.28 : 0.16;
+    const intensity = clamp(base + patience * 0.55 + proximity * 0.45, 0, 1);
+
     if (!trap.completed){
-      ctx.fillStyle = `rgba(240, 124, 74, ${0.25 + Math.max(0, pulse) * 0.25})`;
+      drawTrapAmbientCue(trap, intensity, cycle);
+      ctx.globalAlpha = 0.35 + 0.35 * intensity;
+      ctx.strokeStyle = '#e5b76c';
+      ctx.lineWidth = 1.8;
       ctx.beginPath();
-      ctx.arc(trap.x, trap.y, 18 + pulse * 2.4, 0, TAU);
-      ctx.fill();
+      ctx.arc(trap.x, trap.y, 12 + intensity * 2.5, 0, TAU);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(trap.x - 7, trap.y);
+      ctx.lineTo(trap.x + 7, trap.y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(trap.x, trap.y - 7);
+      ctx.lineTo(trap.x, trap.y + 7);
+      ctx.stroke();
+      ctx.globalAlpha = 0.55 + 0.35 * intensity;
+      ctx.font = '10px "Trebuchet MS", system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = 'rgba(247, 214, 156, 0.85)';
+      ctx.fillText(trap.label, trap.x, trap.y + 16);
     } else {
       const fade = clamp(1 - (state.time - trap.completedAt) / 4, 0, 1);
       if (fade > 0){
-        ctx.fillStyle = `rgba(88, 170, 120, ${0.22 * fade})`;
+        ctx.globalAlpha = 0.2 * fade;
+        ctx.fillStyle = '#58aa78';
         ctx.beginPath();
         ctx.arc(trap.x, trap.y, 18, 0, TAU);
         ctx.fill();
       }
+      ctx.globalAlpha = 0.6 * fade;
+      ctx.strokeStyle = '#58aa78';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(trap.x, trap.y, 12, 0, TAU);
+      ctx.stroke();
     }
-
-    ctx.strokeStyle = trap.completed ? '#58aa78' : '#f07c4a';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(trap.x, trap.y, 12, 0, TAU);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(trap.x - 8, trap.y);
-    ctx.lineTo(trap.x + 8, trap.y);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(trap.x, trap.y - 8);
-    ctx.lineTo(trap.x, trap.y + 8);
-    ctx.stroke();
-
-    if (!trap.completed){
-      ctx.font = '10px "Trebuchet MS", system-ui';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.fillStyle = 'rgba(255, 213, 140, 0.85)';
-      ctx.fillText(trap.label, trap.x, trap.y + 16);
-    }
+    ctx.restore();
   }
+}
+
+function drawTrapAmbientCue(trap, intensity, cycle){
+  const radius = 26 + intensity * 18;
+  const alpha = 0.16 + intensity * 0.32;
+  drawRadialGlow(trap.x, trap.y, radius, '#f4c67b', alpha);
+  const orbitRadius = radius * (0.65 + intensity * 0.15);
+  drawOrbitingDots({ x: trap.x, y: trap.y - 6 }, {
+    count: Math.round(6 + intensity * 8),
+    orbitRadius,
+    color: 'rgba(255, 214, 160, 0.75)',
+    drift: 10 + intensity * 8,
+    size: 2.8
+  }, cycle * 0.9);
+  drawTrapTripwireGleam(trap, intensity, cycle);
+  if (intensity > 0.6){
+    const loudness = clamp((intensity - 0.6) / 0.4, 0, 1);
+    drawRipples({ x: trap.x, y: trap.y }, radius * (1.2 + loudness * 0.4), cycle * 0.6, `rgba(255, 200, 150, ${0.08 + loudness * 0.18})`);
+  }
+}
+
+function drawTrapTripwireGleam(trap, intensity, cycle){
+  if (!cueWithinView(trap.x, trap.y, 80)) return;
+  ctx.save();
+  ctx.translate(trap.x, trap.y - 4);
+  ctx.rotate(Math.sin(cycle * 0.8 + trap.x * 0.012 + trap.y * 0.008) * 0.22);
+  ctx.globalAlpha = 0.25 + intensity * 0.4;
+  ctx.strokeStyle = 'rgba(255, 226, 170, 0.9)';
+  ctx.lineWidth = 1.2 + intensity;
+  const span = 20 + intensity * 14;
+  ctx.beginPath();
+  ctx.moveTo(-span, 0);
+  ctx.lineTo(span, 0);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-span * 0.65, -3 - intensity * 2);
+  ctx.lineTo(span * 0.65, 3 + intensity * 2);
+  ctx.stroke();
+  ctx.restore();
 }
 
 function drawInteractionPrompts(){
@@ -943,9 +995,11 @@ function drawPollen(center, config, cycle){
   const count = config.count ?? 12;
   const radius = config.radius ?? 80;
   if (!cueWithinView(center.x, center.y, radius + 30)) return;
+  const color = config.color || 'rgba(200,255,214,0.5)';
+  const size = config.size ?? 3;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-  ctx.fillStyle = 'rgba(200,255,214,0.5)';
+  ctx.fillStyle = color;
   for (let i = 0; i < count; i++){
     const angle = (i / count) * TAU + cycle * 0.8;
     const offset = Math.sin(cycle * 1.2 + i) * (radius * 0.3);
@@ -954,7 +1008,7 @@ function drawPollen(center, config, cycle){
     const y = center.y + Math.sin(angle) * r;
     ctx.globalAlpha = 0.3 + 0.2 * Math.sin(cycle * 1.3 + i);
     ctx.beginPath();
-    ctx.arc(x, y, 3, 0, TAU);
+    ctx.arc(x, y, Math.max(1.5, size), 0, TAU);
     ctx.fill();
   }
   ctx.restore();
@@ -1127,7 +1181,7 @@ function drawHawks(center, config, cycle){
   const radius = config.radius ?? 130;
   if (!cueWithinView(center.x, center.y, radius + 60)) return;
   ctx.save();
-  ctx.strokeStyle = 'rgba(220, 210, 180, 0.7)';
+  ctx.strokeStyle = config.color || 'rgba(220, 210, 180, 0.7)';
   ctx.lineWidth = 2;
   for (let i = 0; i < count; i++){
     const angle = (i / count) * TAU + cycle * 0.6;
@@ -1141,6 +1195,80 @@ function drawHawks(center, config, cycle){
     ctx.stroke();
   }
   ctx.restore();
+}
+
+function drawQuestCues(){
+  const cues = state.questCues;
+  if (!Array.isArray(cues) || !cues.length) return;
+  const cycleBase = state.time;
+  for (const cue of cues){
+    if (!cue) continue;
+    const radius = cue.radius ?? 180;
+    if (!cueWithinView(cue.x, cue.y, radius + 80)) continue;
+    const intensity = clamp(cue.intensity ?? cue.baseIntensity ?? 0.18, 0, 1);
+    const center = { x: cue.x, y: cue.y };
+    const cycle = cycleBase * 0.6 + (cue.seed || 0) * Math.PI * 6;
+    switch (cue.kind){
+      case 'fetch-item': {
+        const glowRadius = radius * (0.42 + intensity * 0.25);
+        drawRadialGlow(cue.x, cue.y, glowRadius, '#8fffe6', 0.14 + intensity * 0.42);
+        drawPollen(center, {
+          count: Math.round(10 + intensity * 8),
+          radius: radius * (0.34 + intensity * 0.18),
+          color: 'rgba(180, 255, 220, 0.6)',
+          size: 2.6
+        }, cycle);
+        break;
+      }
+      case 'sabotage-target': {
+        const glowRadius = radius * (0.5 + intensity * 0.2);
+        drawRadialGlow(cue.x, cue.y, glowRadius, '#ffb565', 0.16 + intensity * 0.44);
+        drawOrbitingDots(center, {
+          count: Math.round(6 + intensity * 8),
+          orbitRadius: radius * (0.4 + intensity * 0.22),
+          color: 'rgba(255, 174, 96, 0.75)',
+          drift: 12 + intensity * 10,
+          size: 3.2
+        }, cycle);
+        drawRipples(center, radius * (0.6 + intensity * 0.3), cycle * 0.9, `rgba(255, 180, 110, ${0.14 + intensity * 0.2})`);
+        break;
+      }
+      case 'escort-npc': {
+        const glowRadius = radius * (0.45 + intensity * 0.18);
+        drawRadialGlow(cue.x, cue.y, glowRadius, '#9ed4ff', 0.12 + intensity * 0.34);
+        drawOrbitingDots(center, {
+          count: Math.round(5 + intensity * 7),
+          orbitRadius: radius * (0.32 + intensity * 0.18),
+          color: 'rgba(170, 220, 255, 0.75)',
+          drift: 10 + intensity * 6,
+          size: 3
+        }, cycle);
+        drawFootprints(center, { count: 5, radius: radius * 0.28, wobble: 18 }, cycle * 0.8);
+        break;
+      }
+      case 'eliminate-enemy': {
+        const glowRadius = radius * (0.38 + intensity * 0.22);
+        drawRadialGlow(cue.x, cue.y, glowRadius, '#ff7676', 0.14 + intensity * 0.36);
+        drawRipples(center, radius * (0.5 + intensity * 0.22), cycle, `rgba(255, 90, 90, ${0.12 + intensity * 0.22})`);
+        drawHawks(center, { count: Math.round(2 + intensity * 2), radius: radius * 0.4, color: 'rgba(70, 70, 70, 0.7)' }, cycle * 0.7);
+        break;
+      }
+      case 'clue':
+      default: {
+        const glowRadius = radius * (0.4 + intensity * 0.2);
+        drawRadialGlow(cue.x, cue.y, glowRadius, '#7fc9ff', 0.12 + intensity * 0.36);
+        drawOrbitingDots(center, {
+          count: Math.round(6 + intensity * 6),
+          orbitRadius: radius * (0.3 + intensity * 0.2),
+          color: 'rgba(160, 220, 255, 0.8)',
+          drift: 14 + intensity * 6,
+          size: 2.4
+        }, cycle);
+        drawRipples(center, radius * (0.45 + intensity * 0.2), cycle * 1.1, `rgba(140, 210, 255, ${0.1 + intensity * 0.16})`);
+        break;
+      }
+    }
+  }
 }
 
 function drawDiegeticWorldEvents(){

@@ -78,7 +78,9 @@ const state = {
   darkStrategy: null,
   warLastMessageAt: 0,
   damageNumbers: [],
-  deathSequence: null
+  deathSequence: null,
+  questCues: [],
+  questCueMemory: new Map()
 };
 
 export { state, mainVillage };
