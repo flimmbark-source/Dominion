@@ -45,31 +45,14 @@ function adjustHexColor(hex, factor){
   return `#${nr.toString(16).padStart(2, '0')}${ng.toString(16).padStart(2, '0')}${nb.toString(16).padStart(2, '0')}`;
 }
 
-function drawPolygon(points, fillStyle){
+function drawPolygon(points){
   ctx.beginPath();
   ctx.moveTo(points[0].x, points[0].y);
   for (let i = 1; i < points.length; i++){
     ctx.lineTo(points[i].x, points[i].y);
   }
   ctx.closePath();
-  if (fillStyle) ctx.fillStyle = fillStyle;
   ctx.fill();
-}
-
-function gradientBetween(pointA, pointB, colors){
-  const gradient = ctx.createLinearGradient(pointA.x, pointA.y, pointB.x, pointB.y);
-  for (const stop of colors){
-    gradient.addColorStop(stop.offset, stop.color);
-  }
-  return gradient;
-}
-
-function verticalGradient(x, y0, y1, colors){
-  const gradient = ctx.createLinearGradient(x, y0, x, y1);
-  for (const stop of colors){
-    gradient.addColorStop(stop.offset, stop.color);
-  }
-  return gradient;
 }
 
 function drawExtrudedRect({
@@ -128,161 +111,29 @@ function drawExtrudedRect({
   ctx.save();
   ctx.fillStyle = `rgba(0, 0, 0, ${dropStrength.toFixed(3)})`;
   drawPolygon(drop);
+  ctx.restore();
 
-  const leftGradient = gradientBetween(left[0], left[2], [
-    { offset: 0, color: adjustHexColor(leftColor, 0.18) },
-    { offset: 0.45, color: leftColor },
-    { offset: 1, color: adjustHexColor(leftColor, -0.18) }
-  ]);
-  drawPolygon(left, leftGradient);
-
-  const rightGradient = gradientBetween(right[0], right[2], [
-    { offset: 0, color: adjustHexColor(rightColor, 0.12) },
-    { offset: 0.6, color: rightColor },
-    { offset: 1, color: adjustHexColor(rightColor, -0.22) }
-  ]);
-  drawPolygon(right, rightGradient);
-
-  const frontGradient = verticalGradient(front[0].x, front[0].y, front[2].y, [
-    { offset: 0, color: adjustHexColor(frontColor, 0.2) },
-    { offset: 0.55, color: frontColor },
-    { offset: 1, color: adjustHexColor(frontColor, -0.25) }
-  ]);
-  drawPolygon(front, frontGradient);
-
-  const topGradient = gradientBetween(top[0], top[2], [
-    { offset: 0, color: adjustHexColor(topColor, 0.25) },
-    { offset: 0.55, color: topColor },
-    { offset: 1, color: adjustHexColor(topColor, -0.2) }
-  ]);
-  drawPolygon(top, topGradient);
+  ctx.save();
+  ctx.fillStyle = leftColor;
+  drawPolygon(left);
+  ctx.fillStyle = rightColor;
+  drawPolygon(right);
+  ctx.fillStyle = frontColor;
+  drawPolygon(front);
+  ctx.fillStyle = topColor;
+  drawPolygon(top);
 
   ctx.strokeStyle = highlightColor;
-  ctx.lineWidth = 1.2;
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.moveTo(top[0].x, top[0].y);
   ctx.lineTo(top[1].x, top[1].y);
   ctx.lineTo(top[2].x, top[2].y);
   ctx.stroke();
 
-  ctx.strokeStyle = adjustHexColor(frontColor, -0.45);
-  ctx.globalAlpha = 0.7;
-  ctx.beginPath();
-  ctx.moveTo(front[0].x, front[0].y);
-  ctx.lineTo(front[0].x, front[3].y);
-  ctx.moveTo(front[1].x, front[1].y);
-  ctx.lineTo(front[2].x, front[2].y);
-  ctx.stroke();
-
   ctx.restore();
 
   return { top, front, left, right, drop };
-}
-
-function drawGabledRoof(topPolygon, { baseColor, highlightColor, roofRise = 12 }){
-  const [backLeft, backRight, frontRight, frontLeft] = topPolygon;
-  const frontCenter = {
-    x: (frontRight.x + frontLeft.x) / 2,
-    y: (frontRight.y + frontLeft.y) / 2
-  };
-  const backCenter = {
-    x: (backLeft.x + backRight.x) / 2,
-    y: (backLeft.y + backRight.y) / 2
-  };
-  const roofPeakFront = { x: frontCenter.x, y: frontCenter.y - roofRise };
-  const roofPeakBack = { x: backCenter.x, y: backCenter.y - roofRise };
-
-  const leftSlope = [backLeft, frontLeft, roofPeakFront, roofPeakBack];
-  const rightSlope = [backRight, roofPeakBack, roofPeakFront, frontRight];
-  const frontGable = [frontLeft, frontRight, roofPeakFront];
-  const backGable = [backRight, backLeft, roofPeakBack];
-
-  const leftGradient = gradientBetween(leftSlope[0], leftSlope[2], [
-    { offset: 0, color: adjustHexColor(baseColor, 0.18) },
-    { offset: 0.65, color: baseColor },
-    { offset: 1, color: adjustHexColor(baseColor, -0.1) }
-  ]);
-  const rightGradient = gradientBetween(rightSlope[3], rightSlope[1], [
-    { offset: 0, color: adjustHexColor(baseColor, 0.05) },
-    { offset: 0.7, color: adjustHexColor(baseColor, -0.12) },
-    { offset: 1, color: adjustHexColor(baseColor, -0.28) }
-  ]);
-
-  drawPolygon(leftSlope, leftGradient);
-  drawPolygon(rightSlope, rightGradient);
-
-  const frontGradient = verticalGradient(frontCenter.x, frontCenter.y, roofPeakFront.y, [
-    { offset: 0, color: adjustHexColor(baseColor, -0.05) },
-    { offset: 1, color: highlightColor }
-  ]);
-  drawPolygon(frontGable, frontGradient);
-
-  const backGradient = verticalGradient(backCenter.x, backCenter.y, roofPeakBack.y, [
-    { offset: 0, color: adjustHexColor(baseColor, -0.35) },
-    { offset: 1, color: adjustHexColor(baseColor, -0.55) }
-  ]);
-  drawPolygon(backGable, backGradient);
-
-  ctx.save();
-  ctx.strokeStyle = highlightColor;
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(roofPeakBack.x, roofPeakBack.y);
-  ctx.lineTo(roofPeakFront.x, roofPeakFront.y);
-  ctx.stroke();
-
-  ctx.strokeStyle = adjustHexColor(baseColor, -0.4);
-  ctx.beginPath();
-  ctx.moveTo(frontLeft.x, frontLeft.y);
-  ctx.lineTo(frontRight.x, frontRight.y);
-  ctx.moveTo(backLeft.x, backLeft.y);
-  ctx.lineTo(backRight.x, backRight.y);
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawHouseDetails(house, geometry){
-  const facade = geometry.front;
-  const topY = facade[0].y;
-  const bottomY = facade[2].y;
-  const facadeHeight = bottomY - topY;
-  const facadeWidth = house.w;
-  const windowHeight = Math.min(28, Math.max(18, facadeHeight * 0.32));
-  const windowWidth = Math.min(24, Math.max(16, facadeWidth * 0.22));
-  const sillY = topY + facadeHeight * 0.28;
-  const windowSpacing = Math.max(18, facadeWidth * 0.18);
-  const windowCenterLeft = house.x + facadeWidth / 2 - windowSpacing;
-  const windowCenterRight = house.x + facadeWidth / 2 + windowSpacing;
-  const windows = [windowCenterLeft, windowCenterRight];
-
-  ctx.save();
-  ctx.fillStyle = 'rgba(16, 24, 38, 0.55)';
-  ctx.fillRect(house.x - 4, bottomY - 6, facadeWidth + 8, 6);
-
-  for (const cx of windows){
-    const left = cx - windowWidth / 2;
-    const top = sillY;
-    const gradient = verticalGradient(cx, top, top + windowHeight, [
-      { offset: 0, color: '#466c9a' },
-      { offset: 0.5, color: '#8fb9f4' },
-      { offset: 1, color: '#1a2b42' }
-    ]);
-    ctx.fillStyle = gradient;
-    ctx.fillRect(left, top, windowWidth, windowHeight);
-
-    ctx.strokeStyle = '#cbdaf6';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(left + 0.5, top + 0.5, windowWidth - 1, windowHeight - 1);
-
-    ctx.beginPath();
-    ctx.moveTo(left, top + windowHeight / 2);
-    ctx.lineTo(left + windowWidth, top + windowHeight / 2);
-    ctx.moveTo(left + windowWidth / 2, top);
-    ctx.lineTo(left + windowWidth / 2, top + windowHeight);
-    ctx.stroke();
-  }
-
-  ctx.restore();
 }
 
 function drawChest3D(chest){
@@ -389,26 +240,17 @@ function drawWorldScene(){
   drawCastle();
 
   for (const h of state.houses){
-    const geometry = drawExtrudedRect({
+    drawExtrudedRect({
       x: h.x,
       y: h.y,
       width: h.w,
       depth: h.h,
-      height: 20,
-      skew: 10,
-      baseColor: '#21324a',
-      roofColor: '#374b6d',
-      shadowStrength: 0.36
+      height: 18,
+      skew: 9,
+      baseColor: '#1b2638',
+      roofColor: '#2f3f5b',
+      shadowStrength: 0.3
     });
-
-    const roofRise = clamp(h.h * 0.28, 10, 26);
-    drawGabledRoof(geometry.top, {
-      baseColor: '#3c4f6f',
-      highlightColor: '#a9c1ec',
-      roofRise
-    });
-
-    drawHouseDetails(h, geometry);
   }
   for (const d of state.doors){
     drawExtrudedRect({
