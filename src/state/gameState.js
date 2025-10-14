@@ -67,6 +67,7 @@ const state = {
   mapMode: 'minimal',
   villageTasks: [],
   pointsOfInterest: [],
+  quests: [],
   noiseEvents: [],
   alarmLevel: 0,
   alarmUntil: 0,
@@ -75,8 +76,7 @@ const state = {
   darkStrategy: null,
   warLastMessageAt: 0,
   damageNumbers: [],
-  deathSequence: null,
-  barkeepMissions: null
+  deathSequence: null
 };
 
 export { state, mainVillage };
