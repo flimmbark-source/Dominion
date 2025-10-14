@@ -42,6 +42,7 @@ import { addThreat } from './systems/threat.js';
 import { attemptAttack } from './systems/combat.js';
 import { addDamageNumber, updateDamageNumbers } from './systems/damageNumbers.js';
 import { initPointsOfInterest, handlePointOfInterestInteraction } from './systems/pointsOfInterest.js';
+import { initWorldEvents, updateWorldEvents, handleWorldEventInteraction } from './systems/worldEvents.js';
 import { toast } from './ui/toast.js';
 import { pressOnce } from './input/pressOnce.js';
 import { circleRectCollideResolve, pointInRect, segBlockedByAnyRect } from './utils/geometry.js';
@@ -72,6 +73,7 @@ setupInitialNPCs();
 initWarState();
 initVillageInteractions();
 initPointsOfInterest();
+initWorldEvents();
 initBarkeepMissions();
 
 window.addEventListener('keydown', handleShopKeyDown);
@@ -454,6 +456,7 @@ function update(dt){
   }
 
   updateWar(dt);
+  updateWorldEvents(dt);
   updateNPCBehaviors(dt);
   for (const npc of state.npcs){
     if (npc.pauseTimer > 0) continue;
@@ -661,7 +664,9 @@ function update(dt){
   if (!seen) addThreat(-4*dt);
 
   if (!inTavernInterior && !barkeepDialogueActive){
-    if (handlePointOfInterestInteraction(interactAvailable && !state.interior)){
+    if (handleWorldEventInteraction(interactAvailable && !state.interior)){
+      interactAvailable = false;
+    } else if (handlePointOfInterestInteraction(interactAvailable && !state.interior)){
       interactAvailable = false;
     }
   }

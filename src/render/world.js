@@ -530,8 +530,9 @@ function drawNpc3D(npc){
 const POI_STYLES = {
   'shady-trader': { outer: '#3b2a16', inner: '#d0a74e' },
   'wandering-merchant': { outer: '#1d2e45', inner: '#7ec6ff' },
-  'cursed-shrine': { outer: '#251134', inner: '#b57bf8' },
-  'bog-sprite': { outer: '#0f3320', inner: '#66e0a0' }
+  'cursed-shrine-core': { outer: '#10251b', inner: '#8be6c2' },
+  'runestone-cache': { outer: '#1a1832', inner: '#b57bf8' },
+  'ember-ambush': { outer: '#2a1408', inner: '#ffae62' }
 };
 
 function drawWorldScene(){
@@ -600,6 +601,7 @@ function drawWorldScene(){
 
   drawGoblinTavern();
   drawVillageTrapMarkers();
+  drawDiegeticWorldEvents();
   drawPointsOfInterest();
 
   for (const c of state.chests){
@@ -804,36 +806,512 @@ function drawTrapDisarmProgress(p){
   ctx.restore();
 }
 
+function cueWithinView(x, y, radius = 200){
+  const margin = 140;
+  const left = state.camera.x - margin;
+  const top = state.camera.y - margin;
+  const right = left + ctx.canvas.width + margin * 2;
+  const bottom = top + ctx.canvas.height + margin * 2;
+  return (x + radius) > left && (x - radius) < right && (y + radius) > top && (y - radius) < bottom;
+}
+
+function drawRadialGlow(x, y, radius, color, alpha = 0.6){
+  if (!cueWithinView(x, y, radius + 20)) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = Math.max(0, alpha);
+  const gradient = ctx.createRadialGradient(x, y, radius * 0.1, x, y, radius);
+  gradient.addColorStop(0, color);
+  gradient.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawOrbitingDots(center, config, cycle){
+  const count = Math.max(3, config.count ?? 12);
+  const radius = config.orbitRadius ?? 140;
+  if (!cueWithinView(center.x, center.y, radius + 40)) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < count; i++){
+    const baseAngle = (i / count) * TAU + cycle * 0.6;
+    const drift = Math.sin(cycle * 0.9 + i) * (config.drift ?? 18);
+    const r = radius + drift;
+    const x = center.x + Math.cos(baseAngle) * r;
+    const y = center.y + Math.sin(baseAngle) * r;
+    const size = (config.size ?? 3) + Math.sin(cycle * 1.3 + i) * 0.8;
+    ctx.globalAlpha = 0.35 + 0.35 * Math.sin(cycle * 1.2 + i * 0.8);
+    ctx.fillStyle = config.color || 'rgba(190,255,220,0.9)';
+    ctx.beginPath();
+    ctx.arc(x, y, Math.max(1.6, size), 0, TAU);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawFootprints(center, config, cycle){
+  const count = Math.max(2, config.count ?? 6);
+  const radius = config.radius ?? 110;
+  if (!cueWithinView(center.x, center.y, radius + 40)) return;
+  ctx.save();
+  ctx.fillStyle = 'rgba(156, 214, 180, 0.45)';
+  for (let i = 0; i < count; i++){
+    const t = count > 1 ? i / (count - 1) : 0;
+    const angle = -Math.PI * 0.35 + t * Math.PI * 0.9;
+    const wobble = (config.wobble ?? 24) * Math.sin(cycle * 1.1 + i);
+    const dist = radius * t + wobble * 0.3;
+    const x = center.x + Math.cos(angle) * dist;
+    const y = center.y + Math.sin(angle) * dist;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle + Math.sin(cycle + i) * 0.18);
+    ctx.globalAlpha = 0.25 + 0.35 * (1 - t);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 4.5, 8.5, 0, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function drawBarkMarks(center, config, cycle){
+  const count = config.count ?? 6;
+  const arcRadius = config.arcRadius ?? 120;
+  if (!cueWithinView(center.x, center.y, arcRadius + 40)) return;
+  ctx.save();
+  ctx.strokeStyle = config.color || 'rgba(164, 235, 196, 0.85)';
+  ctx.lineWidth = 3;
+  ctx.globalAlpha = 0.45 + 0.25 * Math.sin(cycle * 0.9);
+  for (let i = 0; i < count; i++){
+    const angle = (i / count) * TAU + cycle * 0.2;
+    const start = angle - 0.2;
+    const end = angle + 0.2;
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, arcRadius, start, end);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawWitheredTrail(center, config, cycle){
+  const segments = config.segments ?? 5;
+  const spread = config.spread ?? 100;
+  if (!cueWithinView(center.x, center.y, spread + 60)) return;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(146, 176, 140, 0.55)';
+  ctx.lineWidth = 2.4;
+  ctx.setLineDash([8, 12]);
+  for (let i = 0; i < segments; i++){
+    const angle = (i / segments) * Math.PI - Math.PI / 2 + Math.sin(cycle + i) * 0.15;
+    const len = spread * (0.6 + 0.4 * Math.sin(cycle * 0.7 + i));
+    ctx.beginPath();
+    ctx.moveTo(center.x, center.y);
+    ctx.lineTo(center.x + Math.cos(angle) * len, center.y + Math.sin(angle) * len);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawGhostSilhouettes(center, config, cycle){
+  const count = config.count ?? 4;
+  const radius = config.radius ?? 140;
+  if (!cueWithinView(center.x, center.y, radius + 40)) return;
+  ctx.save();
+  ctx.fillStyle = 'rgba(188, 255, 233, 0.32)';
+  for (let i = 0; i < count; i++){
+    const angle = (i / count) * TAU + Math.sin(cycle + i) * 0.1;
+    const dist = radius * (0.6 + 0.3 * Math.sin(cycle * 0.8 + i));
+    const x = center.x + Math.cos(angle) * dist;
+    const y = center.y + Math.sin(angle) * dist;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(1, 1.3);
+    ctx.globalAlpha = 0.18 + 0.12 * Math.sin(cycle * 1.4 + i);
+    ctx.beginPath();
+    ctx.arc(0, 0, 16, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function drawPollen(center, config, cycle){
+  const count = config.count ?? 12;
+  const radius = config.radius ?? 80;
+  if (!cueWithinView(center.x, center.y, radius + 30)) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = 'rgba(200,255,214,0.5)';
+  for (let i = 0; i < count; i++){
+    const angle = (i / count) * TAU + cycle * 0.8;
+    const offset = Math.sin(cycle * 1.2 + i) * (radius * 0.3);
+    const r = radius * 0.4 + offset;
+    const x = center.x + Math.cos(angle) * r;
+    const y = center.y + Math.sin(angle) * r;
+    ctx.globalAlpha = 0.3 + 0.2 * Math.sin(cycle * 1.3 + i);
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, TAU);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawClawMarks(center, config, cycle){
+  const count = config.count ?? 4;
+  const radius = config.arcRadius ?? 90;
+  if (!cueWithinView(center.x, center.y, radius + 40)) return;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(158, 182, 198, 0.6)';
+  ctx.lineWidth = 3;
+  for (let i = 0; i < count; i++){
+    const angle = (i / count) * TAU + cycle * 0.4;
+    const x1 = center.x + Math.cos(angle) * radius;
+    const y1 = center.y + Math.sin(angle) * radius;
+    const x2 = center.x + Math.cos(angle + 0.08) * (radius - 24);
+    const y2 = center.y + Math.sin(angle + 0.08) * (radius - 24);
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawChains(center, config, cycle){
+  const count = config.count ?? 3;
+  const radius = config.radius ?? 110;
+  if (!cueWithinView(center.x, center.y, radius + 30)) return;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(139, 230, 194, 0.6)';
+  ctx.lineWidth = 3.2;
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < count; i++){
+    const rotation = cycle * 0.6 + (i / count) * TAU;
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, radius - i * 16, rotation, rotation + Math.PI / 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawReeds(center, config, cycle){
+  const radius = config.radius ?? 150;
+  if (!cueWithinView(center.x, center.y, radius + 30)) return;
+  const sway = config.sway ?? 0.4;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(108, 158, 132, 0.5)';
+  ctx.lineWidth = 2;
+  const blades = 12;
+  for (let i = 0; i < blades; i++){
+    const angle = (i / blades) * TAU;
+    const x = center.x + Math.cos(angle) * radius;
+    const y = center.y + Math.sin(angle) * radius;
+    const lean = Math.sin(cycle * 1.4 + i) * sway * 24;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + lean, y - 34);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawWagonRuts(center, config){
+  const length = config.length ?? 180;
+  const width = config.width ?? 32;
+  if (!cueWithinView(center.x, center.y, Math.max(length, width))) return;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(168, 130, 90, 0.65)';
+  ctx.lineWidth = width * 0.35;
+  ctx.beginPath();
+  ctx.moveTo(center.x - length / 2, center.y - width / 2);
+  ctx.lineTo(center.x + length / 2, center.y - width / 2);
+  ctx.moveTo(center.x - length / 2, center.y + width / 2);
+  ctx.lineTo(center.x + length / 2, center.y + width / 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawCrateShards(center, config, cycle){
+  const count = config.count ?? 6;
+  const radius = config.radius ?? 120;
+  if (!cueWithinView(center.x, center.y, radius + 20)) return;
+  ctx.save();
+  ctx.fillStyle = 'rgba(205, 152, 102, 0.7)';
+  for (let i = 0; i < count; i++){
+    const angle = (i / count) * TAU;
+    const dist = radius * (0.4 + 0.5 * Math.sin(cycle + i));
+    const x = center.x + Math.cos(angle) * dist;
+    const y = center.y + Math.sin(angle) * dist;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle + Math.sin(cycle * 0.9 + i) * 0.2);
+    ctx.globalAlpha = 0.4 + 0.3 * Math.sin(cycle * 1.2 + i);
+    ctx.beginPath();
+    ctx.moveTo(0, -8);
+    ctx.lineTo(6, 6);
+    ctx.lineTo(-6, 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function drawAshPlume(center, config, cycle){
+  const spread = config.spread ?? 160;
+  if (!cueWithinView(center.x, center.y, spread + 60)) return;
+  const drift = config.drift ?? 60;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(120, 108, 94, 0.5)';
+  ctx.lineWidth = 2;
+  const ribbons = 5;
+  for (let i = 0; i < ribbons; i++){
+    ctx.beginPath();
+    for (let t = 0; t <= 1; t += 0.2){
+      const angle = Math.sin(cycle * 0.6 + i + t * 2) * 0.4 + (i - 2) * 0.1;
+      const radius = spread * t;
+      const x = center.x + Math.cos(angle) * radius;
+      const y = center.y - drift * t + Math.sin(angle) * 24;
+      if (t === 0){
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawBannerWind(center, config, cycle){
+  const strength = config.strength ?? 0.6;
+  const height = 80;
+  if (!cueWithinView(center.x, center.y - height, 120)) return;
+  ctx.save();
+  ctx.fillStyle = 'rgba(174, 204, 236, 0.55)';
+  for (let i = -1; i <= 1; i++){
+    const x = center.x + i * 32;
+    const sway = Math.sin(cycle * 1.3 + i) * 20 * strength;
+    ctx.beginPath();
+    ctx.moveTo(x, center.y - height);
+    ctx.lineTo(x + sway, center.y - height + 24);
+    ctx.lineTo(x, center.y - height + 48);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawRipples(center, radius, cycle, color = 'rgba(255, 200, 120, 0.3)'){ 
+  if (!cueWithinView(center.x, center.y, radius + 40)) return;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 3; i++){
+    const progress = (cycle * 0.5 + i / 3) % 1;
+    const r = radius * progress;
+    ctx.globalAlpha = 0.4 * (1 - progress);
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, r, 0, TAU);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawHawks(center, config, cycle){
+  const count = config.count ?? 2;
+  const radius = config.radius ?? 130;
+  if (!cueWithinView(center.x, center.y, radius + 60)) return;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(220, 210, 180, 0.7)';
+  ctx.lineWidth = 2;
+  for (let i = 0; i < count; i++){
+    const angle = (i / count) * TAU + cycle * 0.6;
+    const dist = radius * (0.7 + 0.25 * Math.sin(cycle + i));
+    const x = center.x + Math.cos(angle) * dist;
+    const y = center.y + Math.sin(angle) * dist - 40;
+    ctx.beginPath();
+    ctx.moveTo(x - 10, y);
+    ctx.lineTo(x, y - 6);
+    ctx.lineTo(x + 10, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawDiegeticWorldEvents(){
+  if (!state.worldEvents || !state.worldEvents.length) return;
+  for (const eventState of state.worldEvents){
+    if (!eventState || eventState.completed) continue;
+    const phase = eventState.def.phases[eventState.phaseIndex];
+    if (!phase) continue;
+    const center = phase.focus || eventState.def.anchor || { x: 0, y: 0 };
+    const cycle = eventState.cycle || 0;
+    const cues = phase.cues || {};
+
+    if (cues.hush){
+      drawRadialGlow(center.x, center.y, (phase.radius ?? 220) * 0.9, 'rgba(40,70,60,0.4)', 0.2 + (cues.hush.intensity ?? 0.4) * 0.2);
+    }
+    if (cues.canopyGlow){
+      drawRadialGlow(center.x, center.y - 80, cues.canopyGlow.radius ?? 200, cues.canopyGlow.color || '#6be5f2', 0.35 + 0.2 * Math.sin(cycle * 0.8));
+    }
+    if (cues.swampGlow){
+      drawRadialGlow(center.x, center.y, cues.swampGlow.radius ?? 220, cues.swampGlow.color || '#4ee37d', 0.3 + 0.25 * Math.sin(cycle * 0.6));
+    }
+    if (cues.runeGlow){
+      drawRadialGlow(center.x, center.y, cues.runeGlow.radius ?? 140, cues.runeGlow.color || '#b57bf8', 0.45 + 0.2 * Math.sin(cycle * 1.1));
+    }
+    if (cues.torchGlow){
+      drawRadialGlow(center.x, center.y, cues.torchGlow.radius ?? 150, cues.torchGlow.color || '#ffae62', 0.4 + 0.2 * Math.sin(cycle));
+    }
+    if (cues.motes){
+      drawOrbitingDots(center, cues.motes, cycle);
+    }
+    if (cues.patrolSmoke){
+      drawOrbitingDots(center, { ...cues.patrolSmoke, color: 'rgba(130,130,130,0.5)', count: cues.patrolSmoke.count ?? 10, orbitRadius: cues.patrolSmoke.radius ?? 140, drift: 16 }, cycle);
+    }
+    if (cues.pollen){
+      drawPollen(center, cues.pollen, cycle);
+    }
+    if (cues.footprints){
+      drawFootprints(center, cues.footprints, cycle);
+    }
+    if (cues.barkMarks){
+      drawBarkMarks(center, cues.barkMarks, cycle);
+    }
+    if (cues.witheredTrail){
+      drawWitheredTrail(center, cues.witheredTrail, cycle);
+    }
+    if (cues.ghostSilhouettes){
+      drawGhostSilhouettes(center, cues.ghostSilhouettes, cycle);
+    }
+    if (cues.clawMarks){
+      drawClawMarks(center, cues.clawMarks, cycle);
+    }
+    if (cues.shrineChains){
+      drawChains(center, cues.shrineChains, cycle);
+    }
+    if (cues.patrolReeds){
+      drawReeds(center, cues.patrolReeds, cycle);
+    }
+    if (cues.hum){
+      drawRipples(center, cues.hum.radius ?? (phase.radius ?? 200) * 0.7, cycle, 'rgba(150, 180, 255, 0.35)');
+    }
+    if (cues.bannerWind){
+      drawBannerWind(center, cues.bannerWind, cycle);
+    }
+    if (cues.ashPlume){
+      drawAshPlume(center, cues.ashPlume, cycle);
+    }
+    if (cues.drums){
+      drawRipples(center, (phase.radius ?? 200) * 0.9, cycle, 'rgba(255, 190, 140, 0.28)');
+    }
+    if (cues.hawks){
+      drawHawks(center, cues.hawks, cycle);
+    }
+
+    if (Array.isArray(phase.tasks) && phase.tasks.length){
+      const phaseState = eventState.phaseStates?.get(phase.id);
+      for (const task of phase.tasks){
+        const tracker = phaseState?.subtasks?.find(item => item.id === task.id);
+        if (tracker?.completed) continue;
+        const taskCenter = task.position || center;
+        const taskCues = task.cues || {};
+        if (taskCues.herbGlow){
+          drawRadialGlow(taskCenter.x, taskCenter.y, taskCues.herbGlow.radius ?? 90, taskCues.herbGlow.color || '#8fffe6', 0.38 + 0.2 * Math.sin(cycle * 1.1));
+        }
+        if (taskCues.pollen){
+          drawPollen(taskCenter, taskCues.pollen, cycle);
+        }
+        if (taskCues.idolLight){
+          drawRadialGlow(taskCenter.x, taskCenter.y, taskCues.idolLight.radius ?? 80, taskCues.idolLight.color || '#9cb4ff', 0.4 + 0.2 * Math.sin(cycle * 0.8));
+        }
+        if (taskCues.clawMarks){
+          drawClawMarks(taskCenter, taskCues.clawMarks, cycle);
+        }
+      }
+    }
+  }
+}
+
 function drawPointsOfInterest(){
   if (!state.pointsOfInterest || !state.pointsOfInterest.length) return;
   for (const poi of state.pointsOfInterest){
     const style = POI_STYLES[poi.type] || { outer: '#1b2738', inner: '#9fb3c8' };
     ctx.save();
     ctx.translate(poi.x, poi.y);
-    const alpha = poi.resolved ? 0.55 : 0.9;
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = style.outer;
-    ctx.beginPath();
-    ctx.arc(0, 0, 16, 0, TAU);
-    ctx.fill();
-    ctx.lineWidth = 2.5;
-    ctx.strokeStyle = style.inner;
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.arc(0, 0, 8, 0, TAU);
-    ctx.fillStyle = style.inner;
-    ctx.globalAlpha = poi.resolved ? 0.45 : 0.82;
-    ctx.fill();
-
-    if (!poi.resolved){
-      ctx.globalAlpha = 0.22;
+    if (poi.diegetic){
+      const pulse = 1 + Math.sin(state.time * 2.2 + poi.x * 0.01 + poi.y * 0.01) * 0.35;
+      ctx.globalAlpha = poi.resolved ? 0.35 : 0.78;
+      if (poi.type === 'runestone-cache'){
+        const size = 7 * pulse;
+        ctx.fillStyle = style.inner;
+        ctx.beginPath();
+        ctx.moveTo(0, -size);
+        ctx.lineTo(size * 0.7, 0);
+        ctx.lineTo(0, size);
+        ctx.lineTo(-size * 0.7, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha *= 0.6;
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = style.outer;
+        ctx.stroke();
+      } else if (poi.type === 'cursed-shrine-core'){
+        const ring = 8 + pulse * 3;
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = style.inner;
+        ctx.beginPath();
+        ctx.arc(0, 0, ring, 0, TAU);
+        ctx.stroke();
+        ctx.globalAlpha *= 0.6;
+        ctx.strokeStyle = style.outer;
+        ctx.beginPath();
+        ctx.arc(0, 0, ring * 0.55, 0, TAU);
+        ctx.stroke();
+      } else if (poi.type === 'ember-ambush'){
+        const arc = 10 + pulse * 2;
+        ctx.fillStyle = style.inner;
+        ctx.beginPath();
+        ctx.moveTo(-arc, arc * 0.4);
+        ctx.lineTo(arc, arc * 0.4);
+        ctx.lineTo(0, -arc);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha *= 0.6;
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = style.outer;
+        ctx.stroke();
+      }
+    } else {
+      const alpha = poi.resolved ? 0.55 : 0.9;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = style.outer;
       ctx.beginPath();
-      ctx.arc(0, 0, (poi.radius ?? 60) * 0.45, 0, TAU);
+      ctx.arc(0, 0, 16, 0, TAU);
+      ctx.fill();
+      ctx.lineWidth = 2.5;
       ctx.strokeStyle = style.inner;
       ctx.stroke();
-    }
 
+      ctx.beginPath();
+      ctx.arc(0, 0, 8, 0, TAU);
+      ctx.fillStyle = style.inner;
+      ctx.globalAlpha = poi.resolved ? 0.45 : 0.82;
+      ctx.fill();
+
+      if (!poi.resolved){
+        ctx.globalAlpha = 0.22;
+        ctx.beginPath();
+        ctx.arc(0, 0, (poi.radius ?? 60) * 0.45, 0, TAU);
+        ctx.strokeStyle = style.inner;
+        ctx.stroke();
+      }
+    }
     ctx.restore();
   }
 }

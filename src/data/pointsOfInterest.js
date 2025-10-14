@@ -20,26 +20,43 @@ const POINTS_OF_INTEREST = [
     revealed: true
   },
   {
-    id: 'poi-cursed-shrine',
-    type: 'cursed-shrine',
+    id: 'poi-cursed-shrine-core',
+    type: 'cursed-shrine-core',
     label: 'Cursed Shrine',
     x: 3200,
     y: 6200,
     radius: 80,
-    prompt: 'Press E to offer 10 gold at the shrine.',
-    revealed: false
+    prompt: 'Press E to channel the swamp offering.',
+    revealed: false,
+    eventId: 'mire-whispers',
+    requiredPhase: 'challenge',
+    diegetic: true
   },
   {
-    id: 'poi-bog-sprite',
-    type: 'bog-sprite',
-    label: 'Bog Sprite',
-    x: 6200,
-    y: 5400,
-    radius: 70,
-    prompt: 'Press E to feed the bog sprite (5 gold).',
-    revealed: true,
-    reveals: ['poi-cursed-shrine'],
-    hint: 'The sprite rasps: "Seek rune-stones buried southwest of Moonfen."'
+    id: 'poi-runestone-cache',
+    type: 'runestone-cache',
+    label: 'Ancient Runestones',
+    x: 6080,
+    y: 5480,
+    radius: 74,
+    prompt: 'Press E to pry the humming runestones loose.',
+    revealed: false,
+    eventId: 'fae-witness',
+    requiredPhase: 'challenge',
+    diegetic: true
+  },
+  {
+    id: 'poi-ember-ambush',
+    type: 'ember-ambush',
+    label: 'Raider Supply Cache',
+    x: 4300,
+    y: 3120,
+    radius: 86,
+    prompt: 'Press E to sabotage the raider ambush.',
+    revealed: false,
+    eventId: 'ember-watch',
+    requiredPhase: 'challenge',
+    diegetic: true
   }
 ];
 

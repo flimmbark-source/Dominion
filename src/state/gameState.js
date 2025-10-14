@@ -67,6 +67,7 @@ const state = {
   mapMode: 'minimal',
   villageTasks: [],
   pointsOfInterest: [],
+  worldEvents: [],
   quests: [],
   noiseEvents: [],
   alarmLevel: 0,

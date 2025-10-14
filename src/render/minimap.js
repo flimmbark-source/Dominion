@@ -10,8 +10,9 @@ const ENTITY_RADIUS = 800;
 const MINIMAP_POI_COLORS = {
   'shady-trader': '#d0a74e',
   'wandering-merchant': '#7ec6ff',
-  'cursed-shrine': '#b57bf8',
-  'bog-sprite': '#66e0a0'
+  'cursed-shrine-core': '#8be6c2',
+  'runestone-cache': '#b57bf8',
+  'ember-ambush': '#ffae62'
 };
 
 function drawStructureRect(rect, scale, center, origin){
