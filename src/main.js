@@ -337,7 +337,7 @@ function update(dt){
       facing: typeof p.facing === 'number' ? p.facing : 0
     };
   }
-
+}
   if (attackPressed) attemptAttack(p, playerStats);
 
   let seenBy = 0;
