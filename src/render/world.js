@@ -337,18 +337,6 @@ function drawNpcWeaponSwing(npc){
   ctx.restore();
 }
 
-function drawNpc3D(npc){
-  ctx.save();
-  ctx.translate(npc.x, npc.y);
-
-  const bodyColor = npc.type === 'scout' ? '#6fa8dc' : '#9aa5b1';
-  const highlight = adjustHexColor(bodyColor, 0.35);
-  const shadow = adjustHexColor(bodyColor, -0.4);
-
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
-  ctx.beginPath();
-  ctx.ellipse(0, 7, 7.5, 4, 0, 0, TAU);
-  ctx.fill();
 const FACTION_BODY_COLORS = {
   village: '#6d9f5b',
   darkLord: '#a13b52',
