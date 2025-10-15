@@ -23,6 +23,33 @@ import {
 
 const missionDefinitions = [
   registerQuestDefinition({
+    id: 'mission_scout_watchtower',
+    source: 'tavern',
+    initialStatus: 'available',
+    title: 'Ghost the Watchtower Relay',
+    description: 'Cross the lit terrace, climb the Northwatch tower, and siphon the patrol seed for the barkeep.',
+    detail: 'Slip through torchlight across the terrace, suppress the tower’s cone as you climb, then download the next patrol seed and deliver the intel.',
+    intelHint: 'A bright cone sweeps from the Northwatch relay near the castle road. Disrupt it, steal the patrol seed, and bring it back.',
+    getProgressText(){
+      return getTavernMissionProgressText('mission_scout_watchtower');
+    },
+    checkReady(){
+      return isTavernMissionReady('mission_scout_watchtower');
+    },
+    onAccept(missionState){
+      activateTavernMissionSite('mission_scout_watchtower');
+      missionState.data = { ...(missionState.data || {}), acceptedAt: state.time };
+      return 'He slides a charcoal etching of the tower. "Ghost the cone, snatch the patrol seed, and bring me the intel."';
+    },
+    onComplete(){
+      completeTavernMissionSite('mission_scout_watchtower');
+      const payout = 24;
+      state.player.gold += payout;
+      toast(`Payment: +${payout} gold`, 2.6);
+      return 'He nests the shimmering seed into his ledger. "Patrol intel logged. Routes will stutter for days."';
+    }
+  }),
+  registerQuestDefinition({
     id: 'snuff-out-signal',
     source: 'tavern',
     initialStatus: 'available',

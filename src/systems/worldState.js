@@ -12,6 +12,56 @@ const WORLD_STATE_RANGES = {
 
 const worldStateListeners = new Set();
 
+function cloneCleanObject(value){
+  if (!value || typeof value !== 'object') return {};
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch (err){
+    console.warn('[worldState] failed to clone object', err);
+    return {};
+  }
+}
+
+function sanitizeGuardNetwork(network){
+  const clean = cloneCleanObject(network);
+  if (!clean || typeof clean !== 'object'){
+    return { nodes: {} };
+  }
+  if (!clean.nodes || typeof clean.nodes !== 'object'){
+    clean.nodes = {};
+  }
+  for (const key of Object.keys(clean.nodes)){
+    const node = clean.nodes[key];
+    if (!node || typeof node !== 'object'){
+      delete clean.nodes[key];
+      continue;
+    }
+    clean.nodes[key] = {
+      status: node.status === 'offline' ? 'offline' : 'online',
+      offlineUntil: Number.isFinite(node.offlineUntil) ? node.offlineUntil : 0,
+      reason: typeof node.reason === 'string' && node.reason.trim() ? node.reason.trim() : undefined
+    };
+  }
+  return clean;
+}
+
+function ensureGuardNetwork(){
+  if (!state.guardAiNetwork || typeof state.guardAiNetwork !== 'object'){
+    state.guardAiNetwork = { nodes: {} };
+  }
+  if (!state.guardAiNetwork.nodes || typeof state.guardAiNetwork.nodes !== 'object'){
+    state.guardAiNetwork.nodes = {};
+  }
+  return state.guardAiNetwork;
+}
+
+function ensureFastTravelBenefits(){
+  if (!state.fastTravelBenefits || typeof state.fastTravelBenefits !== 'object'){
+    state.fastTravelBenefits = {};
+  }
+  return state.fastTravelBenefits;
+}
+
 function notifyWorldStateChange(key, value, previous){
   for (const listener of worldStateListeners){
     try {
@@ -48,8 +98,13 @@ function resetWorldState(){
   }
   state.outpostStates = {};
   state.rumorFlags = {};
+  ensureGuardNetwork();
+  state.guardAiNetwork = sanitizeGuardNetwork(state.guardAiNetwork);
+  ensureFastTravelBenefits();
   notifyWorldStateChange('outpostStates', state.outpostStates, null);
   notifyWorldStateChange('rumorFlags', state.rumorFlags, null);
+  notifyWorldStateChange('guardAiNetwork', state.guardAiNetwork, null);
+  notifyWorldStateChange('fastTravelBenefits', state.fastTravelBenefits, null);
   notifyWorldStateChange('reset', serializeWorldState(), null);
 }
 
@@ -62,7 +117,9 @@ function serializeWorldState(){
     darklordReinforcementDelay: state.darklordReinforcementDelay,
     villagePopulationHealth: state.villagePopulationHealth,
     outpostStates: JSON.parse(JSON.stringify(state.outpostStates || {})),
-    rumorFlags: JSON.parse(JSON.stringify(state.rumorFlags || {}))
+    rumorFlags: JSON.parse(JSON.stringify(state.rumorFlags || {})),
+    guardAiNetwork: sanitizeGuardNetwork(state.guardAiNetwork),
+    fastTravelBenefits: cloneCleanObject(state.fastTravelBenefits)
   };
 }
 
@@ -79,18 +136,14 @@ function hydrateWorldState(snapshot = {}){
   setMetric('villagePopulationHealth', snapshot.villagePopulationHealth ?? getMetricDefault('villagePopulationHealth'));
   state.outpostStates = cloneCleanObject(snapshot.outpostStates);
   state.rumorFlags = cloneCleanObject(snapshot.rumorFlags);
+  state.guardAiNetwork = sanitizeGuardNetwork(snapshot.guardAiNetwork);
+  state.fastTravelBenefits = cloneCleanObject(snapshot.fastTravelBenefits);
+  ensureGuardNetwork();
+  ensureFastTravelBenefits();
   notifyWorldStateChange('outpostStates', state.outpostStates, null);
   notifyWorldStateChange('rumorFlags', state.rumorFlags, null);
-}
-
-function cloneCleanObject(value){
-  if (!value || typeof value !== 'object') return {};
-  try {
-    return JSON.parse(JSON.stringify(value));
-  } catch (err){
-    console.warn('[worldState] failed to clone object', err);
-    return {};
-  }
+  notifyWorldStateChange('guardAiNetwork', state.guardAiNetwork, null);
+  notifyWorldStateChange('fastTravelBenefits', state.fastTravelBenefits, null);
 }
 
 function registerWorldStateListener(listener){
@@ -154,6 +207,58 @@ function delayDarklordReinforcements(amount){
   return setMetric('darklordReinforcementDelay', current + amount);
 }
 
+function setGuardNodeOffline(nodeId, duration = 0, options = {}){
+  if (!nodeId) return null;
+  const network = ensureGuardNetwork();
+  const previousNetwork = sanitizeGuardNetwork(network);
+  const offlineDuration = Math.max(0, Number(duration) || 0);
+  const offlineUntil = Math.max(state.time + offlineDuration, state.time);
+  const reason = typeof options.reason === 'string' && options.reason.trim() ? options.reason.trim() : previousNetwork.nodes?.[nodeId]?.reason;
+  network.nodes[nodeId] = {
+    status: 'offline',
+    offlineUntil,
+    reason
+  };
+  notifyWorldStateChange('guardAiNetwork', state.guardAiNetwork, previousNetwork);
+  return network.nodes[nodeId];
+}
+
+function setGuardNodeOnline(nodeId){
+  if (!nodeId) return null;
+  const network = ensureGuardNetwork();
+  if (!network.nodes[nodeId]) return null;
+  const previousNetwork = sanitizeGuardNetwork(network);
+  network.nodes[nodeId] = { status: 'online', offlineUntil: 0 };
+  notifyWorldStateChange('guardAiNetwork', state.guardAiNetwork, previousNetwork);
+  return network.nodes[nodeId];
+}
+
+function getGuardNodeState(nodeId){
+  if (!nodeId) return null;
+  const network = ensureGuardNetwork();
+  const node = network.nodes[nodeId];
+  return node ? sanitizeGuardNetwork({ nodes: { [nodeId]: node } }).nodes[nodeId] : null;
+}
+
+function unlockFastTravelBenefit(id, data = {}){
+  if (!id) return null;
+  const benefits = ensureFastTravelBenefits();
+  const previous = cloneCleanObject(state.fastTravelBenefits);
+  const payload = cloneCleanObject(data);
+  benefits[id] = {
+    unlocked: true,
+    unlockedAt: state.time,
+    ...payload
+  };
+  notifyWorldStateChange('fastTravelBenefits', state.fastTravelBenefits, previous);
+  return benefits[id];
+}
+
+function hasFastTravelBenefit(id){
+  if (!id) return false;
+  return !!state.fastTravelBenefits?.[id]?.unlocked;
+}
+
 function getNormalizedGuardStrength(){
   const meta = WORLD_STATE_RANGES.guardStrength;
   const span = meta.max - meta.min || 1;
@@ -200,6 +305,21 @@ function updateWorldState(dt){
     const next = Math.max(0, state.darklordReinforcementDelay - dt);
     if (next !== state.darklordReinforcementDelay){
       setMetric('darklordReinforcementDelay', next);
+    }
+  }
+  if (state.guardAiNetwork && state.guardAiNetwork.nodes){
+    let changed = false;
+    const previousNetwork = sanitizeGuardNetwork(state.guardAiNetwork);
+    for (const [nodeId, node] of Object.entries(state.guardAiNetwork.nodes)){
+      if (!node || node.status !== 'offline') continue;
+      const offlineUntil = Number(node.offlineUntil) || 0;
+      if (offlineUntil <= state.time){
+        state.guardAiNetwork.nodes[nodeId] = { status: 'online', offlineUntil: 0 };
+        changed = true;
+      }
+    }
+    if (changed){
+      notifyWorldStateChange('guardAiNetwork', state.guardAiNetwork, previousNetwork);
     }
   }
 }
@@ -267,6 +387,11 @@ export {
   setPopulationHealth,
   adjustPopulationHealth,
   delayDarklordReinforcements,
+  setGuardNodeOffline,
+  setGuardNodeOnline,
+  getGuardNodeState,
+  unlockFastTravelBenefit,
+  hasFastTravelBenefit,
   getNormalizedGuardStrength,
   getNormalizedGuardAlertness,
   getGuardStrengthMultiplier,

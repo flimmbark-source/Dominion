@@ -3,6 +3,7 @@ import { VILLAGES } from '../data/world.js';
 import { clamp } from '../utils/math.js';
 import { toast } from '../ui/toast.js';
 import { addThreat } from './threat.js';
+import { adjustMapVisibility, setGuardNodeOffline, unlockFastTravelBenefit } from './worldState.js';
 
 const SIGNAL_STEPS = [
   {
@@ -120,6 +121,85 @@ const SUPPLY_STEPS = [
   }
 ];
 
+function feedRiskThroughExposureIndex(delta){
+  const player = state.player;
+  if (!player) return 0;
+  const current = player.detection ?? 0;
+  const next = clamp(current + delta, 0, 100);
+  player.detection = next;
+  return next;
+}
+
+function generatePatrolSeed(length = 6){
+  const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  let seed = '';
+  for (let i = 0; i < length; i += 1){
+    const index = Math.floor(Math.random() * alphabet.length);
+    seed += alphabet[index];
+  }
+  return seed;
+}
+
+const WATCHTOWER_STEPS = [
+  {
+    id: 'cross-terrace',
+    label: 'Cross the lit terrace',
+    anchorOffset: { x: 82, y: 164 },
+    radius: 112,
+    duration: 3.1,
+    maxDetection: 54,
+    startText: 'You slip from shadow to shadow across the torchlit terrace.',
+    hintText: 'Press E to dash across the light-washed stones.',
+    cancelText: 'Torchlight sweeps close—you freeze against the parapet.',
+    completeText: 'You reach the tower base, cloak still smolder-dark.',
+    onComplete(){
+      feedRiskThroughExposureIndex(6);
+      addThreat(-4);
+    }
+  },
+  {
+    id: 'scale-tower',
+    label: 'Climb the tower spine',
+    anchorOffset: { x: -28, y: 18 },
+    radius: 96,
+    duration: 3.6,
+    maxDetection: 52,
+    startText: 'You find handholds between barnacled stones and begin to climb.',
+    hintText: 'Press E to climb, slipping past the spinning cone of light.',
+    cancelText: 'Lantern rays sweep your path—you cling and wait.',
+    completeText: 'You crest the parapet and throw the cone disruptor across the lenses.',
+    onComplete(mission){
+      const offlineFor = 60;
+      mission.data = mission.data || {};
+      mission.data.visionSuppressedUntil = state.time + offlineFor;
+      setGuardNodeOffline('northwatch-tower', offlineFor, { reason: 'watchtower-climb' });
+      feedRiskThroughExposureIndex(-3);
+    }
+  },
+  {
+    id: 'download-seed',
+    label: 'Download the patrol seed',
+    anchorOffset: { x: -12, y: -84 },
+    radius: 90,
+    duration: 3.2,
+    maxDetection: 50,
+    startText: 'You jack the crystal relay into your wrist reader.',
+    hintText: 'Press E to siphon the next patrol seed.',
+    cancelText: 'A glyph pulses too bright—you sever the link and reset.',
+    completeText: 'The patrol seed pulses inside your reader—time to exfil.',
+    onComplete(mission){
+      mission.data = mission.data || {};
+      const seed = generatePatrolSeed();
+      mission.data.patrolSeed = seed;
+      mission.data.seedCapturedAt = state.time;
+      feedRiskThroughExposureIndex(-6);
+      addThreat(-10);
+      state.darkStrategy = state.darkStrategy || {};
+      state.darkStrategy.nextPatrolSeed = { seed, capturedAt: state.time };
+    }
+  }
+];
+
 function makeScoutData(){
   const moonfen = VILLAGES[0];
   const bracken = VILLAGES[1];
@@ -220,6 +300,46 @@ const SCOUT_STEPS = [
 ];
 
 const missionSpecs = {
+  'mission_scout_watchtower': {
+    id: 'mission_scout_watchtower',
+    label: 'Northwatch Relay Tower',
+    getLocation(){
+      const castle = state.castle || { x: 7600, y: 360 };
+      return {
+        x: castle.x - 420,
+        y: castle.y - 160,
+        radius: 210,
+        label: 'Northwatch Relay Tower'
+      };
+    },
+    steps: WATCHTOWER_STEPS,
+    onReady(mission){
+      if (mission.rewardApplied) return;
+      mission.rewardApplied = true;
+      const visibilityGain = (state.mapVisibility ?? 0.38) < 0.75 ? 0.06 : 0.03;
+      adjustMapVisibility(visibilityGain);
+      setGuardNodeOffline('northwatch-tower', 180, { reason: 'relay-suppressed' });
+      unlockFastTravelBenefit('northwatch-beacon', { label: 'Northwatch Beacon', type: 'relay' });
+      toast('Watchtower compromised. Map brightens and the Northwatch beacon attunes to you.', 3.6);
+    },
+    progress(mission){
+      const total = WATCHTOWER_STEPS.length;
+      const completed = mission.stepsState.filter(step => step.completed).length;
+      if (mission.completed) return 'Relay seed delivered. Beacon keyed.';
+      if (mission.ready) return 'Seed secured—return to the barkeep with the intel.';
+      const step = WATCHTOWER_STEPS[mission.stageIndex];
+      if (!step) return `${completed}/${total} steps complete.`;
+      if (step.id === 'scale-tower' && mission.data?.visionSuppressedUntil){
+        const remaining = Math.max(0, mission.data.visionSuppressedUntil - state.time);
+        const seconds = Math.ceil(remaining);
+        return `${completed}/${total} steps complete · Cone suppressed ${seconds}s more.`;
+      }
+      if (step.id === 'download-seed'){
+        return `${completed}/${total} steps complete · Next: Download the patrol seed.`;
+      }
+      return `${completed}/${total} steps complete · Next: ${step.label}`;
+    }
+  },
   'snuff-out-signal': {
     id: 'snuff-out-signal',
     label: 'Signal Watchtower',
@@ -679,6 +799,16 @@ function gatherTavernIntelLines(){
     if (!mission.active) continue;
     const step = spec.steps[mission.stageIndex];
     if (!step) continue;
+    if (mission.id === 'mission_scout_watchtower'){
+      if (step.id === 'scale-tower'){
+        lines.push('Northwatch’s cone is dimming—finish the climb and keep the vision offline.');
+      } else if (step.id === 'download-seed'){
+        lines.push('The relay core awaits. Siphon the patrol seed and ghost back.');
+      } else {
+        lines.push('Slip across the light-soaked terrace and breach the watchtower relay.');
+      }
+      continue;
+    }
     if (mission.id === 'snuff-out-signal'){
       lines.push('The warfront beacon still burns—finish dousing it and raids will falter.');
       continue;

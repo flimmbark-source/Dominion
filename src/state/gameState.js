@@ -90,6 +90,8 @@ const state = {
   mapVisibility: 0.38,
   darklordReinforcementDelay: 0,
   villagePopulationHealth: 0.9,
+  guardAiNetwork: { nodes: {} },
+  fastTravelBenefits: {},
   outpostStates: {},
   rumorFlags: {}
 };
