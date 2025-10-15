@@ -33,7 +33,10 @@ function initWarState(options = {}){
     musterGoal: 4,
     musterRate: 0.35,
     raidTarget: null,
-    raidCooldown: 12
+    raidCooldown: 12,
+    signalSuppressedUntil: 0,
+    nextRaidPenalty: null,
+    scoutIntelUntil: 0
   };
 
   if (options.announceBarracks){
@@ -97,8 +100,17 @@ function updateDarkStrategy(dt){
     strategy.raidCooldown = Math.max(0, strategy.raidCooldown - dt);
   }
 
+  if (strategy.nextRaidPenalty && strategy.nextRaidPenalty.expiresAt && state.time >= strategy.nextRaidPenalty.expiresAt){
+    strategy.nextRaidPenalty = null;
+  }
+
   const pressure = clamp(((state.threat ?? 0) / 160) + (state.huntHeat ?? 0), 0, 1.5);
-  strategy.muster = clamp(strategy.muster + (strategy.musterRate + 0.25 * pressure) * dt, 0, 22);
+  const suppressionActive = strategy.signalSuppressedUntil && state.time < strategy.signalSuppressedUntil;
+  const intelActive = strategy.scoutIntelUntil && state.time < strategy.scoutIntelUntil;
+  const gainBase = strategy.musterRate + 0.25 * pressure;
+  const suppressionFactor = suppressionActive ? 0.35 : 1;
+  const intelFactor = intelActive ? 0.8 : 1;
+  strategy.muster = clamp(strategy.muster + gainBase * suppressionFactor * intelFactor * dt, 0, 22);
 
   if (strategy.raidTarget !== null){
     const stillActive = state.npcs.some(npc => npc.role === 'raider' && npc.targetVillage === strategy.raidTarget);
@@ -113,14 +125,26 @@ function updateDarkStrategy(dt){
   if (strategy.raidCooldown > 0) return;
 
   const targetIndex = pickRaidTarget();
-  const waveSize = Math.max(strategy.musterGoal, Math.round(strategy.muster * 0.8));
+  let waveSize = Math.max(strategy.musterGoal, Math.round(strategy.muster * 0.8));
+  const penaltyInfo = strategy.nextRaidPenalty || null;
+  if (penaltyInfo){
+    const multiplier = clamp(penaltyInfo.sizeMultiplier ?? 0.7, 0.2, 1);
+    waveSize = Math.max(2, Math.round(waveSize * multiplier));
+  }
+
   const spawned = spawnDarkRaid(targetIndex, waveSize, { announce: false });
   if (spawned > 0){
     strategy.muster = Math.max(0, strategy.muster - spawned * 0.7);
     strategy.raidTarget = targetIndex;
     strategy.raidCooldown = 24 + Math.random() * 10;
     strategy.musterGoal = Math.min(14, strategy.musterGoal + 1);
-    toast(`The Dark Lord masses ${spawned} raiders to assault ${VILLAGES[targetIndex].name}!`, 3.4);
+    if (penaltyInfo){
+      const name = VILLAGES[targetIndex].name;
+      toast(`Poisoned stores cripple the raid on ${name}! Only ${spawned} weakened raiders march.`, 3.6);
+      strategy.nextRaidPenalty = null;
+    } else {
+      toast(`The Dark Lord masses ${spawned} raiders to assault ${VILLAGES[targetIndex].name}!`, 3.4);
+    }
   } else {
     strategy.raidCooldown = 10;
   }

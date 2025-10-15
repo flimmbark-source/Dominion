@@ -1,6 +1,7 @@
 import { state } from '../state/gameState.js';
 import { clamp } from '../utils/math.js';
 import { getQuestDefinition, getQuestState } from './questLog.js';
+import { getTavernMissionCues } from './tavernMissionSites.js';
 
 function ensureCueMemory(){
   if (!(state.questCueMemory instanceof Map)){
@@ -91,7 +92,8 @@ function gatherProceduralQuestCues(){
 function updateQuestCues(dt){
   ensureCueMemory();
   const cues = [
-    ...gatherProceduralQuestCues()
+    ...gatherProceduralQuestCues(),
+    ...getTavernMissionCues()
   ];
   const memory = state.questCueMemory;
   const nextMemory = new Map();

@@ -66,6 +66,11 @@ import {
   handleBarkeepDialogueInput,
   updateBarkeepMissions
 } from './systems/barkeepMissions.js';
+import {
+  initTavernMissionSites,
+  updateTavernMissionSites,
+  handleTavernMissionInteraction
+} from './systems/tavernMissionSites.js';
 import { updateQuestCues } from './systems/questCues.js';
 
 setupInput();
@@ -79,6 +84,7 @@ initPointsOfInterest();
 initWorldEvents();
 initProceduralQuests();
 initBarkeepMissions();
+initTavernMissionSites();
 
 window.addEventListener('keydown', handleShopKeyDown);
 canvas.addEventListener('mousemove', handleCanvasMouseMove);
@@ -259,6 +265,7 @@ function update(dt){
   state.time += dt;
   updateDamageNumbers();
   updateBarkeepMissions();
+  updateTavernMissionSites(dt);
 
   if (state.player.health <= 0 && !state.deathSequence){
     startDeathSequence();
@@ -427,7 +434,14 @@ function update(dt){
     interactAvailable = false;
   }
 
+  let missionInteracted = false;
   if (!inTavernInterior && !state.interior && !barkeepDialogueActive){
+    if (interactPressed){
+      missionInteracted = handleTavernMissionInteraction({ interactPressed: true });
+      if (missionInteracted){
+        interactPressed = false;
+      }
+    }
     if (interactPressed){
       const spoke = tryTalkToVillager();
       if (!spoke){
