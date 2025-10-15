@@ -1,5 +1,5 @@
 const BASE_PLAYER_STATS = Object.freeze({
-  maxHealth: 100,
+  maxHealth: 50,
   movementSpeed: 120,
   attackDamage: 10,
   stealthFactor: 1
