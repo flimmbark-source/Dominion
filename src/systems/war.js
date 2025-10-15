@@ -4,6 +4,41 @@ import { getVillageInstance } from '../world/villageTemplates.js';
 import { spawnVillageDefender, spawnDarkRaid } from '../npc/npcManager.js';
 import { toast } from '../ui/toast.js';
 import { clamp } from '../utils/math.js';
+import {
+  registerWorldStateListener,
+  getNormalizedGuardStrength,
+  getNormalizedGuardAlertness,
+  getSuspicionFactor,
+  getPopulationHealthFactor,
+  getReinforcementDelayFactor
+} from './worldState.js';
+
+function tuneVillageDefensePosture(){
+  if (!Array.isArray(state.villageDefense)) return;
+  const strength = getNormalizedGuardStrength();
+  const alertness = getNormalizedGuardAlertness();
+  for (const defense of state.villageDefense){
+    if (!defense) continue;
+    const baseMax = defense.hasBarracks ? 6 : 4;
+    const baseInterval = defense.hasBarracks ? 18 : 28;
+    const bonusSlots = Math.round(strength * (defense.hasBarracks ? 3 : 2));
+    defense.maxDefenders = Math.max(2, baseMax + bonusSlots);
+    defense.activeDefenders = Math.min(defense.activeDefenders || 0, defense.maxDefenders);
+    const strengthSpeed = clamp(1 - strength * 0.35, 0.55, 1);
+    const alertnessSpeed = 1 / clamp(1 + alertness * 0.6, 1, 1.6);
+    defense.spawnInterval = Math.max(8, baseInterval * strengthSpeed * alertnessSpeed);
+    if (typeof defense.nextSpawnAt === 'number'){
+      const urgencyWindow = defense.spawnInterval * clamp(0.4 + alertness * 0.35, 0.4, 0.9);
+      defense.nextSpawnAt = Math.min(defense.nextSpawnAt, state.time + urgencyWindow);
+    }
+  }
+}
+
+registerWorldStateListener((key) => {
+  if (key === 'guardStrength' || key === 'guardAlertness' || key === 'outpostStates' || key === 'reset'){
+    tuneVillageDefensePosture();
+  }
+});
 
 function initWarState(options = {}){
   state.villageDefense = VILLAGES.map((village, index) => {
@@ -38,6 +73,8 @@ function initWarState(options = {}){
     nextRaidPenalty: null,
     scoutIntelUntil: 0
   };
+
+  tuneVillageDefensePosture();
 
   if (options.announceBarracks){
     state.villageDefense.forEach((defense, index) => {
@@ -105,12 +142,29 @@ function updateDarkStrategy(dt){
   }
 
   const pressure = clamp(((state.threat ?? 0) / 160) + (state.huntHeat ?? 0), 0, 1.5);
+  const guardStrength = getNormalizedGuardStrength();
+  const guardAlertness = getNormalizedGuardAlertness();
+  const suspicion = getSuspicionFactor();
+  const populationHealth = getPopulationHealthFactor();
+  const reinforcementDrag = getReinforcementDelayFactor();
+
   const suppressionActive = strategy.signalSuppressedUntil && state.time < strategy.signalSuppressedUntil;
   const intelActive = strategy.scoutIntelUntil && state.time < strategy.scoutIntelUntil;
   const gainBase = strategy.musterRate + 0.25 * pressure;
   const suppressionFactor = suppressionActive ? 0.35 : 1;
   const intelFactor = intelActive ? 0.8 : 1;
-  strategy.muster = clamp(strategy.muster + gainBase * suppressionFactor * intelFactor * dt, 0, 22);
+  const guardPenalty = clamp(1 - (guardStrength * 0.38 + guardAlertness * 0.28), 0.35, 1);
+  const unrestBoost = clamp(1 + suspicion * 0.45 + (1 - populationHealth) * 0.35, 0.7, 1.6);
+  const reinforcementFactor = clamp(1 - reinforcementDrag * 0.6, 0.25, 1);
+  strategy.muster = clamp(
+    strategy.muster + gainBase * suppressionFactor * intelFactor * guardPenalty * unrestBoost * reinforcementFactor * dt,
+    0,
+    22
+  );
+
+  if (reinforcementDrag > 0){
+    strategy.raidCooldown = Math.max(strategy.raidCooldown, 6 + reinforcementDrag * 18);
+  }
 
   if (strategy.raidTarget !== null){
     const stillActive = state.npcs.some(npc => npc.role === 'raider' && npc.targetVillage === strategy.raidTarget);

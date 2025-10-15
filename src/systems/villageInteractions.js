@@ -4,6 +4,13 @@ import { toast } from '../ui/toast.js';
 import { addThreat } from './threat.js';
 import { BASE_WHISPERS, HIGH_THREAT_WHISPERS, TASK_HINT_WHISPERS } from '../data/villagerDialog.js';
 import { getQuestRumors, unlockQuest } from './questLog.js';
+import {
+  getSuspicionFactor,
+  getPopulationHealthFactor,
+  adjustPopulationHealth,
+  adjustMapVisibility,
+  incrementVillageSuspicion
+} from './worldState.js';
 
 const VILLAGER_TALK_DISTANCE = 72;
 const VILLAGER_PICKPOCKET_DISTANCE = 58;
@@ -55,28 +62,91 @@ function findNearestVillager(maxRange){
 }
 
 function chooseVillagerLine(npc){
+  const suspicionFactor = getSuspicionFactor();
+  const populationHealthFactor = getPopulationHealthFactor();
+  const rumorSuppression = clamp(suspicionFactor * 1.1, 0, 0.95);
+  const baseWeight = clamp(0.85 + (1 - populationHealthFactor) * 0.4, 0.5, 1.8);
   const pool = [
-    ...BASE_WHISPERS.map(text => ({ text }))
+    ...BASE_WHISPERS.map(text => ({ text, weight: baseWeight }))
   ];
+
   if (state.threat >= 60){
-    pool.push(...HIGH_THREAT_WHISPERS.map(text => ({ text })));
+    const highThreatWeight = clamp(0.6 + suspicionFactor * 1.2, 0.4, 2.5);
+    pool.push(...HIGH_THREAT_WHISPERS.map(text => ({ text, weight: highThreatWeight })));
   }
+
   if (state.villageTasks.some(task => !task.completed)){
-    pool.push(...TASK_HINT_WHISPERS.map(text => ({ text })));
+    const taskWeight = clamp(0.7 + (1 - suspicionFactor) * 0.9 + (1 - populationHealthFactor) * 0.6, 0.4, 2.8);
+    pool.push(...TASK_HINT_WHISPERS.map(text => ({ text, weight: taskWeight })));
   }
+
+  const rumorWeightBase = clamp((1 - rumorSuppression) * (0.7 + (1 - populationHealthFactor) * 0.5), 0.08, 2.6);
+  const pushRumor = (entry, extraWeight = 1) => {
+    if (!entry || !entry.text) return;
+    const weight = Math.max(0.05, (entry.weight ?? 1) * extraWeight * rumorWeightBase);
+    pool.push({ ...entry, weight });
+  };
+
   const questRumors = getQuestRumors();
   questRumors.forEach(rumor => {
     if (!rumor || !rumor.text) return;
-    pool.push({ text: rumor.text, questId: rumor.questId, questStatus: rumor.status });
+    pushRumor({ text: rumor.text, questId: rumor.questId, questStatus: rumor.status });
   });
+
+  const rumorFlags = state.rumorFlags || {};
+  const applyFlagValue = (value) => {
+    if (!value) return;
+    if (typeof value === 'string'){
+      pushRumor({ text: value });
+      return;
+    }
+    if (Array.isArray(value)){
+      value.forEach(applyFlagValue);
+      return;
+    }
+    if (typeof value === 'object'){
+      if (Array.isArray(value.lines)){
+        value.lines.forEach(item => {
+          if (typeof item === 'string'){
+            pushRumor({ text: item }, value.weight ?? 1);
+          } else if (item && typeof item === 'object'){
+            pushRumor(item, value.weight ?? 1);
+          }
+        });
+        return;
+      }
+      if (value.text){
+        pushRumor(value);
+      }
+    }
+  };
+
+  Object.values(rumorFlags).forEach(applyFlagValue);
+
   if (pool.length === 0) return null;
 
-  let chosen = pool[Math.floor(Math.random() * pool.length)];
+  const totalWeight = pool.reduce((sum, entry) => sum + Math.max(entry.weight ?? 1, 0), 0);
+  if (totalWeight <= 0) return null;
+
   let attempts = 0;
-  while (chosen && chosen.text === npc.lastDialogueLine && attempts < 4){
-    chosen = pool[Math.floor(Math.random() * pool.length)];
+  let chosen = null;
+  while (attempts < 4){
+    const target = Math.random() * totalWeight;
+    let accum = 0;
+    for (const entry of pool){
+      const weight = Math.max(entry.weight ?? 1, 0);
+      accum += weight;
+      if (target <= accum){
+        chosen = entry;
+        break;
+      }
+    }
+    if (!chosen) chosen = pool[pool.length - 1];
+    if (!chosen || chosen.text !== npc.lastDialogueLine || attempts >= 3) break;
     attempts++;
+    chosen = null;
   }
+
   npc.lastDialogueLine = chosen ? chosen.text : null;
   return chosen || null;
 }
@@ -104,6 +174,9 @@ function tryTalkToVillager(){
   const p = state.player;
   p.detection = clamp(p.detection - 6, 0, 100);
   addThreat(-4);
+  adjustMapVisibility(line.questId ? 0.035 : 0.02);
+  adjustPopulationHealth(0.01);
+  incrementVillageSuspicion(line.questId ? -3 : -2);
   return true;
 }
 
@@ -138,12 +211,17 @@ function tryPickpocketVillager(){
     npc.dialogCooldown = Math.max(npc.dialogCooldown, state.time + 3);
     toast(`You lift ${gold} gold without a whisper.`, 2.8);
     addThreat(-6);
+    incrementVillageSuspicion(-4);
+    adjustPopulationHealth(0.006);
   } else {
     player.detection = clamp(player.detection + 28, 0, 100);
     npc.pickpocketCooldown = state.time + 20;
     npc.dialogCooldown = state.time + 8;
     toast('The villager snaps around. "Thief!"', 2.6);
     addThreat(18);
+    incrementVillageSuspicion(12);
+    adjustPopulationHealth(-0.02);
+    adjustMapVisibility(-0.015);
   }
 
   return true;
@@ -211,6 +289,9 @@ function updateTrapDisarm(){
     toast('You snip the tripwire. The village grows a shade calmer.', 3);
     player.detection = clamp(player.detection - 12, 0, 100);
     addThreat(-14);
+    adjustPopulationHealth(0.05);
+    incrementVillageSuspicion(-5);
+    adjustMapVisibility(0.015);
   }
 }
 

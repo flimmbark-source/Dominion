@@ -2,6 +2,7 @@ import { state } from '../state/gameState.js';
 import { clamp } from '../utils/math.js';
 import { getQuestDefinition, getQuestState } from './questLog.js';
 import { getTavernMissionCues } from './tavernMissionSites.js';
+import { getSuspicionFactor, getPopulationHealthFactor, getMapVisibility } from './worldState.js';
 
 function ensureCueMemory(){
   if (!(state.questCueMemory instanceof Map)){
@@ -98,6 +99,11 @@ function updateQuestCues(dt){
   const memory = state.questCueMemory;
   const nextMemory = new Map();
   const player = state.player;
+  const suspicionFactor = getSuspicionFactor();
+  const populationHealthFactor = getPopulationHealthFactor();
+  const visibilityFactor = getMapVisibility();
+  const worldTension = clamp(1 + suspicionFactor * 0.5 + (1 - populationHealthFactor) * 0.4, 0.7, 1.8);
+  const mapFogFactor = clamp(1 + (1 - visibilityFactor) * 0.4, 0.8, 1.5);
 
   for (const cue of cues){
     const key = `${cue.questId}:${cue.stage}:${cue.kind}`;
@@ -124,7 +130,9 @@ function updateQuestCues(dt){
     const lostBoost = memo.age > hintDelay ? clamp((memo.age - hintDelay) / hintDelay, 0, 1) : 0;
     const nearBoost = dist <= innerRadius ? 0.22 : dist <= radius ? 0.1 : 0;
     const patience = (memo.linger ?? 0) / 8;
-    const target = clamp((cue.baseIntensity ?? 0.16) + patience * 0.45 + lostBoost * 0.35 + nearBoost, cue.baseIntensity ?? 0.16, 1);
+    const baseIntensity = cue.baseIntensity ?? 0.16;
+    const targetBase = baseIntensity + patience * 0.45 + lostBoost * 0.35 + nearBoost;
+    const target = clamp(targetBase * worldTension * mapFogFactor, baseIntensity, 1);
     const smoothing = clamp(dt * 2.2, 0, 1);
     memo.intensity = memo.intensity == null ? target : memo.intensity + (target - memo.intensity) * smoothing;
     memo.stage = cue.stage;

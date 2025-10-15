@@ -5,6 +5,11 @@ import { TAU, clamp } from '../utils/math.js';
 import { gatherForestSolidsAround } from '../world/terrain.js';
 import { toast } from '../ui/toast.js';
 import { forEachVillageInstance, prepareVillageInstances, getVillageInstance } from '../world/villageTemplates.js';
+import {
+  getGuardStrengthMultiplier,
+  getGuardAlertnessMultiplier,
+  incrementVillageSuspicion
+} from '../systems/worldState.js';
 
 const MELEE_RANGE_BONUS = 8;
 
@@ -365,6 +370,7 @@ function broadcastAlarm(sourceNpc, anchor){
   const focus = anchor || state.lastSeenAt || { x: sourceNpc.x, y: sourceNpc.y };
   state.alarmLevel = Math.min((state.alarmLevel || 0) + 1, 3);
   state.alarmUntil = now + 16;
+  incrementVillageSuspicion(6 + state.alarmLevel * 2);
 
   for (const npc of state.npcs){
     if (npc === sourceNpc) continue;
@@ -407,6 +413,7 @@ function notifyNPCPlayerSpotted(npc, location){
   if (!npc.activeTarget) npc.activeTarget = { x: location.x, y: location.y };
   npc.activeTarget.x = location.x;
   npc.activeTarget.y = location.y;
+  incrementVillageSuspicion(4);
   if ((changed || npc.assistanceCooldown <= 0) && npc.type === 'scout'){
     broadcastAlarm(npc, location);
     npc.assistanceCooldown = 4.5;
@@ -526,7 +533,20 @@ function spawnVillageDefender(villageIndex, options = {}){
     faction: 'village'
   });
   if (npc){
-    npc.patrolPauseRange = [0.45, 1.1];
+    const strengthMultiplier = getGuardStrengthMultiplier();
+    const alertnessMultiplier = getGuardAlertnessMultiplier();
+    const pauseScalar = clamp(0.9 + (alertnessMultiplier - 1) * 0.6, 0.4, 1.6);
+    npc.patrolPauseRange = [0.45, 1.1].map(value => clamp(value / pauseScalar, 0.3, 2.2));
+    npc.maxHealth = Math.round(npc.maxHealth * strengthMultiplier);
+    npc.health = npc.maxHealth;
+    npc.speed = npc.baseSpeed * clamp(0.92 + (alertnessMultiplier - 1) * 0.75 + (strengthMultiplier - 1) * 0.35, 0.75, 1.95);
+    npc.fovRange = npc.baseFovRange * clamp(1 + (alertnessMultiplier - 1) * 0.85, 0.6, 1.9);
+    npc.fovAngle = npc.baseFovAngle * clamp(1 + (alertnessMultiplier - 1) * 0.45, 0.7, 1.6);
+    npc.hearingRadius = (npc.hearingRadius || 140) * clamp(0.9 + (alertnessMultiplier - 1) * 0.9, 0.6, 2.1);
+    if (npc.attack){
+      npc.attack.damage = Math.round(npc.attack.damage * clamp(0.92 + strengthMultiplier * 0.55, 0.6, 2.6));
+      npc.attack.cooldown = Math.max(0.55, npc.attack.cooldown * clamp(1 / (0.95 + (alertnessMultiplier - 1) * 0.6), 0.45, 1.35));
+    }
   }
   return npc;
 }

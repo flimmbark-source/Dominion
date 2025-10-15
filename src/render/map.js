@@ -2,7 +2,7 @@ import { ctx, W, H } from '../game/canvas.js';
 import { state } from '../state/gameState.js';
 import { WORLD, VILLAGES } from '../data/world.js';
 import { roads, pathSegments } from '../world/terrain.js';
-import { TAU } from '../utils/math.js';
+import { TAU, clamp } from '../utils/math.js';
 
 const MAP_POI_COLORS = {
   'shady-trader': '#d0a74e',
@@ -14,7 +14,9 @@ const MAP_POI_COLORS = {
 function drawWorldMapOverlay(){
   ctx.save();
 
-  ctx.fillStyle = 'rgba(4, 10, 18, 0.88)';
+  const visibility = clamp(state.mapVisibility ?? 0.38, 0, 1);
+  const fogOpacity = clamp(0.92 - visibility * 0.52, 0.35, 0.92);
+  ctx.fillStyle = `rgba(4, 10, 18, ${fogOpacity.toFixed(2)})`;
   ctx.fillRect(0, 0, W, H);
 
   const padding = 48;
@@ -43,6 +45,9 @@ function drawWorldMapOverlay(){
   ctx.beginPath();
   ctx.rect(mapX, mapY, mapW, mapH);
   ctx.clip();
+
+  const detailAlpha = clamp(0.35 + visibility * 0.65, 0.3, 1);
+  ctx.globalAlpha = detailAlpha;
 
   ctx.fillStyle = '#1b2738';
   for (const road of roads){
@@ -186,7 +191,17 @@ function drawWorldMapOverlay(){
     ctx.stroke();
   }
 
+  ctx.globalAlpha = 1;
   ctx.restore();
+
+  const fogStrength = clamp(1 - visibility, 0, 1);
+  if (fogStrength > 0.05){
+    const fogGradient = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * clamp(visibility, 0.25, 0.6), W / 2, H / 2, Math.max(W, H));
+    fogGradient.addColorStop(0, `rgba(18, 28, 40, ${0.08 * fogStrength})`);
+    fogGradient.addColorStop(1, `rgba(4, 8, 14, ${0.55 * fogStrength})`);
+    ctx.fillStyle = fogGradient;
+    ctx.fillRect(0, 0, W, H);
+  }
 
   ctx.fillStyle = '#cfd9e6';
   ctx.font = '20px system-ui';
