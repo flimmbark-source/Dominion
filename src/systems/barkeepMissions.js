@@ -13,8 +13,96 @@ import {
   unlockQuest,
   getQuestIntelHints
 } from './questLog.js';
+import {
+  activateTavernMissionSite,
+  completeTavernMissionSite,
+  isTavernMissionReady,
+  getTavernMissionProgressText,
+  gatherTavernIntelLines
+} from './tavernMissionSites.js';
 
 const missionDefinitions = [
+  registerQuestDefinition({
+    id: 'snuff-out-signal',
+    source: 'tavern',
+    initialStatus: 'available',
+    title: 'Snuff Out the Signal',
+    description: 'Extinguish the Dark Lord\'s warfront beacon so raids lose their edge.',
+    detail: 'Climb the beacon tower in the castle shadow, silence each sentry, then smother the signal fire without sounding an alarm.',
+    intelHint: 'Smoke from the warfront beacon still claws the sky near the castle road. Douse it to stall the next raid.',
+    getProgressText(){
+      return getTavernMissionProgressText('snuff-out-signal');
+    },
+    checkReady(){
+      return isTavernMissionReady('snuff-out-signal');
+    },
+    onAccept(missionState){
+      activateTavernMissionSite('snuff-out-signal');
+      missionState.data = { ...(missionState.data || {}), acceptedAt: state.time };
+      return 'He taps a charcoal map. "Snuff that beacon and their raids stumble."';
+    },
+    onComplete(){
+      completeTavernMissionSite('snuff-out-signal');
+      const payout = 16;
+      state.player.gold += payout;
+      toast(`Payment: +${payout} gold`, 2.4);
+      return '"Beacon\'s dark? Good. Raids will wander blind for a spell."';
+    }
+  }),
+  registerQuestDefinition({
+    id: 'poison-supply-lines',
+    source: 'tavern',
+    initialStatus: 'available',
+    title: 'Poison the Supply Lines',
+    description: 'Rot the Dark Lord\'s caravan stores before they reach the front.',
+    detail: 'Slip into the night camp, lace their stew cauldron and water barrels, then ghost away before dawn.',
+    intelHint: 'Caravan kettles simmer along the eastern supply road—ruin them and the next raid marches weak.',
+    getProgressText(){
+      return getTavernMissionProgressText('poison-supply-lines');
+    },
+    checkReady(){
+      return isTavernMissionReady('poison-supply-lines');
+    },
+    onAccept(missionState){
+      activateTavernMissionSite('poison-supply-lines');
+      missionState.data = { ...(missionState.data || {}), acceptedAt: state.time };
+      return '"Their stew is thick tonight," he murmurs. "Spoil it and their muster thins."';
+    },
+    onComplete(){
+      completeTavernMissionSite('poison-supply-lines');
+      const payout = 18;
+      state.player.gold += payout;
+      toast(`Payment: +${payout} gold`, 2.4);
+      return 'The barkeep sniffs. "Sick soldiers don\'t raid hard. Enjoy the quiet."';
+    }
+  }),
+  registerQuestDefinition({
+    id: 'silence-the-scout',
+    source: 'tavern',
+    initialStatus: 'available',
+    title: 'Silence the Scout',
+    description: 'Track and eliminate the scout captain mapping village defenses.',
+    detail: 'Follow faint trail markers across the ridges, shadow the roaming scout, and end him quietly to secure his maps.',
+    intelHint: 'Villagers whisper about a shadow on the ridge marking defenses. Trail him and end the reports.',
+    getProgressText(){
+      return getTavernMissionProgressText('silence-the-scout');
+    },
+    checkReady(){
+      return isTavernMissionReady('silence-the-scout');
+    },
+    onAccept(missionState){
+      activateTavernMissionSite('silence-the-scout');
+      missionState.data = { ...(missionState.data || {}), acceptedAt: state.time };
+      return 'He slides a scrap of hoofprints. "Follow the signs. Take his maps."';
+    },
+    onComplete(){
+      completeTavernMissionSite('silence-the-scout');
+      const payout = 20;
+      state.player.gold += payout;
+      toast(`Payment: +${payout} gold`, 2.6);
+      return 'He studies the stolen charts, grinning. "Villages breathe easier already."';
+    }
+  }),
   registerQuestDefinition({
     id: 'disarm-traps',
     source: 'tavern',
@@ -177,6 +265,11 @@ function pickIntelLine(){
   if (missionReady){
     lines.push(`${missionReady.title} is ready to cash in. He'll be pleased to hear it.`);
   }
+
+  const tavernIntel = gatherTavernIntelLines();
+  tavernIntel.forEach(line => {
+    if (line) lines.push(line);
+  });
 
   const worldHints = getQuestIntelHints({ source: 'world' }).filter(hint => hint.status !== 'completed');
   for (const hint of worldHints){

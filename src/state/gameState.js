@@ -70,6 +70,7 @@ const state = {
   worldEvents: [],
   proceduralQuests: [],
   quests: [],
+  tavernMissionSites: null,
   noiseEvents: [],
   alarmLevel: 0,
   alarmUntil: 0,
