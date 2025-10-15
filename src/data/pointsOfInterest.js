@@ -30,6 +30,21 @@ const POINTS_OF_INTEREST = [
     revealed: false,
     eventId: 'mire-whispers',
     requiredPhase: 'challenge',
+    propId: 'prop-mire-shrine-core',
+    diegetic: true
+  },
+  {
+    id: 'poi-fae-fairy',
+    type: 'fae-fairy',
+    label: 'Anxious Fairy',
+    x: 5920,
+    y: 5320,
+    radius: 68,
+    prompt: 'Press E to offer 6 gold to the anxious fairy.',
+    revealed: false,
+    eventId: 'fae-witness',
+    requiredPhase: 'exploration',
+    propId: 'prop-fae-fairy-roost',
     diegetic: true
   },
   {
@@ -43,6 +58,35 @@ const POINTS_OF_INTEREST = [
     revealed: false,
     eventId: 'fae-witness',
     requiredPhase: 'challenge',
+    propId: 'prop-fae-runestones',
+    diegetic: true
+  },
+  {
+    id: 'poi-mire-moonblossom',
+    type: 'mire-moonblossom',
+    label: 'Moonblossom Patch',
+    x: 3480,
+    y: 6400,
+    radius: 70,
+    prompt: 'Press E to gather the moonblossom petals.',
+    revealed: false,
+    eventId: 'mire-whispers',
+    requiredPhase: 'exploration',
+    propId: 'prop-mire-moonblossom',
+    diegetic: true
+  },
+  {
+    id: 'poi-mire-bog-idol',
+    type: 'mire-bog-idol',
+    label: 'Bog Idol Cache',
+    x: 2980,
+    y: 6580,
+    radius: 74,
+    prompt: 'Press E to retrieve the hag idol.',
+    revealed: false,
+    eventId: 'mire-whispers',
+    requiredPhase: 'exploration',
+    propId: 'prop-mire-bog-idol',
     diegetic: true
   },
   {
@@ -56,6 +100,21 @@ const POINTS_OF_INTEREST = [
     revealed: false,
     eventId: 'ember-watch',
     requiredPhase: 'challenge',
+    propId: 'prop-ember-supply-cache',
+    diegetic: true
+  },
+  {
+    id: 'poi-ember-trail',
+    type: 'ember-trail',
+    label: 'Overturned Supply Cart',
+    x: 4480,
+    y: 3320,
+    radius: 80,
+    prompt: 'Press E to study the raider cart trail.',
+    revealed: false,
+    eventId: 'ember-watch',
+    requiredPhase: 'exploration',
+    propId: 'prop-ember-trail-cart',
     diegetic: true
   }
 ];

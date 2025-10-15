@@ -532,7 +532,21 @@ const POI_STYLES = {
   'wandering-merchant': { outer: '#1d2e45', inner: '#7ec6ff' },
   'cursed-shrine-core': { outer: '#10251b', inner: '#8be6c2' },
   'runestone-cache': { outer: '#1a1832', inner: '#b57bf8' },
+  'fae-fairy': { outer: '#123239', inner: '#6be5f2' },
+  'mire-moonblossom': { outer: '#0f2a1e', inner: '#8fffe6' },
+  'mire-bog-idol': { outer: '#1c2548', inner: '#9cb4ff' },
+  'ember-trail': { outer: '#301b0a', inner: '#ffae62' },
   'ember-ambush': { outer: '#2a1408', inner: '#ffae62' }
+};
+
+const WORLD_EVENT_PROP_RENDERERS = {
+  'fae-bargain-circle': drawPropFaeBargainCircle,
+  'fae-runestone-cluster': drawPropFaeRunestoneCluster,
+  'moonblossom-patch': drawPropMoonblossomPatch,
+  'bog-idol-cache': drawPropBogIdolCache,
+  'cursed-shrine-core': drawPropCursedShrineCore,
+  'overturned-cart': drawPropOverturnedCart,
+  'raider-supply-cache': drawPropRaiderSupplyCache
 };
 
 function drawWorldScene(){
@@ -603,6 +617,7 @@ function drawWorldScene(){
   drawVillageTrapMarkers();
   drawQuestCues();
   drawDiegeticWorldEvents();
+  drawWorldEventProps();
   drawPointsOfInterest();
 
   for (const c of state.chests){
@@ -1366,6 +1381,356 @@ function drawDiegeticWorldEvents(){
   }
 }
 
+function drawGenericWorldEventProp(prop, cycle){
+  const scale = prop.scale ?? 1;
+  const radius = 18 * scale;
+  ctx.fillStyle = '#253648';
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, TAU);
+  ctx.fill();
+  ctx.lineWidth = 2 * scale;
+  ctx.strokeStyle = '#4c5d70';
+  ctx.stroke();
+  ctx.lineWidth = 1.4 * scale;
+  ctx.strokeStyle = '#6c8098';
+  ctx.beginPath();
+  ctx.arc(0, 0, radius * 0.55, 0, TAU);
+  ctx.stroke();
+}
+
+function drawPropFaeBargainCircle(prop, cycle){
+  const scale = (prop.scale ?? 1) * (prop.resolved ? 0.94 : 1);
+  const shimmer = 0.75 + Math.sin(cycle * 2.4 + (prop.x + prop.y) * 0.004) * 0.25;
+  const ring = 24 * scale;
+  ctx.fillStyle = `rgba(107, 229, 242, ${(0.14 + shimmer * 0.1).toFixed(3)})`;
+  ctx.beginPath();
+  ctx.arc(0, 0, ring, 0, TAU);
+  ctx.fill();
+  ctx.lineWidth = 3.2 * scale;
+  ctx.strokeStyle = '#6be5f2';
+  ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(198, 255, 245, 0.9)';
+  ctx.lineWidth = 1.4 * scale;
+  for (let i = 0; i < 5; i++){
+    const angle = (i / 5) * TAU + cycle * 0.4;
+    const inner = 9 * scale;
+    const outer = ring - 2 * scale;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+    ctx.quadraticCurveTo(Math.cos(angle) * (outer - 4 * scale), Math.sin(angle) * (outer - 4 * scale), Math.cos(angle) * outer, Math.sin(angle) * outer);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = '#1a2d3c';
+  ctx.beginPath();
+  ctx.arc(0, 0, 6 * scale, 0, TAU);
+  ctx.fill();
+
+  ctx.save();
+  ctx.rotate(Math.sin(cycle * 1.4) * 0.25);
+  ctx.fillStyle = `rgba(173, 255, 227, ${0.35 + shimmer * 0.15})`;
+  ctx.beginPath();
+  ctx.ellipse(0, -8 * scale, 6 * scale, 12 * scale, 0, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawPropFaeRunestoneCluster(prop, cycle){
+  const scale = prop.scale ?? 1;
+  const offsets = [-20, 0, 22];
+  const heights = [44, 56, 48];
+  const colors = ['#2c2646', '#332a59', '#292440'];
+  for (let i = 0; i < offsets.length; i++){
+    const width = (8 + i * 2) * scale;
+    const height = heights[i] * scale;
+    ctx.save();
+    ctx.translate(offsets[i] * scale, 0);
+    ctx.rotate((i - 1) * 0.18);
+    ctx.fillStyle = colors[i];
+    ctx.beginPath();
+    ctx.moveTo(-width, 12 * scale);
+    ctx.lineTo(-width * 0.6, -height + 8 * scale);
+    ctx.lineTo(width * 0.6, -height + 2 * scale);
+    ctx.lineTo(width, 12 * scale);
+    ctx.closePath();
+    ctx.fill();
+    ctx.lineWidth = 2.4 * scale;
+    ctx.strokeStyle = adjustHexColor(colors[i], 0.25);
+    ctx.stroke();
+
+    const runePulse = 0.6 + Math.sin(cycle * 1.2 + i) * 0.3;
+    ctx.strokeStyle = `rgba(197, 168, 255, ${0.55 + runePulse * 0.35})`;
+    ctx.lineWidth = 1.6 * scale;
+    ctx.beginPath();
+    ctx.moveTo(0, -height + 12 * scale);
+    ctx.lineTo(0, -12 * scale);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-width * 0.4, -height * 0.4);
+    ctx.lineTo(width * 0.4, -height * 0.2);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawPropMoonblossomPatch(prop, cycle){
+  const scale = prop.scale ?? 1;
+  ctx.fillStyle = 'rgba(18, 50, 36, 0.9)';
+  ctx.beginPath();
+  ctx.ellipse(0, 8 * scale, 28 * scale, 14 * scale, 0, 0, TAU);
+  ctx.fill();
+
+  const petals = 6;
+  const baseRadius = 16 * scale;
+  for (let i = 0; i < petals; i++){
+    const angle = (i / petals) * TAU + Math.sin(cycle * 0.6 + i) * 0.05;
+    ctx.save();
+    ctx.rotate(angle);
+    ctx.fillStyle = `rgba(143, 255, 230, ${0.55 + Math.sin(cycle * 1.1 + i) * 0.15})`;
+    ctx.beginPath();
+    ctx.ellipse(baseRadius, 0, 8 * scale, 14 * scale, 0, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  ctx.fillStyle = '#1e4c38';
+  ctx.beginPath();
+  ctx.arc(0, 0, 6 * scale, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(210, 255, 240, 0.8)';
+  ctx.lineWidth = 1.2 * scale;
+  ctx.beginPath();
+  ctx.arc(0, 0, baseRadius * 0.6, 0, TAU);
+  ctx.stroke();
+}
+
+function drawPropBogIdolCache(prop, cycle){
+  const scale = prop.scale ?? 1;
+  ctx.fillStyle = 'rgba(20, 30, 48, 0.85)';
+  ctx.beginPath();
+  ctx.ellipse(0, 10 * scale, 26 * scale, 14 * scale, 0, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = '#2a345a';
+  ctx.fillRect(-12 * scale, 2 * scale, 24 * scale, 12 * scale);
+
+  const pulse = 0.55 + Math.sin(cycle * 1.3) * 0.25;
+  ctx.fillStyle = `rgba(156, 180, 255, ${0.6 + pulse * 0.3})`;
+  ctx.beginPath();
+  ctx.moveTo(-8 * scale, 2 * scale);
+  ctx.lineTo(0, -22 * scale);
+  ctx.lineTo(8 * scale, 2 * scale);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(220, 235, 255, 0.9)';
+  ctx.lineWidth = 1.4 * scale;
+  ctx.beginPath();
+  ctx.moveTo(0, -18 * scale);
+  ctx.lineTo(0, -4 * scale);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-4 * scale, -12 * scale);
+  ctx.lineTo(4 * scale, -8 * scale);
+  ctx.stroke();
+
+  ctx.fillStyle = '#1a223c';
+  ctx.beginPath();
+  ctx.arc(0, -6 * scale, 2.8 * scale, 0, TAU);
+  ctx.fill();
+}
+
+function drawPropCursedShrineCore(prop, cycle){
+  const scale = prop.scale ?? 1;
+  const ring = 26 * scale;
+  ctx.strokeStyle = 'rgba(17, 50, 38, 0.85)';
+  ctx.lineWidth = 6 * scale;
+  ctx.beginPath();
+  ctx.arc(0, 0, ring * 0.8, 0, TAU);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#8be6c2';
+  ctx.lineWidth = 3.2 * scale;
+  ctx.beginPath();
+  ctx.arc(0, 0, ring, 0, TAU);
+  ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(139, 230, 194, 0.8)';
+  ctx.lineWidth = 2 * scale;
+  for (let i = 0; i < 3; i++){
+    const angle = (i / 3) * TAU + Math.sin(cycle * 0.6 + i) * 0.1;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * ring, Math.sin(angle) * ring);
+    ctx.lineTo(Math.cos(angle) * ring * 1.25, Math.sin(angle) * ring * 1.25 + 6 * scale);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = '#123024';
+  ctx.beginPath();
+  ctx.arc(0, 0, 8 * scale, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = '#8be6c2';
+  ctx.fillRect(-3 * scale, -10 * scale, 6 * scale, 14 * scale);
+}
+
+function drawPropOverturnedCart(prop, cycle){
+  const scale = prop.scale ?? 1;
+  const bodyW = 58 * scale;
+  const bodyH = 22 * scale;
+  ctx.fillStyle = '#4b2f1a';
+  ctx.beginPath();
+  ctx.moveTo(-bodyW / 2, -bodyH / 2);
+  ctx.lineTo(bodyW / 2, -bodyH / 2);
+  ctx.lineTo(bodyW / 2 - 6 * scale, bodyH / 2);
+  ctx.lineTo(-bodyW / 2 - 6 * scale, bodyH / 2);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#2f1d10';
+  for (let i = -2; i <= 2; i++){
+    ctx.fillRect(i * 12 * scale - 2 * scale, -bodyH / 2, 4 * scale, bodyH + 6 * scale);
+  }
+
+  const wheelY = bodyH / 2 + 6 * scale;
+  ctx.strokeStyle = '#3c2614';
+  ctx.lineWidth = 4.2 * scale;
+  ctx.beginPath();
+  ctx.arc(-bodyW * 0.35, wheelY, 11 * scale, 0, TAU);
+  ctx.arc(bodyW * 0.35, wheelY * 0.8, 13 * scale, 0, TAU);
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(197, 138, 59, 0.8)';
+  ctx.beginPath();
+  ctx.moveTo(bodyW / 2 - 4 * scale, bodyH / 2);
+  ctx.quadraticCurveTo(bodyW / 2 + 10 * scale, bodyH / 2 + 4 * scale, bodyW / 2 - 10 * scale, bodyH / 2 + 10 * scale);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = '#c58a3b';
+  ctx.lineWidth = 1.6 * scale;
+  ctx.beginPath();
+  ctx.moveTo(bodyW / 2 - 6 * scale, bodyH / 2 - 2 * scale);
+  ctx.lineTo(bodyW / 2 + 12 * scale, bodyH / 2 + 8 * scale);
+  ctx.lineTo(bodyW / 2 - 12 * scale, bodyH / 2 + 10 * scale);
+  ctx.closePath();
+  ctx.stroke();
+
+  if (prop.resolved){
+    ctx.strokeStyle = 'rgba(255, 180, 90, 0.6)';
+    ctx.lineWidth = 2 * scale;
+    ctx.beginPath();
+    ctx.moveTo(-bodyW / 2 - 4 * scale, -bodyH / 2);
+    ctx.lineTo(-bodyW / 2 - 12 * scale, -bodyH / 2 - 12 * scale);
+    ctx.stroke();
+  }
+}
+
+function drawPropRaiderSupplyCache(prop, cycle){
+  const scale = prop.scale ?? 1;
+  const crateW = 24 * scale;
+  const crateH = 20 * scale;
+  ctx.fillStyle = '#5a3922';
+  ctx.fillRect(-crateW - 4 * scale, -crateH / 2, crateW, crateH);
+  ctx.strokeStyle = '#c9863a';
+  ctx.lineWidth = 2 * scale;
+  ctx.strokeRect(-crateW - 4 * scale, -crateH / 2, crateW, crateH);
+  ctx.beginPath();
+  ctx.moveTo(-crateW - 4 * scale, -crateH / 2);
+  ctx.lineTo(-4 * scale, crateH / 2);
+  ctx.moveTo(-crateW - 4 * scale, crateH / 2);
+  ctx.lineTo(-4 * scale, -crateH / 2);
+  ctx.stroke();
+
+  const barrelRadius = 10 * scale;
+  ctx.fillStyle = '#723c19';
+  ctx.beginPath();
+  ctx.ellipse(16 * scale, -4 * scale, barrelRadius, barrelRadius * 0.8, 0, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = '#b56a2f';
+  ctx.lineWidth = 2 * scale;
+  ctx.beginPath();
+  ctx.ellipse(16 * scale, -4 * scale, barrelRadius, barrelRadius * 0.8, 0, 0, TAU);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(16 * scale - barrelRadius, -4 * scale);
+  ctx.lineTo(16 * scale + barrelRadius, -4 * scale);
+  ctx.stroke();
+
+  ctx.fillStyle = '#6b2f1a';
+  ctx.beginPath();
+  ctx.ellipse(2 * scale, 10 * scale, barrelRadius * 0.9, barrelRadius * 0.7, 0, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = '#b56a2f';
+  ctx.beginPath();
+  ctx.ellipse(2 * scale, 10 * scale, barrelRadius * 0.9, barrelRadius * 0.7, 0, 0, TAU);
+  ctx.stroke();
+
+  if (!prop.resolved){
+    const fusePulse = 0.4 + Math.sin(cycle * 6) * 0.25;
+    ctx.strokeStyle = `rgba(255, 200, 110, ${0.6 + fusePulse * 0.3})`;
+    ctx.lineWidth = 1.5 * scale;
+    ctx.beginPath();
+    ctx.moveTo(16 * scale, -4 * scale - barrelRadius * 0.8);
+    ctx.lineTo(16 * scale + 6 * scale, -16 * scale);
+    ctx.stroke();
+  } else {
+    ctx.strokeStyle = 'rgba(90, 100, 120, 0.6)';
+    ctx.lineWidth = 2 * scale;
+    ctx.beginPath();
+    ctx.moveTo(-crateW - 8 * scale, crateH / 2 + 2 * scale);
+    ctx.lineTo(24 * scale, -crateH / 2 - 8 * scale);
+    ctx.stroke();
+  }
+}
+
+function drawWorldEventProps(){
+  const props = state.worldEventProps;
+  if (!Array.isArray(props) || !props.length) return;
+  const cycle = state.time;
+  for (const prop of props){
+    const radius = prop.radius ?? 80;
+    if (!cueWithinView(prop.x, prop.y, radius + 80)) continue;
+    ctx.save();
+    ctx.translate(prop.x, prop.y);
+    if (typeof prop.orientation === 'number' && prop.orientation !== 0){
+      ctx.rotate(prop.orientation);
+    }
+    ctx.globalAlpha = prop.resolved ? 0.6 : 0.95;
+    const renderer = WORLD_EVENT_PROP_RENDERERS[prop.type] || drawGenericWorldEventProp;
+    renderer(prop, cycle);
+    ctx.restore();
+
+    switch (prop.type){
+      case 'fae-bargain-circle':
+        drawRadialGlow(prop.x, prop.y, radius * 0.55, 'rgba(107, 229, 242, 0.35)', prop.resolved ? 0.2 : 0.38);
+        break;
+      case 'fae-runestone-cluster':
+        drawRadialGlow(prop.x, prop.y, radius * 0.9, 'rgba(181, 123, 248, 0.45)', prop.resolved ? 0.28 : 0.5);
+        break;
+      case 'moonblossom-patch':
+        drawRadialGlow(prop.x, prop.y, radius * 0.6, 'rgba(143, 255, 230, 0.35)', prop.resolved ? 0.2 : 0.42);
+        break;
+      case 'bog-idol-cache':
+        drawRadialGlow(prop.x, prop.y, radius * 0.6, 'rgba(156, 180, 255, 0.35)', prop.resolved ? 0.22 : 0.4);
+        break;
+      case 'cursed-shrine-core':
+        drawRadialGlow(prop.x, prop.y, radius * 0.75, 'rgba(139, 230, 194, 0.38)', prop.resolved ? 0.26 : 0.46);
+        break;
+      case 'overturned-cart':
+        drawRadialGlow(prop.x, prop.y, radius * 0.5, 'rgba(255, 174, 98, 0.2)', prop.resolved ? 0.14 : 0.28);
+        break;
+      case 'raider-supply-cache':
+        drawRadialGlow(prop.x, prop.y, radius * 0.55, 'rgba(255, 174, 98, 0.25)', prop.resolved ? 0.18 : 0.33);
+        break;
+      default:
+        drawRadialGlow(prop.x, prop.y, radius * 0.5, 'rgba(150, 180, 210, 0.2)', prop.resolved ? 0.16 : 0.26);
+        break;
+    }
+  }
+}
+
 function drawPointsOfInterest(){
   if (!state.pointsOfInterest || !state.pointsOfInterest.length) return;
   for (const poi of state.pointsOfInterest){
@@ -1389,6 +1754,21 @@ function drawPointsOfInterest(){
         ctx.lineWidth = 2;
         ctx.strokeStyle = style.outer;
         ctx.stroke();
+      } else if (poi.type === 'fae-fairy'){
+        const wing = 6 + pulse * 2;
+        ctx.fillStyle = style.inner;
+        ctx.beginPath();
+        ctx.moveTo(0, -wing * 0.6);
+        ctx.quadraticCurveTo(wing, -wing, wing * 0.8, 0);
+        ctx.quadraticCurveTo(wing, wing, 0, wing * 0.6);
+        ctx.quadraticCurveTo(-wing, wing, -wing * 0.8, 0);
+        ctx.quadraticCurveTo(-wing, -wing, 0, -wing * 0.6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha *= 0.65;
+        ctx.lineWidth = 1.8;
+        ctx.strokeStyle = style.outer;
+        ctx.stroke();
       } else if (poi.type === 'cursed-shrine-core'){
         const ring = 8 + pulse * 3;
         ctx.lineWidth = 3;
@@ -1400,6 +1780,38 @@ function drawPointsOfInterest(){
         ctx.strokeStyle = style.outer;
         ctx.beginPath();
         ctx.arc(0, 0, ring * 0.55, 0, TAU);
+        ctx.stroke();
+      } else if (poi.type === 'mire-moonblossom'){
+        const petals = 5;
+        const radius = 5 + pulse * 1.6;
+        ctx.fillStyle = style.inner;
+        for (let i = 0; i < petals; i++){
+          const angle = (i / petals) * TAU;
+          ctx.beginPath();
+          ctx.ellipse(Math.cos(angle) * radius * 0.6, Math.sin(angle) * radius * 0.6, radius, radius * 0.6, angle, 0, TAU);
+          ctx.fill();
+        }
+        ctx.globalAlpha *= 0.55;
+        ctx.fillStyle = style.outer;
+        ctx.beginPath();
+        ctx.arc(0, 0, radius * 0.7, 0, TAU);
+        ctx.fill();
+      } else if (poi.type === 'mire-bog-idol'){
+        const base = 6 + pulse;
+        ctx.fillStyle = style.inner;
+        ctx.beginPath();
+        ctx.moveTo(-base * 0.6, base);
+        ctx.lineTo(-base * 0.2, -base);
+        ctx.lineTo(base * 0.2, -base);
+        ctx.lineTo(base * 0.6, base);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha *= 0.6;
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = style.outer;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, -base * 0.2, base * 0.35, 0, TAU);
         ctx.stroke();
       } else if (poi.type === 'ember-ambush'){
         const arc = 10 + pulse * 2;
@@ -1414,6 +1826,22 @@ function drawPointsOfInterest(){
         ctx.lineWidth = 2;
         ctx.strokeStyle = style.outer;
         ctx.stroke();
+      } else if (poi.type === 'ember-trail'){
+        const spoke = 8 + pulse * 1.4;
+        ctx.lineWidth = 2.2;
+        ctx.strokeStyle = style.inner;
+        ctx.beginPath();
+        ctx.arc(0, 0, spoke, 0, TAU);
+        ctx.stroke();
+        ctx.globalAlpha *= 0.6;
+        ctx.strokeStyle = style.outer;
+        for (let i = 0; i < 4; i++){
+          const angle = (i / 4) * TAU;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(Math.cos(angle) * spoke, Math.sin(angle) * spoke);
+          ctx.stroke();
+        }
       }
     } else {
       const alpha = poi.resolved ? 0.55 : 0.9;
