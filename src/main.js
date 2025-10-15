@@ -14,6 +14,7 @@ import { drawTavernInteriorScene } from './render/tavernInterior.js';
 import { drawHUD } from './render/hud.js';
 import { drawShop } from './render/shop.js';
 import { drawWorldMapOverlay } from './render/map.js';
+import { drawQuestLog } from './render/questLog.js';
 import { drawMiniMap } from './render/minimap.js';
 import {
   npcSeesPlayer,
@@ -254,6 +255,19 @@ function loop(nowMs){
 function update(dt){
   const toggleMap = pressOnce('m');
   const escapePressed = pressOnce('escape');
+  const toggleQuestLog = pressOnce('q');
+
+  if (state.questLogOpen){
+    if (toggleQuestLog || escapePressed){
+      state.questLogOpen = false;
+    } else {
+      return;
+    }
+  } else if (toggleQuestLog){
+    state.questLogOpen = true;
+    return;
+  }
+
   if (toggleMap){
     state.mapMode = state.mapMode === 'large' ? 'minimal' : 'large';
   }
@@ -279,7 +293,7 @@ function update(dt){
   let interactPressed = pressOnce('e');
   let pickpocketPressed = pressOnce('r');
   let attackPressed = pressOnce('space');
-  let throwPressed = pressOnce('q');
+  let throwPressed = pressOnce('t');
   const interactForDialogue = interactPressed;
   let barkeepDialogueActive = isBarkeepDialogueActive();
   if (barkeepDialogueActive){
@@ -760,7 +774,9 @@ function draw(){
 
   if (state.pausedForShop) drawShop();
 
-  if (state.mapMode === 'minimal'){
+  if (state.questLogOpen){
+    drawQuestLog();
+  } else if (state.mapMode === 'minimal'){
     drawMiniMap();
   } else if (state.mapMode === 'large'){
     drawWorldMapOverlay();
