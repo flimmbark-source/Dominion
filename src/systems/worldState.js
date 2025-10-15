@@ -7,7 +7,9 @@ const WORLD_STATE_RANGES = {
   guardAlertness: { min: 0, max: 100, default: 28 },
   mapVisibility: { min: 0, max: 1, default: 0.38 },
   darklordReinforcementDelay: { min: 0, max: 180, default: 0 },
-  villagePopulationHealth: { min: 0, max: 1, default: 0.9 }
+  villagePopulationHealth: { min: 0, max: 1, default: 0.9 },
+  villageMorale: { min: 0, max: 100, default: 42 },
+  villagerTrust: { min: 0, max: 100, default: 8 }
 };
 
 const worldStateListeners = new Set();
@@ -48,8 +50,10 @@ function resetWorldState(){
   }
   state.outpostStates = {};
   state.rumorFlags = {};
+  state.safehouseAccess = {};
   notifyWorldStateChange('outpostStates', state.outpostStates, null);
   notifyWorldStateChange('rumorFlags', state.rumorFlags, null);
+  notifyWorldStateChange('safehouseAccess', state.safehouseAccess, null);
   notifyWorldStateChange('reset', serializeWorldState(), null);
 }
 
@@ -61,8 +65,11 @@ function serializeWorldState(){
     mapVisibility: state.mapVisibility,
     darklordReinforcementDelay: state.darklordReinforcementDelay,
     villagePopulationHealth: state.villagePopulationHealth,
+    villageMorale: state.villageMorale,
+    villagerTrust: state.villagerTrust,
     outpostStates: JSON.parse(JSON.stringify(state.outpostStates || {})),
-    rumorFlags: JSON.parse(JSON.stringify(state.rumorFlags || {}))
+    rumorFlags: JSON.parse(JSON.stringify(state.rumorFlags || {})),
+    safehouseAccess: JSON.parse(JSON.stringify(state.safehouseAccess || {}))
   };
 }
 
@@ -77,10 +84,14 @@ function hydrateWorldState(snapshot = {}){
   setMetric('mapVisibility', snapshot.mapVisibility ?? getMetricDefault('mapVisibility'));
   setMetric('darklordReinforcementDelay', snapshot.darklordReinforcementDelay ?? getMetricDefault('darklordReinforcementDelay'));
   setMetric('villagePopulationHealth', snapshot.villagePopulationHealth ?? getMetricDefault('villagePopulationHealth'));
+  setMetric('villageMorale', snapshot.villageMorale ?? getMetricDefault('villageMorale'));
+  setMetric('villagerTrust', snapshot.villagerTrust ?? getMetricDefault('villagerTrust'));
   state.outpostStates = cloneCleanObject(snapshot.outpostStates);
   state.rumorFlags = cloneCleanObject(snapshot.rumorFlags);
+  state.safehouseAccess = cloneCleanObject(snapshot.safehouseAccess);
   notifyWorldStateChange('outpostStates', state.outpostStates, null);
   notifyWorldStateChange('rumorFlags', state.rumorFlags, null);
+  notifyWorldStateChange('safehouseAccess', state.safehouseAccess, null);
 }
 
 function cloneCleanObject(value){
@@ -148,6 +159,24 @@ function adjustPopulationHealth(delta){
   return setPopulationHealth(current + delta);
 }
 
+function setVillageMorale(value){
+  return setMetric('villageMorale', value);
+}
+
+function adjustVillageMorale(delta){
+  const current = state.villageMorale ?? getMetricDefault('villageMorale') ?? 0;
+  return setVillageMorale(current + delta);
+}
+
+function setVillagerTrust(value){
+  return setMetric('villagerTrust', value);
+}
+
+function adjustVillagerTrust(delta){
+  const current = state.villagerTrust ?? getMetricDefault('villagerTrust') ?? 0;
+  return setVillagerTrust(current + delta);
+}
+
 function delayDarklordReinforcements(amount){
   if (!Number.isFinite(amount) || amount <= 0) return state.darklordReinforcementDelay;
   const current = state.darklordReinforcementDelay ?? 0;
@@ -182,6 +211,14 @@ function getSuspicionFactor(){
 
 function getPopulationHealthFactor(){
   return clamp(state.villagePopulationHealth ?? getMetricDefault('villagePopulationHealth') ?? 0, 0, 1);
+}
+
+function getVillageMorale(){
+  return clamp(state.villageMorale ?? getMetricDefault('villageMorale') ?? 0, 0, 100);
+}
+
+function getVillagerTrust(){
+  return clamp(state.villagerTrust ?? getMetricDefault('villagerTrust') ?? 0, 0, 100);
 }
 
 function getMapVisibility(){
@@ -230,6 +267,40 @@ function getOutpostState(id){
   return cloneCleanObject(value);
 }
 
+function grantSafehouseAccess(id, details = {}){
+  if (!id) return;
+  if (!state.safehouseAccess || typeof state.safehouseAccess !== 'object'){
+    state.safehouseAccess = {};
+  }
+  const previous = state.safehouseAccess[id];
+  state.safehouseAccess[id] = {
+    unlockedAt: state.time,
+    ...cloneCleanObject(details)
+  };
+  notifyWorldStateChange('safehouseAccess', state.safehouseAccess, previous);
+}
+
+function revokeSafehouseAccess(id){
+  if (!id || !state.safehouseAccess) return;
+  if (Object.prototype.hasOwnProperty.call(state.safehouseAccess, id)){
+    const previous = state.safehouseAccess[id];
+    delete state.safehouseAccess[id];
+    notifyWorldStateChange('safehouseAccess', state.safehouseAccess, previous);
+  }
+}
+
+function hasSafehouseAccess(id){
+  if (!id || !state.safehouseAccess) return false;
+  return Object.prototype.hasOwnProperty.call(state.safehouseAccess, id);
+}
+
+function getSafehouseAccess(id){
+  if (!id || !state.safehouseAccess) return null;
+  const value = state.safehouseAccess[id];
+  if (!value || typeof value !== 'object') return value ?? null;
+  return cloneCleanObject(value);
+}
+
 function setRumorFlag(flag, value = true){
   if (!flag) return;
   if (!state.rumorFlags || typeof state.rumorFlags !== 'object'){
@@ -266,6 +337,10 @@ export {
   adjustMapVisibility,
   setPopulationHealth,
   adjustPopulationHealth,
+  setVillageMorale,
+  adjustVillageMorale,
+  setVillagerTrust,
+  adjustVillagerTrust,
   delayDarklordReinforcements,
   getNormalizedGuardStrength,
   getNormalizedGuardAlertness,
@@ -273,11 +348,17 @@ export {
   getGuardAlertnessMultiplier,
   getSuspicionFactor,
   getPopulationHealthFactor,
+  getVillageMorale,
+  getVillagerTrust,
   getMapVisibility,
   getReinforcementDelayFactor,
   setOutpostState,
   clearOutpostState,
   getOutpostState,
+  grantSafehouseAccess,
+  revokeSafehouseAccess,
+  hasSafehouseAccess,
+  getSafehouseAccess,
   setRumorFlag,
   clearRumorFlag
 };
