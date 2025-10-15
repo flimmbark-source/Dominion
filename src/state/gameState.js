@@ -83,7 +83,15 @@ const state = {
   damageNumbers: [],
   deathSequence: null,
   questCues: [],
-  questCueMemory: new Map()
+  questCueMemory: new Map(),
+  villageSuspicion: 12,
+  guardStrength: 40,
+  guardAlertness: 28,
+  mapVisibility: 0.38,
+  darklordReinforcementDelay: 0,
+  villagePopulationHealth: 0.9,
+  outpostStates: {},
+  rumorFlags: {}
 };
 
 export { state, mainVillage };

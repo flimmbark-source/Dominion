@@ -60,6 +60,7 @@ import {
   updateVillageTaskHints
 } from './systems/villageInteractions.js';
 import { initWarState, updateWar } from './systems/war.js';
+import { resetWorldState, updateWorldState } from './systems/worldState.js';
 import {
   initBarkeepMissions,
   isBarkeepDialogueActive,
@@ -78,6 +79,7 @@ setupInput();
 prepareVillageInstances();
 initHouses();
 generateWorld();
+resetWorldState();
 setupInitialNPCs();
 initWarState();
 initVillageInteractions();
@@ -277,6 +279,7 @@ function update(dt){
   if (state.mapMode === 'large') return;
 
   state.time += dt;
+  updateWorldState(dt);
   updateDamageNumbers();
   updateBarkeepMissions();
   updateTavernMissionSites(dt);

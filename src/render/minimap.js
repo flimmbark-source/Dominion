@@ -1,7 +1,7 @@
 import { ctx, W } from '../game/canvas.js';
 import { state } from '../state/gameState.js';
 import { VILLAGES } from '../data/world.js';
-import { TAU } from '../utils/math.js';
+import { TAU, clamp } from '../utils/math.js';
 
 const MINIMAP_SIZE = 140;
 const MINIMAP_MARGIN = 20;
@@ -37,7 +37,10 @@ function drawMiniMap(){
   const minimapX = W - MINIMAP_SIZE - MINIMAP_MARGIN;
   const minimapY = MINIMAP_MARGIN;
   const player = state.player;
-  const scale = MINIMAP_SIZE / (VIEW_RADIUS * 2);
+  const visibility = clamp(state.mapVisibility ?? 0.38, 0, 1);
+  const viewRadius = VIEW_RADIUS * clamp(0.6 + visibility * 0.8, 0.6, 1.4);
+  const entityRadius = ENTITY_RADIUS * clamp(0.7 + visibility * 0.6, 0.7, 1.4);
+  const scale = MINIMAP_SIZE / (viewRadius * 2);
 
   ctx.save();
 
@@ -93,7 +96,7 @@ function drawMiniMap(){
       const dx = poi.x - player.x;
       const dy = poi.y - player.y;
       const distSq = dx * dx + dy * dy;
-      if (distSq > VIEW_RADIUS * VIEW_RADIUS * 1.44) continue;
+      if (distSq > viewRadius * viewRadius * 1.44) continue;
       const poiX = minimapX + MINIMAP_SIZE / 2 + dx * scale;
       const poiY = minimapY + MINIMAP_SIZE / 2 + dy * scale;
       const color = MINIMAP_POI_COLORS[poi.type] || '#9fb3c8';
@@ -109,7 +112,7 @@ function drawMiniMap(){
   const nearbyNpcs = state.npcs.filter((npc) => {
     const dx = npc.x - player.x;
     const dy = npc.y - player.y;
-    return dx * dx + dy * dy <= ENTITY_RADIUS * ENTITY_RADIUS;
+    return dx * dx + dy * dy <= entityRadius * entityRadius;
   });
 
   ctx.fillStyle = '#f4ae5d';
@@ -130,6 +133,23 @@ function drawMiniMap(){
     ctx.strokeStyle = '#cfe8d4';
     ctx.lineWidth = 1.5;
     ctx.stroke();
+  }
+
+  const fogStrength = clamp(1 - visibility, 0, 1);
+  if (fogStrength > 0.05){
+    const innerRadius = (MINIMAP_SIZE / 2) * clamp(0.45 + visibility * 0.45, 0.45, 0.92);
+    const fogGradient = ctx.createRadialGradient(
+      minimapX + MINIMAP_SIZE / 2,
+      minimapY + MINIMAP_SIZE / 2,
+      innerRadius,
+      minimapX + MINIMAP_SIZE / 2,
+      minimapY + MINIMAP_SIZE / 2,
+      MINIMAP_SIZE / 2
+    );
+    fogGradient.addColorStop(0, 'rgba(12, 20, 30, 0)');
+    fogGradient.addColorStop(1, `rgba(6, 10, 16, ${0.78 * fogStrength})`);
+    ctx.fillStyle = fogGradient;
+    ctx.fillRect(minimapX, minimapY, MINIMAP_SIZE, MINIMAP_SIZE);
   }
 
   ctx.restore();

@@ -1,4 +1,5 @@
 import { state } from '../state/gameState.js';
+import { incrementVillageSuspicion, adjustPopulationHealth } from './worldState.js';
 
 const MAX_THREAT = 200;
 
@@ -16,6 +17,14 @@ function addThreat(amount){
   const previousStage = getStageForThreatValue(state.threat);
   state.threat = Math.max(0, Math.min(MAX_THREAT, state.threat + amount));
   const nextStage = getStageForThreatValue(state.threat);
+
+  if (amount > 0){
+    incrementVillageSuspicion(amount * 0.2);
+    adjustPopulationHealth(-Math.abs(amount) / 320);
+  } else if (amount < 0){
+    incrementVillageSuspicion(amount * 0.1);
+    adjustPopulationHealth(Math.abs(amount) / 360);
+  }
 
   if (nextStage !== previousStage){
     state.threatGainBlockedUntil = state.time + 15;
