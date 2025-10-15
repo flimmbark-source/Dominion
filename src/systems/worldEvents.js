@@ -1,12 +1,343 @@
 import { WORLD_EVENTS } from '../data/worldEvents.js';
+import { POINTS_OF_INTEREST } from '../data/pointsOfInterest.js';
 import { state } from '../state/gameState.js';
 import { toast } from '../ui/toast.js';
 import { clamp } from '../utils/math.js';
-import { registerQuestDefinition, unlockQuest, activateQuest, updateQuestData, completeQuest, adjustDarkMuster } from './questLog.js';
+import {
+  registerQuestDefinition,
+  unlockQuest,
+  activateQuest,
+  updateQuestData,
+  completeQuest,
+  adjustDarkMuster,
+  getQuestState
+} from './questLog.js';
 import { addThreat } from './threat.js';
 import { makeNPC, NPC_STATE, removeNPC } from '../npc/npcManager.js';
 
 const PHASE_DWELL_TIME = 1.1;
+
+const QUEST_TARGET_STATUS = {
+  PENDING: 'pending',
+  ACTIVE: 'active',
+  COMPLETED: 'completed'
+};
+
+const POI_LOOKUP = new Map(POINTS_OF_INTEREST.map(poi => [poi.id, poi]));
+
+function resolveTaskTargetId(def, phase, task){
+  if (!def || !task) return null;
+  if (task.propId) return task.propId;
+  if (task.poiId) return task.poiId;
+  return `${def.id}-${phase?.id || 'phase'}-${task.id}`;
+}
+
+function buildSpawnTargetId(def, phase){
+  if (!def || !phase?.spawn) return null;
+  return `${def.id}-${phase.id}-guards`;
+}
+
+function sanitizeObjective(text, fallback){
+  if (typeof text === 'string' && text.trim().length){
+    return text.trim();
+  }
+  return fallback;
+}
+
+function derivePoiObjective(poi){
+  if (!poi) return 'Resolve the site.';
+  if (poi.prompt){
+    return poi.prompt
+      .replace(/^Press E to\s*/i, '')
+      .replace(/\.$/, '')
+      .trim();
+  }
+  return `Resolve ${poi.label}`;
+}
+
+function createQuestTargetsForWorldEvent(def){
+  if (!def || !Array.isArray(def.phases)) return [];
+  const targets = [];
+  const seen = new Set();
+  const propLookup = new Map();
+
+  for (const phase of def.phases){
+    if (!Array.isArray(phase?.props)) continue;
+    for (const prop of phase.props){
+      if (!prop?.id) continue;
+      const center = prop.position || phase.focus || def.anchor || { x: 0, y: 0 };
+      propLookup.set(prop.id, {
+        x: center.x,
+        y: center.y,
+        radius: prop.radius ?? phase.radius ?? 100,
+        type: prop.type || 'structure'
+      });
+    }
+  }
+
+  def.phases.forEach(phase => {
+    if (!phase) return;
+    const phaseId = phase.id;
+    const phaseName = phase.name;
+
+    if (Array.isArray(phase.tasks)){
+      phase.tasks.forEach(task => {
+        if (!task) return;
+        const targetId = resolveTaskTargetId(def, phase, task);
+        if (!targetId || seen.has(targetId)) return;
+        const propInfo = task.propId ? propLookup.get(task.propId) : null;
+        const poiInfo = task.poiId ? POI_LOOKUP.get(task.poiId) : null;
+        const center = {
+          x: task.position?.x ?? propInfo?.x ?? poiInfo?.x ?? phase.focus?.x ?? def.anchor?.x ?? 0,
+          y: task.position?.y ?? propInfo?.y ?? poiInfo?.y ?? phase.focus?.y ?? def.anchor?.y ?? 0
+        };
+        const radius = task.radius ?? propInfo?.radius ?? poiInfo?.radius ?? phase.radius ?? 120;
+        const type = task.encounter ? 'enemy' : (task.poiId ? 'poi' : 'interactable');
+        const objective = sanitizeObjective(
+          task.description,
+          task.encounter ? `Disrupt the ${task.encounter.spawn?.type || 'guards'}.` : 'Resolve the task.'
+        );
+        const entry = {
+          id: targetId,
+          type,
+          phaseId,
+          phaseName,
+          objective,
+          position: [center.x, center.y],
+          radius,
+          status: QUEST_TARGET_STATUS.PENDING,
+          taskId: task.id ?? null,
+          poiId: task.poiId ?? null,
+          propId: task.propId ?? null
+        };
+        if (task.encounter?.spawn){
+          entry.spawnType = task.encounter.spawn.type || 'enemy';
+          entry.spawnCount = clamp(Math.floor(task.encounter.spawn.count ?? 1), 1, 8);
+        }
+        targets.push(entry);
+        seen.add(targetId);
+      });
+    }
+
+    if (phase.poiId && !seen.has(phase.poiId)){
+      const poi = POI_LOOKUP.get(phase.poiId);
+      if (poi){
+        targets.push({
+          id: phase.poiId,
+          type: 'poi',
+          phaseId,
+          phaseName,
+          objective: derivePoiObjective(poi),
+          position: [poi.x, poi.y],
+          radius: poi.radius ?? phase.radius ?? 140,
+          status: QUEST_TARGET_STATUS.PENDING,
+          poiId: phase.poiId
+        });
+        seen.add(phase.poiId);
+      }
+    }
+
+    if (Array.isArray(phase.props)){
+      phase.props.forEach(prop => {
+        if (!prop?.id || seen.has(prop.id)) return;
+        const descriptor = propLookup.get(prop.id);
+        const center = descriptor ? { x: descriptor.x, y: descriptor.y } : (prop.position || phase.focus || def.anchor || { x: 0, y: 0 });
+        const label = (prop.type || 'structure').replace(/-/g, ' ');
+        targets.push({
+          id: prop.id,
+          type: 'structure',
+          phaseId,
+          phaseName,
+          objective: `Inspect the ${label}`,
+          position: [center.x, center.y],
+          radius: descriptor?.radius ?? prop.radius ?? phase.radius ?? 100,
+          status: QUEST_TARGET_STATUS.PENDING,
+          propId: prop.id
+        });
+        seen.add(prop.id);
+      });
+    }
+
+    if (phase.spawn){
+      const spawnId = buildSpawnTargetId(def, phase);
+      if (spawnId && !seen.has(spawnId)){
+        const center = phase.focus || def.anchor || { x: 0, y: 0 };
+        targets.push({
+          id: spawnId,
+          type: 'enemy',
+          phaseId,
+          phaseName,
+          objective: `Disrupt the ${phase.spawn.type || 'guards'}`,
+          position: [center.x, center.y],
+          radius: phase.spawn.patrolRadius ?? phase.radius ?? 140,
+          status: QUEST_TARGET_STATUS.PENDING,
+          spawnType: phase.spawn.type || 'enemy',
+          spawnCount: clamp(Math.floor(phase.spawn.count ?? 1), 1, 8)
+        });
+        seen.add(spawnId);
+      }
+    }
+  });
+
+  return targets.map(target => {
+    const clone = { ...target };
+    if (Array.isArray(target.position)){
+      clone.position = [...target.position];
+    }
+    return clone;
+  });
+}
+
+function cloneQuestTarget(target){
+  if (!target) return target;
+  const clone = { ...target };
+  if (Array.isArray(target.position)){
+    clone.position = [...target.position];
+  }
+  return clone;
+}
+
+function shallowEqualTarget(a, b){
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys){
+    const va = a[key];
+    const vb = b[key];
+    if (Array.isArray(va) || Array.isArray(vb)){
+      if (!Array.isArray(va) || !Array.isArray(vb)) return false;
+      if (va.length !== vb.length) return false;
+      for (let i = 0; i < va.length; i++){
+        if (va[i] !== vb[i]) return false;
+      }
+      continue;
+    }
+    if (typeof va === 'object' || typeof vb === 'object'){
+      if (va === vb) continue;
+      return false;
+    }
+    if (va !== vb) return false;
+  }
+  return true;
+}
+
+function targetsChanged(prev, next){
+  if (prev.length !== next.length) return true;
+  for (let i = 0; i < prev.length; i++){
+    if (!shallowEqualTarget(prev[i], next[i])) return true;
+  }
+  return false;
+}
+
+function mutateQuestTargets(questId, mutator){
+  if (!questId || typeof mutator !== 'function') return;
+  const quest = getQuestState(questId);
+  if (!quest) return;
+  const prevTargets = Array.isArray(quest.data?.targets) ? quest.data.targets : [];
+  const working = prevTargets.map(cloneQuestTarget);
+  const nextTargets = mutator(working) || working;
+  if (!Array.isArray(nextTargets)) return;
+  if (!targetsChanged(prevTargets, nextTargets)) return;
+  updateQuestData(questId, { targets: nextTargets });
+}
+
+function applyStatusTransition(target, status){
+  if (!target) return target;
+  const finalStatus = target.status === QUEST_TARGET_STATUS.COMPLETED
+    ? QUEST_TARGET_STATUS.COMPLETED
+    : status;
+  if (finalStatus === target.status) return target;
+  return { ...target, status: finalStatus };
+}
+
+function markQuestTargetStatus(questId, predicate, status){
+  if (!questId || typeof predicate !== 'function' || !status) return;
+  mutateQuestTargets(questId, targets => {
+    let changed = false;
+    const next = targets.map(target => {
+      if (!predicate(target)) return target;
+      const updated = applyStatusTransition(target, status);
+      if (updated !== target) changed = true;
+      return updated;
+    });
+    return changed ? next : targets;
+  });
+}
+
+function markQuestTargetStatusById(questId, targetId, status){
+  if (!questId || !targetId) return;
+  markQuestTargetStatus(questId, target => target.id === targetId, status);
+}
+
+function markQuestTargetsByPhase(eventState, phase, status){
+  if (!eventState?.questId || !phase?.id) return;
+  markQuestTargetStatus(eventState.questId, target => target.phaseId === phase.id, status);
+}
+
+function syncQuestTargetsWithQuestStage(eventState){
+  if (!eventState?.questId) return;
+  const quest = getQuestState(eventState.questId);
+  if (!quest) return;
+  const phases = eventState.def?.phases || [];
+  const currentStage = quest.data?.stage || quest.stage;
+  const currentIndex = phases.findIndex(phase => phase.id === currentStage);
+  const questCompleted = quest.status === 'completed' || eventState.completed;
+  mutateQuestTargets(eventState.questId, targets => {
+    let changed = false;
+    const next = targets.map(target => {
+      const phaseIndex = phases.findIndex(phase => phase.id === target.phaseId);
+      let desiredStatus = target.status;
+      if (questCompleted){
+        desiredStatus = QUEST_TARGET_STATUS.COMPLETED;
+      } else if (phaseIndex < 0){
+        desiredStatus = target.status;
+      } else if (currentIndex < 0){
+        desiredStatus = target.status === QUEST_TARGET_STATUS.COMPLETED
+          ? QUEST_TARGET_STATUS.COMPLETED
+          : QUEST_TARGET_STATUS.PENDING;
+      } else if (phaseIndex < currentIndex){
+        desiredStatus = QUEST_TARGET_STATUS.COMPLETED;
+      } else if (phaseIndex === currentIndex){
+        desiredStatus = target.status === QUEST_TARGET_STATUS.COMPLETED
+          ? QUEST_TARGET_STATUS.COMPLETED
+          : QUEST_TARGET_STATUS.ACTIVE;
+      } else if (target.status === QUEST_TARGET_STATUS.COMPLETED){
+        desiredStatus = QUEST_TARGET_STATUS.COMPLETED;
+      } else {
+        desiredStatus = QUEST_TARGET_STATUS.PENDING;
+      }
+      const updated = applyStatusTransition(target, desiredStatus);
+      if (updated !== target){
+        changed = true;
+        return updated;
+      }
+      return target;
+    });
+    return changed ? next : targets;
+  });
+}
+
+function markTaskTargetComplete(eventState, phase, task){
+  if (!eventState?.questId || !task) return;
+  const targetId = resolveTaskTargetId(eventState.def, phase, task);
+  if (!targetId) return;
+  markQuestTargetStatusById(eventState.questId, targetId, QUEST_TARGET_STATUS.COMPLETED);
+}
+
+function updateSpawnTargetStatus(eventState, phase){
+  if (!eventState?.questId || !phase?.spawn) return;
+  const spawnId = buildSpawnTargetId(eventState.def, phase);
+  if (!spawnId) return;
+  const spawned = eventState.spawnedPhaseIds instanceof Set && eventState.spawnedPhaseIds.has(phase.id);
+  if (!spawned) return;
+  const guards = Array.isArray(eventState.guards) ? eventState.guards : [];
+  const alive = guards.some(guard => guard && state.npcs.includes(guard) && guard.health > 0);
+  markQuestTargetStatusById(
+    eventState.questId,
+    spawnId,
+    alive ? QUEST_TARGET_STATUS.ACTIVE : QUEST_TARGET_STATUS.COMPLETED
+  );
+}
 
 function ensurePhaseState(eventState, phase){
   if (!eventState.phaseStates) eventState.phaseStates = new Map();
@@ -40,6 +371,16 @@ function registerWorldEventQuests(){
       acc[phase.id] = phase.name;
       return acc;
     }, {});
+    const questTargets = createQuestTargetsForWorldEvent(def);
+    const narrativeHint = {
+      'fae-witness': 'A fairy\'s trail flickers beyond Moonfen—follow the shimmer to its source.',
+      'mire-whispers': 'The swamp has gone silent near an old shrine; something is strangling it.',
+      'ember-watch': 'Ash on the wind means raiders testing the road. Track their embers to the ambush.'
+    }[def.id] || {
+      'fae-witness': 'Villagers mentioned turquoise motes drifting above the eastern grove at dusk.',
+      'mire-whispers': 'Someone swore the swamp went silent near an old shrine—worth checking after nightfall.',
+      'ember-watch': 'Ash is blowing from the northern track; raiders don\'t hide their drums forever.'
+    }[def.id] || '';
 
     registerQuestDefinition({
       id: def.questId,
@@ -65,10 +406,11 @@ function registerWorldEventQuests(){
         'mire-whispers': 'Lantern bearers mutter that the swamp breathes wrong east of Moonfen.',
         'ember-watch': 'Merchants talk about ash drifting across the northern road—keep your blade ready.'
       }[def.id] || '',
+      narrativeHint,
       stages: ['investigation', 'exploration', 'challenge', 'resolution'],
       initialStatus: 'hidden',
       initialStage: 'investigation',
-      initialData: { stage: 'investigation' },
+      initialData: { stage: 'investigation', targets: questTargets.map(cloneQuestTarget) },
       getProgressText(quest){
         const stage = quest.data?.stage || 'investigation';
         if (stage === 'completed') return 'The event has been resolved.';
@@ -98,6 +440,10 @@ function registerWorldEventQuests(){
         return null;
       }
     });
+    const quest = getQuestState(def.questId);
+    if (quest && (!Array.isArray(quest.data?.targets) || !quest.data.targets.length)){
+      updateQuestData(def.questId, { targets: questTargets.map(cloneQuestTarget) });
+    }
   }
 }
 
@@ -116,6 +462,7 @@ function initWorldEvents(){
     cycle: Math.random() * Math.PI * 2,
     completed: false
   }));
+  state.worldEvents.forEach(eventState => syncQuestTargetsWithQuestStage(eventState));
 }
 
 function getWorldEventState(eventId){
@@ -144,6 +491,7 @@ function discoverEvent(eventState, reason = 'sight'){
     }
     activateQuest(questId, { merge: { stage: eventState.def.phases[0]?.id || 'investigation' } });
     updateQuestData(questId, { stage: eventState.def.phases[0]?.id || 'investigation' });
+    syncQuestTargetsWithQuestStage(eventState);
   }
 }
 
@@ -155,6 +503,7 @@ function advanceEventPhase(eventState, options = {}){
   if (phaseState){
     phaseState.playerInside = false;
   }
+  markQuestTargetsByPhase(eventState, currentPhase, QUEST_TARGET_STATUS.COMPLETED);
   eventState.phaseIndex = Math.min(eventState.phaseIndex + 1, eventState.def.phases.length);
   const nextPhase = eventState.def.phases[eventState.phaseIndex];
   const questId = eventState.questId;
@@ -162,12 +511,14 @@ function advanceEventPhase(eventState, options = {}){
     eventState.completed = true;
     if (questId){
       updateQuestData(questId, { stage: 'resolution' });
+      syncQuestTargetsWithQuestStage(eventState);
     }
     return;
   }
   const phaseId = nextPhase.id;
   if (questId){
     updateQuestData(questId, { stage: phaseId });
+    syncQuestTargetsWithQuestStage(eventState);
   }
 }
 
@@ -207,6 +558,7 @@ function completeWorldEvent(eventId, options = {}){
     if (result?.changed && result.message){
       toast(result.message, 2.8);
     }
+    syncQuestTargetsWithQuestStage(eventState);
   }
   return { changed: true };
 }
@@ -369,6 +721,7 @@ function updatePhaseTasks(eventState, phase, phaseState){
       if (!tracker.encounterRefs.length){
         tracker.encounterActive = false;
         tracker.completed = true;
+        markTaskTargetComplete(eventState, phase, task);
         if (task.propId){
           resolveWorldEventProp(task.propId);
         }
@@ -389,6 +742,7 @@ function updatePhaseTasks(eventState, phase, phaseState){
           startTaskEncounter(eventState, phase, task, tracker);
         } else {
           tracker.completed = true;
+          markTaskTargetComplete(eventState, phase, task);
           if (task.propId){
             resolveWorldEventProp(task.propId);
           }
@@ -401,6 +755,7 @@ function updatePhaseTasks(eventState, phase, phaseState){
       const dist = Math.hypot(player.x - task.position.x, player.y - task.position.y);
       if (dist <= (task.radius ?? 80)){
         tracker.completed = true;
+        markTaskTargetComplete(eventState, phase, task);
         if (task.propId){
           resolveWorldEventProp(task.propId);
         }
@@ -433,6 +788,7 @@ function completeEventTask(eventId, taskId){
   if (task?.propId){
     resolveWorldEventProp(task.propId);
   }
+  markTaskTargetComplete(eventState, phase, task);
   const allDone = phaseState.subtasks.every(item => item.completed);
   if (allDone){
     const current = getCurrentPhase(eventState);
@@ -466,6 +822,10 @@ function resolveWorldEventProp(propId){
   if (!prop) return false;
   if (prop.resolved) return false;
   prop.resolved = true;
+  const eventState = getWorldEventState(prop.eventId);
+  if (eventState?.questId){
+    markQuestTargetStatusById(eventState.questId, prop.id, QUEST_TARGET_STATUS.COMPLETED);
+  }
   return true;
 }
 
@@ -496,6 +856,7 @@ function updateWorldEvents(dt){
     }
     updatePhaseTasks(eventState, phase, phaseState);
     ensurePhaseSpawn(eventState, phase);
+    updateSpawnTargetStatus(eventState, phase);
     ensurePhaseProps(eventState, phase);
   }
 }
