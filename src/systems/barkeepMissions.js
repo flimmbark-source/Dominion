@@ -77,6 +77,33 @@ const missionDefinitions = [
     }
   }),
   registerQuestDefinition({
+    id: 'mission_free_captives',
+    source: 'tavern',
+    initialStatus: 'available',
+    title: 'Free the Captive Villagers',
+    description: 'Slip into a Dark outpost, mark the cages, and free the prisoners without sounding the alarm.',
+    detail: 'Scout the cage yard to map patrols, then unlock three cages in the pens before noise spikes. Keep it silent or the guards will panic.',
+    intelHint: 'Villagers murmur about cages packed tight in a Dark outpost. Shadow the pens, wait for quiet, and spring three locks.',
+    getProgressText(){
+      return getTavernMissionProgressText('mission_free_captives');
+    },
+    checkReady(){
+      return isTavernMissionReady('mission_free_captives');
+    },
+    onAccept(missionState){
+      activateTavernMissionSite('mission_free_captives');
+      missionState.data = { ...(missionState.data || {}), acceptedAt: state.time, cagesFreed: 0 };
+      return 'He leans close. "Their pens overflow. Slip in, spring three cages, and keep it ghost-quiet."';
+    },
+    onComplete(){
+      completeTavernMissionSite('mission_free_captives');
+      const payout = 24;
+      state.player.gold += payout;
+      toast(`Payment: +${payout} gold`, 2.6);
+      return '"You pulled them out without a roar," he grins. "Villagers trust you now—and a safehouse door just opened."';
+    }
+  }),
+  registerQuestDefinition({
     id: 'silence-the-scout',
     source: 'tavern',
     initialStatus: 'available',
