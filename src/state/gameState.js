@@ -65,6 +65,7 @@ const state = {
   tavernPlayerInside: false,
   shopOwned: new Set(),
   mapMode: 'minimal',
+  questLogOpen: false,
   villageTasks: [],
   pointsOfInterest: [],
   worldEventProps: [],
