@@ -23,17 +23,28 @@ const WORLD_EVENTS = [
         name: 'Bargain with the fairy',
         focus: { x: 5920, y: 5320 },
         radius: 220,
-        prompt: 'Press E to offer 6 gold to the anxious fairy.',
         cues: {
           motes: { count: 12, orbitRadius: 120, color: 'rgba(168, 255, 214, 0.85)', drift: 20 },
           barkMarks: { count: 6, arcRadius: 140, color: 'rgba(164, 235, 196, 0.8)' },
           footprints: { count: 7, radius: 110, wobble: 36 }
         },
-        interaction: {
-          costGold: 6,
-          clue: '"Runestones hum by a twisted oak guarded by unseen eyes..."',
-          successToast: 'The fairy accepts your bribe and sketches a path deeper in the grove.'
-        }
+        props: [
+          {
+            id: 'prop-fae-fairy-roost',
+            type: 'fae-bargain-circle',
+            position: { x: 5920, y: 5320 },
+            radius: 100,
+            orientation: -0.28
+          }
+        ],
+        tasks: [
+          {
+            id: 'bribe-fairy',
+            description: 'Offer 6 gold to the anxious fairy to earn her map of the grove.',
+            poiId: 'poi-fae-fairy',
+            propId: 'prop-fae-fairy-roost'
+          }
+        ]
       },
       {
         id: 'challenge',
@@ -50,6 +61,15 @@ const WORLD_EVENTS = [
           count: 2,
           patrolRadius: 110
         },
+        props: [
+          {
+            id: 'prop-fae-runestones',
+            type: 'fae-runestone-cluster',
+            position: { x: 6080, y: 5480 },
+            radius: 120,
+            orientation: 0.32
+          }
+        ],
         poiId: 'poi-runestone-cache'
       }
     ]
@@ -81,12 +101,30 @@ const WORLD_EVENTS = [
           witheredTrail: { segments: 6, spread: 90 },
           ghostSilhouettes: { count: 4, radius: 150, drift: 18 }
         },
+        props: [
+          {
+            id: 'prop-mire-moonblossom',
+            type: 'moonblossom-patch',
+            position: { x: 3480, y: 6400 },
+            radius: 110,
+            orientation: 0.12
+          },
+          {
+            id: 'prop-mire-bog-idol',
+            type: 'bog-idol-cache',
+            position: { x: 2980, y: 6580 },
+            radius: 105,
+            orientation: -0.18
+          }
+        ],
         tasks: [
           {
             id: 'moonblossom',
             description: 'Harvest moonblossom petals from a luminous patch.',
             position: { x: 3480, y: 6400 },
             radius: 120,
+            poiId: 'poi-mire-moonblossom',
+            propId: 'prop-mire-moonblossom',
             cues: {
               herbGlow: { color: '#8fffe6', radius: 80 },
               pollen: { count: 14, radius: 90 }
@@ -97,6 +135,8 @@ const WORLD_EVENTS = [
             description: 'Recover a bog idol from the hag den.',
             position: { x: 2980, y: 6580 },
             radius: 120,
+            poiId: 'poi-mire-bog-idol',
+            propId: 'prop-mire-bog-idol',
             cues: {
               idolLight: { color: '#9cb4ff', radius: 70 },
               clawMarks: { count: 5, arcRadius: 90 }
@@ -114,6 +154,15 @@ const WORLD_EVENTS = [
           shrineChains: { count: 3, radius: 110 },
           swampGlow: { color: '#8be6c2', pulse: 3.8, radius: 150 }
         },
+        props: [
+          {
+            id: 'prop-mire-shrine-core',
+            type: 'cursed-shrine-core',
+            position: { x: 3200, y: 6200 },
+            radius: 120,
+            orientation: 0
+          }
+        ],
         poiId: 'poi-cursed-shrine-core'
       }
     ]
@@ -145,11 +194,28 @@ const WORLD_EVENTS = [
           wagonRuts: { length: 200, width: 36 },
           crateShards: { count: 8, radius: 140 }
         },
-        prompt: 'Press E to study the overturned supply trail.',
-        interaction: {
-          clue: 'The ruts veer northwest toward hushed drums—an ambush is staged ahead.',
-          successToast: 'You mark the raider trail and ready yourself for the ambush.'
-        }
+        props: [
+          {
+            id: 'prop-ember-trail-cart',
+            type: 'overturned-cart',
+            position: { x: 4480, y: 3320 },
+            radius: 120,
+            orientation: -0.42
+          }
+        ],
+        tasks: [
+          {
+            id: 'trail-ledger',
+            description: 'Study the overturned supply cart for signs of the ambush.',
+            poiId: 'poi-ember-trail',
+            propId: 'prop-ember-trail-cart',
+            encounter: {
+              spawn: { type: 'raider', count: 2, radius: 140, behavior: 'ambush' },
+              toast: 'Dark raider outriders burst from the trees!',
+              completionToast: 'The outriders fall; you piece together their ambush pattern.'
+            }
+          }
+        ]
       },
       {
         id: 'challenge',
@@ -166,6 +232,15 @@ const WORLD_EVENTS = [
           count: 3,
           patrolRadius: 140
         },
+        props: [
+          {
+            id: 'prop-ember-supply-cache',
+            type: 'raider-supply-cache',
+            position: { x: 4300, y: 3120 },
+            radius: 120,
+            orientation: 0.18
+          }
+        ],
         poiId: 'poi-ember-ambush'
       }
     ]

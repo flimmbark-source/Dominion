@@ -17,7 +17,15 @@ function ensurePhaseState(eventState, phase){
       dwellTimer: 0,
       playerInside: false,
       subtasks: Array.isArray(phase.tasks)
-        ? phase.tasks.map(task => ({ id: task.id, completed: false }))
+        ? phase.tasks.map(task => ({
+          id: task.id,
+          completed: false,
+          triggered: false,
+          encounterActive: false,
+          encounterObjective: null,
+          encounterRefs: [],
+          completionToastShown: false
+        }))
         : [],
       spawned: false
     };
@@ -95,6 +103,7 @@ function registerWorldEventQuests(){
 
 function initWorldEvents(){
   registerWorldEventQuests();
+  state.worldEventProps = [];
   state.worldEvents = WORLD_EVENTS.map(def => ({
     id: def.id,
     questId: def.questId,
@@ -103,6 +112,7 @@ function initWorldEvents(){
     discovered: false,
     phaseStates: new Map(),
     spawnedPhaseIds: new Set(),
+    encounterRefs: new Map(),
     cycle: Math.random() * Math.PI * 2,
     completed: false
   }));
@@ -116,6 +126,11 @@ function getCurrentPhase(eventState){
   if (!eventState) return null;
   if (eventState.completed) return null;
   return eventState.def.phases[eventState.phaseIndex] || null;
+}
+
+function findPhaseForTask(eventState, taskId){
+  if (!eventState || !taskId) return null;
+  return eventState.def.phases.find(phase => Array.isArray(phase.tasks) && phase.tasks.some(task => task.id === taskId)) || null;
 }
 
 function discoverEvent(eventState, reason = 'sight'){
@@ -169,6 +184,23 @@ function completeWorldEvent(eventId, options = {}){
     }
     eventState.guards.length = 0;
   }
+  if (eventState.encounterRefs){
+    for (const refs of eventState.encounterRefs.values()){
+      for (const npc of refs){
+        if (npc && state.npcs.includes(npc)){
+          removeNPC(npc);
+        }
+      }
+    }
+    eventState.encounterRefs.clear();
+  }
+  if (Array.isArray(state.worldEventProps)){
+    for (const prop of state.worldEventProps){
+      if (prop.eventId === eventState.id){
+        prop.resolved = true;
+      }
+    }
+  }
   const questId = eventState.questId;
   if (questId){
     const result = completeQuest(questId, { merge: { stage: 'completed', completedAt: state.time } });
@@ -217,6 +249,98 @@ function ensurePhaseSpawn(eventState, phase){
   eventState.guards.push(...guards);
 }
 
+function ensurePhaseProps(eventState, phase){
+  if (!phase || !Array.isArray(phase.props) || !phase.props.length) return;
+  if (!Array.isArray(state.worldEventProps)) state.worldEventProps = [];
+  for (const prop of phase.props){
+    if (!prop?.id) continue;
+    let entry = state.worldEventProps.find(item => item.id === prop.id);
+    const position = prop.position || phase.focus || eventState?.def?.anchor || { x: 0, y: 0 };
+    if (!entry){
+      entry = {
+        id: prop.id,
+        type: prop.type || 'structure',
+        x: position.x,
+        y: position.y,
+        radius: prop.radius ?? phase.radius ?? 80,
+        eventId: eventState.id,
+        phaseId: phase.id,
+        taskId: prop.taskId || null,
+        orientation: prop.orientation ?? 0,
+        scale: prop.scale ?? 1,
+        resolved: false,
+        meta: prop.meta ? { ...prop.meta } : {}
+      };
+      state.worldEventProps.push(entry);
+    } else {
+      entry.eventId = eventState.id;
+      entry.phaseId = phase.id;
+      entry.taskId = entry.taskId || prop.taskId || null;
+      entry.meta = prop.meta ? { ...prop.meta } : entry.meta;
+      if (typeof prop.orientation === 'number') entry.orientation = prop.orientation;
+      if (typeof prop.scale === 'number') entry.scale = prop.scale;
+      entry.x = position.x;
+      entry.y = position.y;
+      entry.radius = prop.radius ?? entry.radius;
+    }
+  }
+}
+
+function resolveEncounterBehavior(behavior){
+  if (behavior === 'ambush' || behavior === 'aggressive') return NPC_STATE.ALERT;
+  if (behavior === 'suspicious') return NPC_STATE.SUSPICIOUS;
+  return NPC_STATE.PATROL;
+}
+
+function spawnTaskEncounter(eventState, phase, task){
+  if (!task?.encounter?.spawn) return [];
+  const spawn = task.encounter.spawn;
+  const center = task.encounter.center || task.position || phaseCenter(phase, eventState);
+  const count = clamp(Math.floor(spawn.count ?? 1), 1, 6);
+  const radius = spawn.radius ?? 120;
+  const behavior = resolveEncounterBehavior(spawn.behavior);
+  const refs = [];
+  for (let i = 0; i < count; i++){
+    const angle = (i / count) * Math.PI * 2;
+    const px = center.x + Math.cos(angle) * radius;
+    const py = center.y + Math.sin(angle) * radius;
+    const npc = makeNPC(spawn.type || 'raider', px, py, null, {
+      behaviorState: behavior,
+      role: 'event-encounter',
+      holdPosition: spawn.behavior === 'stationary',
+      eventId: eventState.id
+    });
+    if (behavior === NPC_STATE.ALERT){
+      npc.holdPosition = false;
+    }
+    npc.assignedTaskId = task.id;
+    state.npcs.push(npc);
+    refs.push(npc);
+  }
+  if (!eventState.encounterRefs){
+    eventState.encounterRefs = new Map();
+  }
+  eventState.encounterRefs.set(task.id, refs);
+  return refs;
+}
+
+function getPhaseTask(eventState, phase, taskId){
+  if (!phase || !Array.isArray(phase.tasks)) return null;
+  return phase.tasks.find(task => task.id === taskId) || null;
+}
+
+function startTaskEncounter(eventState, phase, task, tracker){
+  if (!task?.encounter || !tracker || tracker.triggered) return false;
+  tracker.triggered = true;
+  tracker.encounterObjective = task.encounter.objective || 'defeat-all';
+  if (task.encounter.toast){
+    toast(task.encounter.toast, 2.6);
+  }
+  tracker.encounterRefs = spawnTaskEncounter(eventState, phase, task);
+  tracker.encounterActive = tracker.encounterRefs.length > 0;
+  return tracker.encounterActive;
+}
+
 function isWorldEventPhaseActive(eventId, phaseId){
   const eventState = getWorldEventState(eventId);
   if (!eventState) return false;
@@ -239,19 +363,110 @@ function updatePhaseTasks(eventState, phase, phaseState){
   const player = state.player;
   for (const task of phase.tasks){
     const tracker = phaseState.subtasks?.find(item => item.id === task.id);
-    if (!tracker || tracker.completed) continue;
-    const dist = Math.hypot(player.x - task.position.x, player.y - task.position.y);
-    if (dist <= (task.radius ?? 80)){
-      tracker.completed = true;
-      toast(task.description, 2.4);
+    if (!tracker) continue;
+    if (tracker.encounterActive){
+      tracker.encounterRefs = tracker.encounterRefs.filter(npc => npc && state.npcs.includes(npc) && npc.health > 0);
+      if (!tracker.encounterRefs.length){
+        tracker.encounterActive = false;
+        tracker.completed = true;
+        if (task.propId){
+          resolveWorldEventProp(task.propId);
+        }
+        if (task.encounter?.completionToast && !tracker.completionToastShown){
+          toast(task.encounter.completionToast, 2.6);
+          tracker.completionToastShown = true;
+        }
+        if (eventState.encounterRefs){
+          eventState.encounterRefs.delete(task.id);
+        }
+      }
+    }
+    if (tracker.completed) continue;
+    if (task.poiId){
+      const poi = state.pointsOfInterest?.find(item => item.id === task.poiId);
+      if (poi?.resolved){
+        if (task.encounter){
+          startTaskEncounter(eventState, phase, task, tracker);
+        } else {
+          tracker.completed = true;
+          if (task.propId){
+            resolveWorldEventProp(task.propId);
+          }
+        }
+      }
+      continue;
+    }
+    if (task.autoComplete === false) continue;
+    if (task.position){
+      const dist = Math.hypot(player.x - task.position.x, player.y - task.position.y);
+      if (dist <= (task.radius ?? 80)){
+        tracker.completed = true;
+        if (task.propId){
+          resolveWorldEventProp(task.propId);
+        }
+        toast(task.description, 2.4);
+      }
     }
   }
   if (phaseState.subtasks && phaseState.subtasks.length){
     const allDone = phaseState.subtasks.every(item => item.completed);
-    if (allDone){
+    const current = getCurrentPhase(eventState);
+    if (allDone && current && current.id === phase.id){
       advanceEventPhase(eventState, { reason: 'tasks-complete' });
     }
   }
+}
+
+function completeEventTask(eventId, taskId){
+  if (!eventId || !taskId) return false;
+  const eventState = getWorldEventState(eventId);
+  if (!eventState) return false;
+  const phase = findPhaseForTask(eventState, taskId);
+  if (!phase) return false;
+  const phaseState = ensurePhaseState(eventState, phase);
+  if (!phaseState?.subtasks?.length) return false;
+  const tracker = phaseState.subtasks.find(item => item.id === taskId);
+  if (!tracker || tracker.completed) return false;
+  if (tracker.encounterActive) return false;
+  const task = getPhaseTask(eventState, phase, taskId);
+  tracker.completed = true;
+  if (task?.propId){
+    resolveWorldEventProp(task.propId);
+  }
+  const allDone = phaseState.subtasks.every(item => item.completed);
+  if (allDone){
+    const current = getCurrentPhase(eventState);
+    if (current && current.id === phase.id){
+      advanceEventPhase(eventState, { reason: 'task-complete' });
+    }
+  }
+  return true;
+}
+
+function triggerEventTaskEncounter(eventId, taskId){
+  if (!eventId || !taskId) return false;
+  const eventState = getWorldEventState(eventId);
+  if (!eventState) return false;
+  const phase = findPhaseForTask(eventState, taskId);
+  if (!phase) return false;
+  const current = getCurrentPhase(eventState);
+  if (!current || current.id !== phase.id) return false;
+  const phaseState = ensurePhaseState(eventState, phase);
+  if (!phaseState?.subtasks?.length) return false;
+  const tracker = phaseState.subtasks.find(item => item.id === taskId);
+  if (!tracker || tracker.completed) return false;
+  const task = getPhaseTask(eventState, phase, taskId);
+  return startTaskEncounter(eventState, phase, task, tracker);
+}
+
+function resolveWorldEventProp(propId){
+  if (!propId) return false;
+  if (!Array.isArray(state.worldEventProps)) return false;
+  const prop = state.worldEventProps.find(item => item.id === propId);
+  if (!prop) return false;
+  if (prop.resolved) return false;
+  prop.resolved = true;
+  return true;
 }
 
 function updateWorldEvents(dt){
@@ -281,6 +496,7 @@ function updateWorldEvents(dt){
     }
     updatePhaseTasks(eventState, phase, phaseState);
     ensurePhaseSpawn(eventState, phase);
+    ensurePhaseProps(eventState, phase);
   }
 }
 
@@ -341,5 +557,8 @@ export {
   isWorldEventPhaseActive,
   hasWorldEventCompletedPhase,
   completeWorldEvent,
-  canResolveEventPoi
+  canResolveEventPoi,
+  completeEventTask,
+  triggerEventTaskEncounter,
+  resolveWorldEventProp
 };

@@ -14,14 +14,21 @@ import {
 } from './questLog.js';
 import {
   canResolveEventPoi,
+  completeEventTask,
   completeWorldEvent,
   getWorldEventState,
-  hasWorldEventCompletedPhase
+  hasWorldEventCompletedPhase,
+  triggerEventTaskEncounter,
+  resolveWorldEventProp
 } from './worldEvents.js';
 
 const POI_QUEST_BY_TYPE = {
   'cursed-shrine-core': 'world-mire-whispers',
+  'fae-fairy': 'world-fae-witness',
   'runestone-cache': 'world-fae-witness',
+  'mire-moonblossom': 'world-mire-whispers',
+  'mire-bog-idol': 'world-mire-whispers',
+  'ember-trail': 'world-ember-watch',
   'ember-ambush': 'world-ember-watch'
 };
 
@@ -87,6 +94,11 @@ function revealQuestForPoi(poi, reason = 'exploration', { silent = false } = {})
     toast(result.message, 2.6);
   }
   return result;
+}
+
+function resolveLinkedProp(poi){
+  if (!poi?.propId) return;
+  resolveWorldEventProp(poi.propId);
 }
 
 function giveRandomContraband(){
@@ -157,7 +169,51 @@ function interactWithPointOfInterest(poi){
     toast('Moonblossom incense clears the ward (-22 detection, +18 HP, stealth boon).', 3.6);
     poi.resolved = true;
     poi.visibleOnMap = true;
+    resolveLinkedProp(poi);
     completeWorldEvent(poi.eventId);
+    return true;
+  }
+
+  if (poi.type === 'fae-fairy'){
+    if (!canResolveEventPoi(poi)){
+      toast('The shimmer has not settled—track the motes deeper first.', 2.4);
+      return false;
+    }
+    const cost = 6;
+    if (player.gold < cost){
+      toast('You need 6 gold to bribe the anxious fairy.', 2.4);
+      return false;
+    }
+    player.gold -= cost;
+    toast('"Runestones hum by a twisted oak guarded by unseen eyes..."', 3.6);
+    toast('The fairy accepts your bribe and sketches a path deeper in the grove.', 3);
+    poi.resolved = true;
+    poi.visibleOnMap = true;
+    completeEventTask(poi.eventId, 'bribe-fairy');
+    return true;
+  }
+
+  if (poi.type === 'mire-moonblossom'){
+    if (!canResolveEventPoi(poi)){
+      toast('The swamp still whispers for proof—follow the hush.', 2.4);
+      return false;
+    }
+    toast('You gather luminous moonblossom petals for the rite.', 2.6);
+    poi.resolved = true;
+    poi.visibleOnMap = true;
+    completeEventTask(poi.eventId, 'moonblossom');
+    return true;
+  }
+
+  if (poi.type === 'mire-bog-idol'){
+    if (!canResolveEventPoi(poi)){
+      toast('The hag den remains hidden—trace the whispers first.', 2.4);
+      return false;
+    }
+    toast('You pry the bog idol from the muck, its wards still pulsing.', 2.8);
+    poi.resolved = true;
+    poi.visibleOnMap = true;
+    completeEventTask(poi.eventId, 'bog-idol');
     return true;
   }
 
@@ -182,7 +238,23 @@ function interactWithPointOfInterest(poi){
     toast('You slip rune shards into your pouch (+10 gold, detection +14, threat +12).', 3.2);
     poi.resolved = true;
     poi.visibleOnMap = true;
+    resolveLinkedProp(poi);
     completeWorldEvent(poi.eventId);
+    return true;
+  }
+
+  if (poi.type === 'ember-trail'){
+    if (!canResolveEventPoi(poi)){
+      toast('You need clearer signs before studying the trail.', 2.2);
+      return false;
+    }
+    toast('The ruts veer northwest toward hushed drums—an ambush is staged ahead.', 3.4);
+    poi.resolved = true;
+    poi.visibleOnMap = true;
+    const activated = triggerEventTaskEncounter(poi.eventId, 'trail-ledger');
+    if (!activated){
+      completeEventTask(poi.eventId, 'trail-ledger');
+    }
     return true;
   }
 
@@ -207,6 +279,7 @@ function interactWithPointOfInterest(poi){
     addThreat(-6);
     poi.resolved = true;
     poi.visibleOnMap = true;
+    resolveLinkedProp(poi);
     completeWorldEvent(poi.eventId);
     return true;
   }

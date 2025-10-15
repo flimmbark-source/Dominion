@@ -67,6 +67,7 @@ const state = {
   mapMode: 'minimal',
   villageTasks: [],
   pointsOfInterest: [],
+  worldEventProps: [],
   worldEvents: [],
   proceduralQuests: [],
   quests: [],
