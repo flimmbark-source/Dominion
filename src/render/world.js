@@ -236,7 +236,8 @@ function drawExtrudedRect({
   skew,
   baseColor,
   roofColor,
-  shadowStrength = 0.2
+  shadowStrength = 0.2,
+  faceOpacity
 }){
   const slope = Math.min(depth * 0.75, height * 0.9);
   const topColor = roofColor ?? adjustHexColor(baseColor, 0.25);
@@ -245,6 +246,8 @@ function drawExtrudedRect({
   const rightColor = adjustHexColor(baseColor, -0.4);
   const highlightColor = adjustHexColor(topColor, 0.25);
   const dropStrength = 0.18 + shadowStrength * 0.65;
+  const topOpacity = clamp(faceOpacity?.top ?? 1, 0, 1);
+  const frontOpacity = clamp(faceOpacity?.front ?? 1, 0, 1);
 
   const top = [
     { x: x - skew, y: y - height },
@@ -290,18 +293,29 @@ function drawExtrudedRect({
   drawPolygon(left);
   ctx.fillStyle = rightColor;
   drawPolygon(right);
-  ctx.fillStyle = frontColor;
-  drawPolygon(front);
-  ctx.fillStyle = topColor;
-  drawPolygon(top);
+  if (frontOpacity > 0){
+    ctx.save();
+    ctx.globalAlpha *= frontOpacity;
+    ctx.fillStyle = frontColor;
+    drawPolygon(front);
+    ctx.restore();
+  }
 
-  ctx.strokeStyle = highlightColor;
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(top[0].x, top[0].y);
-  ctx.lineTo(top[1].x, top[1].y);
-  ctx.lineTo(top[2].x, top[2].y);
-  ctx.stroke();
+  if (topOpacity > 0){
+    ctx.save();
+    ctx.globalAlpha *= topOpacity;
+    ctx.fillStyle = topColor;
+    drawPolygon(top);
+
+    ctx.strokeStyle = highlightColor;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(top[0].x, top[0].y);
+    ctx.lineTo(top[1].x, top[1].y);
+    ctx.lineTo(top[2].x, top[2].y);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   ctx.restore();
 
@@ -389,13 +403,18 @@ function drawHouseFactionDecor(front, width, height, visuals){
   }
 }
 
-function drawHouseFacadeOverlays(house, geometry, visuals){
+function drawHouseFacadeOverlays(house, geometry, visuals, options = {}){
   if (!geometry || !visuals) return;
   const front = geometry.front;
   if (!front || front.length < 4) return;
   const frontWidth = front[1].x - front[0].x;
   const frontHeight = front[2].y - front[0].y;
   if (frontWidth <= 6 || frontHeight <= 6) return;
+  const alpha = clamp(options.alpha ?? 1, 0, 1);
+  if (alpha <= 0) return;
+
+  ctx.save();
+  ctx.globalAlpha *= alpha;
 
   const layout = visuals.windowLayout;
   if (layout && layout.rows > 0 && layout.cols > 0){
@@ -545,6 +564,8 @@ function drawHouseFacadeOverlays(house, geometry, visuals){
     ctx.stroke();
     ctx.restore();
   }
+
+  ctx.restore();
 }
 
 function drawChest3D(chest){
@@ -975,6 +996,9 @@ function drawWorldScene(){
   for (let i = 0; i < state.houses.length; i++){
     const h = state.houses[i];
     const visuals = getHouseVisualDescriptor(h);
+    const insideHouse = state.interior?.houseId === i;
+    const topOpacity = insideHouse ? 0.08 : 1;
+    const frontOpacity = insideHouse ? 0.25 : 1;
     const geometry = drawExtrudedRect({
       x: h.x,
       y: h.y,
@@ -984,10 +1008,14 @@ function drawWorldScene(){
       skew: visuals.skew,
       baseColor: visuals.baseColor || visuals.palette.base,
       roofColor: visuals.roofColor || visuals.palette.roof,
-      shadowStrength: visuals.shadowStrength
+      shadowStrength: visuals.shadowStrength,
+      faceOpacity: { top: topOpacity, front: frontOpacity }
     });
-    drawHouseRoofTrim(geometry, visuals);
-    drawHouseFacadeOverlays(h, geometry, visuals);
+    if (topOpacity > 0.2){
+      drawHouseRoofTrim(geometry, visuals);
+    }
+    const facadeAlpha = insideHouse ? 0.2 : 1;
+    drawHouseFacadeOverlays(h, geometry, visuals, { alpha: facadeAlpha });
   }
   for (const d of state.doors){
     drawExtrudedRect({
