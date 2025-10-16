@@ -883,6 +883,137 @@ const SCOUT_STEPS = [
   }
 ];
 
+const FORGE_SABOTAGE_STEPS = [
+  {
+    id: 'trace-torches',
+    label: 'Trace the torch cadence',
+    anchor(mission){
+      const forge = mission.data?.forgeAnchor;
+      if (forge?.yard){
+        return {
+          x: forge.yard.x,
+          y: forge.yard.y,
+          radius: Math.max(96, (forge.radius ?? 120) * 0.5),
+          label: 'Forge Yard Shadow'
+        };
+      }
+      if (forge){
+        return {
+          x: forge.x,
+          y: forge.y + (forge.radius ?? 100) * 0.4,
+          radius: forge.radius ?? 120,
+          label: 'Forge Yard Shadow'
+        };
+      }
+      return null;
+    },
+    radius: 110,
+    duration: 2.6,
+    maxDetection: 60,
+    maxLight: 0.82,
+    lightFailText: 'Torchlight floods the yard—wait for the glow to ebb.',
+    startText: 'You hug the forge wall, breathing with the torch sweeps.',
+    hintText: 'Press E once the torch cadence slows.',
+    cancelText: 'The forge blaze flares—you slip back into shadow.',
+    completeText: 'You memorize the torch rhythm and mark the safe angles.',
+    onComplete(mission){
+      mission.data = mission.data || {};
+      mission.data.lightModifier = mission.data.lightModifier ?? 0;
+      mission.data.lastLightSample = getLocalLightLevel(mission.data?.forgeAnchor || mission.location, mission);
+      state.player.detection = clamp((state.player?.detection ?? 0) - 6, 0, 100);
+    }
+  },
+  {
+    id: 'jam-bellows',
+    label: 'Jam the bellows catch',
+    anchor(mission){
+      const forge = mission.data?.forgeAnchor;
+      if (forge?.rect){
+        return {
+          x: forge.rect.x + forge.rect.w * 0.32,
+          y: forge.rect.y + forge.rect.h * 0.44,
+          radius: Math.max(88, Math.max(forge.rect.w, forge.rect.h) * 0.32),
+          label: 'Forge Bellows'
+        };
+      }
+      return null;
+    },
+    radius: 96,
+    duration: 3.1,
+    maxDetection: 58,
+    maxLight: 0.68,
+    lightFailText: 'The blaze roars too bright—wait for the shadows before wedging the bellows.',
+    startText: 'You slide a wooden wedge toward the bellows latch.',
+    hintText: 'Press E when the light dips and the smith turns away.',
+    cancelText: 'A spill of sparks forces you to withdraw your hand.',
+    completeText: 'The bellows seize up, starving the coals of air.',
+    onComplete(mission){
+      mission.data = mission.data || {};
+      mission.data.lightModifier = (mission.data.lightModifier ?? 0) - 0.18;
+      mission.data.bellowsJammed = true;
+    }
+  },
+  {
+    id: 'salt-quench',
+    label: 'Salt the quench trough',
+    anchor(mission){
+      const forge = mission.data?.forgeAnchor;
+      if (forge?.rect){
+        return {
+          x: forge.rect.x + forge.rect.w * 0.74,
+          y: forge.rect.y + forge.rect.h * 0.62,
+          radius: Math.max(90, Math.max(forge.rect.w, forge.rect.h) * 0.34),
+          label: 'Quench Trough'
+        };
+      }
+      return null;
+    },
+    radius: 100,
+    duration: 3.2,
+    maxDetection: 56,
+    maxLight: 0.58,
+    lightFailText: 'The forge glare would catch the glittering salt—wait for dimmer light.',
+    startText: 'You uncork a pouch of salt and ash over the quench water.',
+    hintText: 'Press E as the forge light dips under half-strength.',
+    cancelText: 'Lantern light sweeps the trough—you palm the salt for now.',
+    completeText: 'Salt clouds the trough—any tempered steel will shatter brittle.',
+    onComplete(mission){
+      mission.data = mission.data || {};
+      mission.data.lightModifier = (mission.data.lightModifier ?? 0) - 0.22;
+      mission.data.quenchSalted = true;
+    }
+  },
+  {
+    id: 'fracture-chain',
+    label: 'Fracture the temper chain',
+    anchor(mission){
+      const forge = mission.data?.forgeAnchor;
+      if (forge?.rect){
+        return {
+          x: forge.rect.x + forge.rect.w * 0.52,
+          y: forge.rect.y + forge.rect.h * 0.28,
+          radius: Math.max(92, Math.max(forge.rect.w, forge.rect.h) * 0.3),
+          label: 'Temper Chain'
+        };
+      }
+      return null;
+    },
+    radius: 104,
+    duration: 3.4,
+    maxDetection: 54,
+    maxLight: 0.5,
+    lightFailText: 'Too bright—the snap would shine across the yard. Wait it out.',
+    startText: 'You raise a cold chisel toward the temper chain linkage.',
+    hintText: 'Press E once the coals settle into dull red.',
+    cancelText: 'A flare races across the coals—you ease the chisel back.',
+    completeText: 'The temper chain snaps; the forge clatters into silence.',
+    onComplete(mission){
+      mission.data = mission.data || {};
+      mission.data.productionSapped = true;
+    }
+  }
+];
+
 const missionSpecs = {
   'snuff-out-signal': {
     id: 'snuff-out-signal',
@@ -1334,137 +1465,6 @@ const missionSpecs = {
     }
   }
 };
-
-const FORGE_SABOTAGE_STEPS = [
-  {
-    id: 'trace-torches',
-    label: 'Trace the torch cadence',
-    anchor(mission){
-      const forge = mission.data?.forgeAnchor;
-      if (forge?.yard){
-        return {
-          x: forge.yard.x,
-          y: forge.yard.y,
-          radius: Math.max(96, (forge.radius ?? 120) * 0.5),
-          label: 'Forge Yard Shadow'
-        };
-      }
-      if (forge){
-        return {
-          x: forge.x,
-          y: forge.y + (forge.radius ?? 100) * 0.4,
-          radius: forge.radius ?? 120,
-          label: 'Forge Yard Shadow'
-        };
-      }
-      return null;
-    },
-    radius: 110,
-    duration: 2.6,
-    maxDetection: 60,
-    maxLight: 0.82,
-    lightFailText: 'Torchlight floods the yard—wait for the glow to ebb.',
-    startText: 'You hug the forge wall, breathing with the torch sweeps.',
-    hintText: 'Press E once the torch cadence slows.',
-    cancelText: 'The forge blaze flares—you slip back into shadow.',
-    completeText: 'You memorize the torch rhythm and mark the safe angles.',
-    onComplete(mission){
-      mission.data = mission.data || {};
-      mission.data.lightModifier = mission.data.lightModifier ?? 0;
-      mission.data.lastLightSample = getLocalLightLevel(mission.data?.forgeAnchor || mission.location, mission);
-      state.player.detection = clamp((state.player?.detection ?? 0) - 6, 0, 100);
-    }
-  },
-  {
-    id: 'jam-bellows',
-    label: 'Jam the bellows catch',
-    anchor(mission){
-      const forge = mission.data?.forgeAnchor;
-      if (forge?.rect){
-        return {
-          x: forge.rect.x + forge.rect.w * 0.32,
-          y: forge.rect.y + forge.rect.h * 0.44,
-          radius: Math.max(88, Math.max(forge.rect.w, forge.rect.h) * 0.32),
-          label: 'Forge Bellows'
-        };
-      }
-      return null;
-    },
-    radius: 96,
-    duration: 3.1,
-    maxDetection: 58,
-    maxLight: 0.68,
-    lightFailText: 'The blaze roars too bright—wait for the shadows before wedging the bellows.',
-    startText: 'You slide a wooden wedge toward the bellows latch.',
-    hintText: 'Press E when the light dips and the smith turns away.',
-    cancelText: 'A spill of sparks forces you to withdraw your hand.',
-    completeText: 'The bellows seize up, starving the coals of air.',
-    onComplete(mission){
-      mission.data = mission.data || {};
-      mission.data.lightModifier = (mission.data.lightModifier ?? 0) - 0.18;
-      mission.data.bellowsJammed = true;
-    }
-  },
-  {
-    id: 'salt-quench',
-    label: 'Salt the quench trough',
-    anchor(mission){
-      const forge = mission.data?.forgeAnchor;
-      if (forge?.rect){
-        return {
-          x: forge.rect.x + forge.rect.w * 0.74,
-          y: forge.rect.y + forge.rect.h * 0.62,
-          radius: Math.max(90, Math.max(forge.rect.w, forge.rect.h) * 0.34),
-          label: 'Quench Trough'
-        };
-      }
-      return null;
-    },
-    radius: 100,
-    duration: 3.2,
-    maxDetection: 56,
-    maxLight: 0.58,
-    lightFailText: 'The forge glare would catch the glittering salt—wait for dimmer light.',
-    startText: 'You uncork a pouch of salt and ash over the quench water.',
-    hintText: 'Press E as the forge light dips under half-strength.',
-    cancelText: 'Lantern light sweeps the trough—you palm the salt for now.',
-    completeText: 'Salt clouds the trough—any tempered steel will shatter brittle.',
-    onComplete(mission){
-      mission.data = mission.data || {};
-      mission.data.lightModifier = (mission.data.lightModifier ?? 0) - 0.22;
-      mission.data.quenchSalted = true;
-    }
-  },
-  {
-    id: 'fracture-chain',
-    label: 'Fracture the temper chain',
-    anchor(mission){
-      const forge = mission.data?.forgeAnchor;
-      if (forge?.rect){
-        return {
-          x: forge.rect.x + forge.rect.w * 0.52,
-          y: forge.rect.y + forge.rect.h * 0.28,
-          radius: Math.max(92, Math.max(forge.rect.w, forge.rect.h) * 0.3),
-          label: 'Temper Chain'
-        };
-      }
-      return null;
-    },
-    radius: 104,
-    duration: 3.4,
-    maxDetection: 54,
-    maxLight: 0.5,
-    lightFailText: 'Too bright—the snap would shine across the yard. Wait it out.',
-    startText: 'You raise a cold chisel toward the temper chain linkage.',
-    hintText: 'Press E once the coals settle into dull red.',
-    cancelText: 'A flare races across the coals—you ease the chisel back.',
-    completeText: 'The temper chain snaps; the forge clatters into silence.',
-    onComplete(mission){
-      mission.data = mission.data || {};
-      mission.data.productionSapped = true;
-    }
-  }
-];
 
 function ensureMissions(){
   if (!state.tavernMissionSites){
