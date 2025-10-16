@@ -11,10 +11,67 @@ const playerSpawn = {
   y: mainVillage.y + 460
 };
 
+const globalScope = typeof globalThis !== 'undefined' ? globalThis : {};
+
+function resolveDeveloperTools(){
+  let toolsEnabled = false;
+  let showFov = false;
+
+  const search = (() => {
+    if (!globalScope || !globalScope.location) return '';
+    const value = globalScope.location.search;
+    return typeof value === 'string' ? value : '';
+  })();
+
+  if (search){
+    try {
+      const params = new URLSearchParams(search);
+      if (params.has('devtools')){
+        const val = params.get('devtools');
+        toolsEnabled = val === null || val === '' || val === '1' || val === 'true';
+      } else if (params.has('developer')){
+        const val = params.get('developer');
+        toolsEnabled = val === null || val === '' || val === '1' || val === 'true';
+      } else if (params.has('debug')){
+        const val = params.get('debug');
+        toolsEnabled = val === '1' || val === 'true' || val === 'fov';
+      }
+    } catch (err) {
+      toolsEnabled = false;
+    }
+  }
+
+  if (!toolsEnabled && globalScope && typeof globalScope.DOMINION_DEVTOOLS !== 'undefined'){
+    toolsEnabled = !!globalScope.DOMINION_DEVTOOLS;
+  }
+
+  if (globalScope && globalScope.localStorage){
+    try {
+      if (!toolsEnabled){
+        const stored = globalScope.localStorage.getItem('dominion-devtools');
+        if (stored === '1' || stored === 'true' || stored === 'enabled'){
+          toolsEnabled = true;
+        }
+      }
+      if (toolsEnabled){
+        const persistedFov = globalScope.localStorage.getItem('dominion-devtools:showFov');
+        if (persistedFov === '1' || persistedFov === 'true'){
+          showFov = true;
+        }
+      }
+    } catch (err) {
+      // Ignore storage access issues in non-browser contexts.
+    }
+  }
+
+  return { toolsEnabled, showFov };
+}
+
+const developerSettings = resolveDeveloperTools();
+
 const state = {
   time: 0,
   pausedForShop: false,
-  debugCones: true,
   messages: [],
   camera: { x: mainVillage.x + mainVillage.w/2 - W/2, y: mainVillage.y + mainVillage.h/2 - H/2 },
   playerSpawn: { ...playerSpawn },
@@ -97,8 +154,12 @@ const state = {
   villagerTrust: 8,
   outpostStates: {},
   rumorFlags: {},
-  worldIntel: {}
-  safehouseAccess: {}
+  worldIntel: {},
+  safehouseAccess: {},
+  developer: {
+    toolsEnabled: developerSettings.toolsEnabled,
+    showFov: developerSettings.toolsEnabled && developerSettings.showFov
+  }
 };
 
 export { state, mainVillage };

@@ -763,7 +763,16 @@ function update(dt){
     }
   }
 
-  if (pressOnce('f')) state.debugCones = !state.debugCones;
+  if (state.developer?.toolsEnabled && pressOnce('f')){
+    state.developer.showFov = !state.developer.showFov;
+    if (typeof window !== 'undefined' && window.localStorage){
+      try {
+        window.localStorage.setItem('dominion-devtools:showFov', state.developer.showFov ? '1' : '0');
+      } catch (err) {
+        // Ignore persistence issues when storage is unavailable.
+      }
+    }
+  }
 }
 
 function draw(){

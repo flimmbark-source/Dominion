@@ -73,7 +73,7 @@ function serializeWorldState(){
     villagerTrust: state.villagerTrust,
     outpostStates: JSON.parse(JSON.stringify(state.outpostStates || {})),
     rumorFlags: JSON.parse(JSON.stringify(state.rumorFlags || {})),
-    worldIntel: JSON.parse(JSON.stringify(state.worldIntel || {}))
+    worldIntel: JSON.parse(JSON.stringify(state.worldIntel || {})),
     safehouseAccess: JSON.parse(JSON.stringify(state.safehouseAccess || {}))
   };
 }
