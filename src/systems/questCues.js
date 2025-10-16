@@ -92,10 +92,14 @@ function gatherProceduralQuestCues(){
 
 function updateQuestCues(dt){
   ensureCueMemory();
-  const cues = [
+  const trackedQuestId = state.trackedQuestId;
+  const baseCues = [
     ...gatherProceduralQuestCues(),
     ...getTavernMissionCues()
   ];
+  const cues = trackedQuestId
+    ? baseCues.filter(cue => !cue?.questId || cue.questId === trackedQuestId)
+    : baseCues;
   const memory = state.questCueMemory;
   const nextMemory = new Map();
   const player = state.player;

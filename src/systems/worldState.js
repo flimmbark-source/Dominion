@@ -14,6 +14,16 @@ const WORLD_STATE_RANGES = {
 
 const worldStateListeners = new Set();
 
+const DEFAULT_ECONOMY_STATE = {
+  status: 'stable',
+  damagedAt: -Infinity,
+  damageExpiresAt: 0,
+  repairWindowEnds: 0,
+  blacksmithHostileUntil: 0,
+  productionNodes: {},
+  guardStrengthDecay: null
+};
+
 function notifyWorldStateChange(key, value, previous){
   for (const listener of worldStateListeners){
     try {
@@ -55,9 +65,11 @@ function resetWorldState(){
   notifyWorldStateChange('rumorFlags', state.rumorFlags, null);
   notifyWorldStateChange('worldIntel', state.worldIntel, null);
   state.safehouseAccess = {};
+  state.villageEconomy = cloneCleanObject(DEFAULT_ECONOMY_STATE);
   notifyWorldStateChange('outpostStates', state.outpostStates, null);
   notifyWorldStateChange('rumorFlags', state.rumorFlags, null);
   notifyWorldStateChange('safehouseAccess', state.safehouseAccess, null);
+  notifyWorldStateChange('villageEconomy', state.villageEconomy, null);
   notifyWorldStateChange('reset', serializeWorldState(), null);
 }
 
@@ -73,6 +85,7 @@ function serializeWorldState(){
     villagerTrust: state.villagerTrust,
     outpostStates: JSON.parse(JSON.stringify(state.outpostStates || {})),
     rumorFlags: JSON.parse(JSON.stringify(state.rumorFlags || {})),
+    villageEconomy: JSON.parse(JSON.stringify(state.villageEconomy || DEFAULT_ECONOMY_STATE))
     worldIntel: JSON.parse(JSON.stringify(state.worldIntel || {})),
     safehouseAccess: JSON.parse(JSON.stringify(state.safehouseAccess || {}))
   };
@@ -93,12 +106,23 @@ function hydrateWorldState(snapshot = {}){
   setMetric('villagerTrust', snapshot.villagerTrust ?? getMetricDefault('villagerTrust'));
   state.outpostStates = cloneCleanObject(snapshot.outpostStates);
   state.rumorFlags = cloneCleanObject(snapshot.rumorFlags);
+  state.safehouseAccess = cloneCleanObject(snapshot.safehouseAccess);
+  const economySnapshot = snapshot.villageEconomy;
+  if (economySnapshot && typeof economySnapshot === 'object'){
+    state.villageEconomy = cloneCleanObject(economySnapshot);
+  } else {
+    state.villageEconomy = cloneCleanObject(DEFAULT_ECONOMY_STATE);
+  }
+  if (!state.villageEconomy.productionNodes || typeof state.villageEconomy.productionNodes !== 'object'){
+    state.villageEconomy.productionNodes = {};
+  }
   state.worldIntel = cloneCleanObject(snapshot.worldIntel);
   notifyWorldStateChange('outpostStates', state.outpostStates, null);
   notifyWorldStateChange('rumorFlags', state.rumorFlags, null);
   notifyWorldStateChange('worldIntel', state.worldIntel, null);
   state.safehouseAccess = cloneCleanObject(snapshot.safehouseAccess);
   notifyWorldStateChange('safehouseAccess', state.safehouseAccess, null);
+  notifyWorldStateChange('villageEconomy', state.villageEconomy, null);
 }
 
 function cloneCleanObject(value){
@@ -109,6 +133,128 @@ function cloneCleanObject(value){
     console.warn('[worldState] failed to clone object', err);
     return {};
   }
+}
+
+function ensureVillageEconomy(){
+  if (!state.villageEconomy || typeof state.villageEconomy !== 'object'){
+    state.villageEconomy = cloneCleanObject(DEFAULT_ECONOMY_STATE);
+  }
+  if (!state.villageEconomy.productionNodes || typeof state.villageEconomy.productionNodes !== 'object'){
+    state.villageEconomy.productionNodes = {};
+  }
+  return state.villageEconomy;
+}
+
+function withEconomyUpdate(mutator){
+  const economy = ensureVillageEconomy();
+  const previous = cloneCleanObject(economy);
+  mutator(economy);
+  notifyWorldStateChange('villageEconomy', economy, previous);
+  return economy;
+}
+
+function pauseProductionNode(id, options = {}){
+  if (!id) return null;
+  let node = null;
+  withEconomyUpdate(economy => {
+    const nodes = economy.productionNodes;
+    node = nodes[id] || { id, status: 'active', pausedUntil: 0, lastPausedAt: -Infinity };
+    node.status = 'paused';
+    node.lastPausedAt = state.time;
+    const duration = Math.max(0, options.duration ?? 90);
+    if (duration > 0){
+      node.pausedUntil = Math.max(node.pausedUntil ?? 0, state.time + duration);
+    }
+    if (options.reason){
+      node.reason = options.reason;
+    }
+    if (options.cause){
+      node.lastCause = options.cause;
+    }
+    if (options.resumeHintAt != null){
+      node.resumeHintAt = options.resumeHintAt;
+    }
+    nodes[id] = node;
+  });
+  return node;
+}
+
+function markVillageEconomyDamaged(options = {}){
+  return withEconomyUpdate(economy => {
+    economy.status = 'damaged';
+    economy.damagedAt = state.time;
+    const duration = Math.max(0, options.duration ?? 150);
+    const repairWindow = Math.max(0, options.repairWindow ?? (duration + 60));
+    economy.damageExpiresAt = state.time + duration;
+    economy.repairWindowEnds = state.time + repairWindow;
+    if (options.hostileDuration != null){
+      const hostileUntil = state.time + Math.max(0, options.hostileDuration);
+      economy.blacksmithHostileUntil = Math.max(economy.blacksmithHostileUntil ?? 0, hostileUntil);
+    }
+    if (options.productionNodeId){
+      const nodes = economy.productionNodes;
+      const nodeId = options.productionNodeId;
+      const node = nodes[nodeId] || { id: nodeId, status: 'active', pausedUntil: 0, lastPausedAt: -Infinity };
+      node.status = 'paused';
+      node.lastPausedAt = state.time;
+      const pauseDuration = Math.max(0, options.pauseDuration ?? duration);
+      if (pauseDuration > 0){
+        node.pausedUntil = Math.max(node.pausedUntil ?? 0, state.time + pauseDuration);
+      }
+      node.reason = options.reason || 'sabotaged';
+      node.lastCause = options.cause || 'sabotage';
+      nodes[nodeId] = node;
+    }
+  });
+}
+
+function buildGuardStrengthDecay(options = {}){
+  const total = options.total ?? 12;
+  const duration = Math.max(0, options.duration ?? 120);
+  const baseInterval = Math.max(6, options.interval ?? 20);
+  const suggestedTicks = baseInterval > 0 ? Math.max(1, Math.round(duration / baseInterval)) : 1;
+  const ticks = Math.max(1, options.ticks ?? suggestedTicks);
+  const interval = Math.max(6, options.interval ?? (ticks > 0 ? Math.max(6, duration / ticks) : 20));
+  const perTick = total / ticks;
+  return {
+    source: options.source || 'economy-damage',
+    total,
+    remaining: total,
+    perTick,
+    ticks,
+    interval,
+    nextTickAt: state.time + (options.initialDelay ?? interval),
+    lastAppliedAt: null
+  };
+}
+
+function scheduleGuardStrengthReduction(options = {}){
+  let decay = null;
+  withEconomyUpdate(economy => {
+    decay = buildGuardStrengthDecay(options);
+    economy.guardStrengthDecay = decay;
+  });
+  return decay;
+}
+
+function enqueueRevengeMissionSeed(id, options = {}){
+  if (!id) return false;
+  if (!Array.isArray(state.proceduralQuests)){
+    state.proceduralQuests = [];
+  }
+  const exists = state.proceduralQuests.some(entry => entry && entry.id === id);
+  if (exists) return false;
+  const entry = {
+    id,
+    templateId: options.templateId || 'revenge-strike',
+    context: cloneCleanObject(options.context),
+    descriptor: options.descriptor ?? null,
+    reward: options.reward ?? null,
+    queuedAt: state.time
+  };
+  state.proceduralQuests.push(entry);
+  notifyWorldStateChange('proceduralQuestSeed', entry, null);
+  return true;
 }
 
 function registerWorldStateListener(listener){
@@ -244,6 +390,25 @@ function updateWorldState(dt){
     const next = Math.max(0, state.darklordReinforcementDelay - dt);
     if (next !== state.darklordReinforcementDelay){
       setMetric('darklordReinforcementDelay', next);
+    }
+  }
+  const economy = state.villageEconomy;
+  if (economy && economy.guardStrengthDecay && economy.guardStrengthDecay.ticks > 0){
+    const decay = economy.guardStrengthDecay;
+    if (decay.nextTickAt == null){
+      decay.nextTickAt = state.time + decay.interval;
+    }
+    if (state.time >= decay.nextTickAt){
+      const previous = cloneCleanObject(economy);
+      adjustGuardStrength(-decay.perTick);
+      decay.remaining = Math.max(0, decay.remaining - decay.perTick);
+      decay.ticks -= 1;
+      decay.lastAppliedAt = state.time;
+      decay.nextTickAt = decay.ticks > 0 ? state.time + decay.interval : null;
+      if (decay.ticks <= 0){
+        decay.remaining = 0;
+      }
+      notifyWorldStateChange('villageEconomy', economy, previous);
     }
   }
 }
@@ -392,6 +557,11 @@ export {
   getSafehouseAccess,
   setRumorFlag,
   clearRumorFlag,
+  ensureVillageEconomy,
+  pauseProductionNode,
+  markVillageEconomyDamaged,
+  scheduleGuardStrengthReduction,
+  enqueueRevengeMissionSeed
   updateWorldIntel,
   getWorldIntel
 };

@@ -15,6 +15,7 @@ import { drawHUD } from './render/hud.js';
 import { drawShop } from './render/shop.js';
 import { drawWorldMapOverlay } from './render/map.js';
 import { drawQuestLog } from './render/questLog.js';
+import { handleQuestLogInput, openQuestLog } from './ui/questLogController.js';
 import { drawMiniMap } from './render/minimap.js';
 import {
   npcSeesPlayer,
@@ -263,10 +264,13 @@ function update(dt){
     if (toggleQuestLog || escapePressed){
       state.questLogOpen = false;
     } else {
+      handleQuestLogInput();
       return;
     }
   } else if (toggleQuestLog){
     state.questLogOpen = true;
+    openQuestLog();
+    handleQuestLogInput();
     return;
   }
 
@@ -759,7 +763,16 @@ function update(dt){
     }
   }
 
-  if (pressOnce('f')) state.debugCones = !state.debugCones;
+  if (state.developer?.toolsEnabled && pressOnce('f')){
+    state.developer.showFov = !state.developer.showFov;
+    if (typeof window !== 'undefined' && window.localStorage){
+      try {
+        window.localStorage.setItem('dominion-devtools:showFov', state.developer.showFov ? '1' : '0');
+      } catch (err) {
+        // Ignore persistence issues when storage is unavailable.
+      }
+    }
+  }
 }
 
 function draw(){

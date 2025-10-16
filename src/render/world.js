@@ -3,7 +3,7 @@ import { state } from '../state/gameState.js';
 import { clamp, TAU } from '../utils/math.js';
 import { getWeaponSwingConfig } from '../utils/weaponSwing.js';
 import { getThreatFraction, getThreatStage } from '../systems/threat.js';
-import { drawTerrain, drawGoblinTavern } from '../world/terrain.js';
+import { drawTerrain, drawGoblinTavern, gatherForestSolidsAround } from '../world/terrain.js';
 import { drawGoblin } from './goblin.js';
 import { getRenderableStairs, fillHouseInterior, interiorFloorColor } from '../world/houses.js';
 import {
@@ -1040,8 +1040,10 @@ function drawWorldScene(){
     drawChest3D(c);
   }
 
+  const showDebugFov = !!(state.developer?.showFov);
+
   for (const npc of state.npcs){
-    if (state.debugCones) drawFOV(npc);
+    if (showDebugFov) drawFOV(npc);
     drawNpc3D(npc);
     drawNpcWeaponSwing(npc);
   }
@@ -2645,19 +2647,194 @@ function drawFOV(npc){
   ctx.restore();
 }
 
-function drawTorchlight(){
-  if (!state.debugCones){
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    for (const npc of state.npcs.filter(n=>n.type==='scout')){
-      const grad = ctx.createRadialGradient(npc.x, npc.y, 10, npc.x, npc.y, 70);
-      grad.addColorStop(0, 'rgba(255,220,120,0.12)');
-      grad.addColorStop(1, 'rgba(255,220,120,0)');
-      ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.arc(npc.x, npc.y, 70, 0, TAU); ctx.fill();
+function angleDifference(a, b){
+  return Math.atan2(Math.sin(a - b), Math.cos(a - b));
+}
+
+function segmentRectIntersection(x1, y1, x2, y2, rect){
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  let t0 = 0;
+  let t1 = 1;
+  const p = [-dx, dx, -dy, dy];
+  const q = [x1 - rect.x, rect.x + rect.w - x1, y1 - rect.y, rect.y + rect.h - y1];
+
+  for (let i = 0; i < 4; i++){
+    const pi = p[i];
+    const qi = q[i];
+    if (pi === 0){
+      if (qi < 0) return null;
+      continue;
     }
-    ctx.restore();
+    const t = qi / pi;
+    if (pi < 0){
+      if (t > t1) return null;
+      if (t > t0) t0 = t;
+    } else {
+      if (t < t0) return null;
+      if (t < t1) t1 = t;
+    }
   }
+
+  if (t0 < 0 && t1 < 0) return null;
+  const hitT = t0 < 0 ? t1 : t0;
+  if (hitT <= 0 || hitT > 1) return null;
+
+  return {
+    t: hitT,
+    x: x1 + dx * hitT,
+    y: y1 + dy * hitT
+  };
+}
+
+function castTorchRay(origin, angle, range, blockers){
+  const dirX = Math.cos(angle);
+  const dirY = Math.sin(angle);
+  const targetX = origin.x + dirX * range;
+  const targetY = origin.y + dirY * range;
+  let closest = null;
+
+  for (const rect of blockers){
+    const hit = segmentRectIntersection(origin.x, origin.y, targetX, targetY, rect);
+    if (!hit) continue;
+    if (hit.t <= 0) continue;
+    if (!closest || hit.t < closest.t){
+      closest = hit;
+    }
+  }
+
+  if (closest){
+    const distance = range * closest.t;
+    const retreat = Math.min(4, Math.max(0, distance - 0.6));
+    return {
+      x: closest.x - dirX * retreat,
+      y: closest.y - dirY * retreat
+    };
+  }
+
+  return { x: targetX, y: targetY };
+}
+
+function gatherTorchBlockers(npc, range){
+  const blockers = state.houseSolids ? state.houseSolids.slice() : [];
+  if (!state.interior){
+    blockers.push(...gatherForestSolidsAround(npc.x, npc.y, range + 160));
+    const tavern = state.tavern;
+    if (tavern){
+      blockers.push({ x: tavern.x, y: tavern.y, w: tavern.w, h: tavern.h });
+    }
+  }
+  return blockers;
+}
+
+function buildTorchCone(npc){
+  const baseRange = Math.max(40, npc.fovRange || 160);
+  const fovAngle = Math.max(Math.PI / 64, npc.fovAngle || Math.PI / 2);
+  const halfFov = fovAngle / 2;
+  const range = baseRange * 1.05;
+  const blockers = gatherTorchBlockers(npc, range);
+  const offsets = [];
+  const offsetEpsilon = 0.0006;
+
+  const addOffset = (offset) => {
+    if (offset < -halfFov - 0.02 || offset > halfFov + 0.02) return;
+    for (const existing of offsets){
+      if (Math.abs(existing - offset) < offsetEpsilon) return;
+    }
+    offsets.push(offset);
+  };
+
+  const baseSamples = Math.max(18, Math.ceil(fovAngle / (Math.PI / 48)));
+  for (let i = 0; i <= baseSamples; i++){
+    const t = i / baseSamples;
+    const offset = -halfFov + fovAngle * t;
+    addOffset(offset);
+  }
+
+  for (const rect of blockers){
+    const corners = [
+      { x: rect.x, y: rect.y },
+      { x: rect.x + rect.w, y: rect.y },
+      { x: rect.x + rect.w, y: rect.y + rect.h },
+      { x: rect.x, y: rect.y + rect.h }
+    ];
+    for (const corner of corners){
+      const cornerAngle = Math.atan2(corner.y - npc.y, corner.x - npc.x);
+      const offset = angleDifference(cornerAngle, npc.facing);
+      if (Math.abs(offset) <= halfFov + 0.02){
+        addOffset(offset);
+        addOffset(offset - 0.012);
+        addOffset(offset + 0.012);
+      }
+    }
+  }
+
+  if (offsets.length < 2) return null;
+
+  offsets.sort((a, b) => a - b);
+  const points = offsets.map(offset => castTorchRay(npc, npc.facing + offset, range, blockers));
+  return { points, range };
+}
+
+function traceTorchConePath(origin, points){
+  if (!points.length) return false;
+  ctx.beginPath();
+  ctx.moveTo(origin.x, origin.y);
+  for (const pt of points){
+    ctx.lineTo(pt.x, pt.y);
+  }
+  ctx.closePath();
+  return true;
+}
+
+function drawTorchlight(){
+  const scouts = state.npcs.filter(npc => npc.type === 'scout');
+  if (!scouts.length) return;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineJoin = 'round';
+
+  for (const npc of scouts){
+    const cone = buildTorchCone(npc);
+    if (!cone || cone.points.length < 2) continue;
+
+    const flicker = 0.84 + Math.sin(state.time * 6.2 + npc.x * 0.01 + npc.y * 0.015) * 0.1;
+    const range = cone.range;
+
+    traceTorchConePath(npc, cone.points);
+    ctx.fillStyle = `rgba(255, 210, 130, ${(0.06 * flicker).toFixed(3)})`;
+    ctx.fill();
+
+    ctx.save();
+    traceTorchConePath(npc, cone.points);
+    ctx.clip();
+    const gradientRadius = Math.max(range * 0.85, range - 24);
+    const grad = ctx.createRadialGradient(npc.x, npc.y, 6, npc.x, npc.y, gradientRadius);
+    grad.addColorStop(0, `rgba(255, 238, 190, ${(0.32 * flicker).toFixed(3)})`);
+    grad.addColorStop(0.45, `rgba(255, 224, 150, ${(0.18 * flicker).toFixed(3)})`);
+    grad.addColorStop(1, 'rgba(255, 210, 120, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(npc.x - gradientRadius, npc.y - gradientRadius, gradientRadius * 2, gradientRadius * 2);
+    ctx.restore();
+
+    traceTorchConePath(npc, cone.points);
+    ctx.strokeStyle = `rgba(255, 200, 120, ${(0.18 * flicker).toFixed(3)})`;
+    ctx.lineWidth = Math.max(8, range * 0.08);
+    ctx.stroke();
+
+    traceTorchConePath(npc, cone.points);
+    ctx.strokeStyle = `rgba(255, 236, 190, ${(0.12 * flicker).toFixed(3)})`;
+    ctx.lineWidth = Math.max(3.5, range * 0.028);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(npc.x, npc.y, Math.min(16, range * 0.18), 0, TAU);
+    ctx.fillStyle = `rgba(255, 230, 170, ${(0.22 * flicker).toFixed(3)})`;
+    ctx.fill();
+  }
+
+  ctx.restore();
 }
 
 export { drawWorldScene, drawCastle, drawFOV, drawTorchlight };
