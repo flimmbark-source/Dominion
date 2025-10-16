@@ -15,6 +15,7 @@ import { drawHUD } from './render/hud.js';
 import { drawShop } from './render/shop.js';
 import { drawWorldMapOverlay } from './render/map.js';
 import { drawQuestLog } from './render/questLog.js';
+import { handleQuestLogInput, openQuestLog } from './ui/questLogController.js';
 import { drawMiniMap } from './render/minimap.js';
 import {
   npcSeesPlayer,
@@ -263,10 +264,13 @@ function update(dt){
     if (toggleQuestLog || escapePressed){
       state.questLogOpen = false;
     } else {
+      handleQuestLogInput();
       return;
     }
   } else if (toggleQuestLog){
     state.questLogOpen = true;
+    openQuestLog();
+    handleQuestLogInput();
     return;
   }
 
