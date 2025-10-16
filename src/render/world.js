@@ -218,16 +218,6 @@ function getHouseVisualDescriptor(house){
       shutterColor: mixHexColor(accentColor, '#000000', 0.35),
       glow: mixHexColor(windowColor, '#ffffff', 0.35)
     },
-    doorStyle: {
-      color: mixHexColor(palette.base, accentColor, 0.45),
-      frameColor: mixHexColor(frameColor, accentColor, 0.15),
-      awning: rand() > 0.65
-        ? {
-            color: mixHexColor(accentColor, '#000000', 0.4),
-            stripe: mixHexColor(accentColor, '#ffffff', 0.4)
-          }
-        : null
-    },
     sign: null
   };
 
@@ -508,7 +498,6 @@ function drawHouseFacadeOverlays(house, geometry, visuals, options = {}){
     ctx.restore();
   }
 
-  if (house.side === 'south' && house.door && visuals.doorStyle){
     ctx.save();
     const minDoorWidth = Math.max(14, frontWidth * 0.22);
     const maxDoorWidth = Math.max(minDoorWidth, frontWidth * 0.55);
@@ -1034,8 +1023,22 @@ function drawWorldScene(){
       skew: visuals.skew,
       baseColor: visuals.baseColor || visuals.palette.base,
       roofColor: visuals.roofColor || visuals.palette.roof,
-      shadowStrength: visuals.shadowStrength,
-      faceOpacity: { top: topOpacity, front: frontOpacity }
+      shadowStrength: visuals.shadowStrength
+    });
+    drawHouseRoofTrim(geometry, visuals);
+    drawHouseFacadeOverlays(h, geometry, visuals);
+  }
+  for (const d of state.doors){
+    drawExtrudedRect({
+      x: d.x,
+      y: d.y,
+      width: d.w,
+      depth: d.h,
+      height: 8,
+      skew: 4,
+      baseColor: '#0b0f17',
+      roofColor: '#223047',
+      shadowStrength: 0.22
     });
     if (topOpacity > 0.2){
       drawHouseRoofTrim(geometry, visuals);
