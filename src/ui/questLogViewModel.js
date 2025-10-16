@@ -24,7 +24,7 @@ const QUEST_LOG_HEADER_HEIGHT = 56;
 const QUEST_LOG_MIN_HEIGHT = 520;
 
 function getOrderedQuestDescriptors(){
-  const quests = getQuestDescriptors({ includeHidden: false });
+  const quests = getQuestDescriptors({ includeHidden: false, acceptedOnly: true });
   return quests.slice().sort((a, b) => {
     const orderA = STATUS_ORDER[a.status] ?? 99;
     const orderB = STATUS_ORDER[b.status] ?? 99;
