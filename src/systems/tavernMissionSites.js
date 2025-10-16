@@ -8,8 +8,12 @@ import {
   adjustVillagerTrust,
   delayDarklordReinforcements,
   setOutpostState,
-  grantSafehouseAccess
+  grantSafehouseAccess,
+  adjustGuardAlertness,
+  adjustPopulationHealth,
+  setRumorFlag
 } from './worldState.js';
+import { getVillageInstance } from '../world/villageTemplates.js';
 
 const DARK_OUTPOST_PRESETS = [
   { id: 'moonfen-stockade', label: 'Moonfen Stockade Yard', villageIndex: 0, offset: { x: 420, y: 260 }, radius: 220 },
@@ -18,6 +22,69 @@ const DARK_OUTPOST_PRESETS = [
 ];
 
 let lastCaptiveOutpost = null;
+
+function getWellPlazaAnchor(){
+  const instance = getVillageInstance(1);
+  const zone = instance?.safeZones?.find(entry => entry.id === 'well-plaza');
+  if (zone?.center){
+    const rect = zone.rect || {};
+    const baseRadius = Math.max(rect.w ?? 0, rect.h ?? 0, zone.radius ?? 0, 140);
+    const cx = zone.center.x;
+    const cy = zone.center.y;
+    return {
+      x: cx,
+      y: cy,
+      center: { x: cx, y: cy },
+      radius: Math.max(110, baseRadius * 0.6),
+      label: zone.label || 'Well Plaza',
+      rect
+    };
+  }
+  const fallback = VILLAGES[1] || { x: 0, y: 0, w: 260, h: 260 };
+  return {
+    x: fallback.x + fallback.w / 2,
+    y: fallback.y + fallback.h / 2,
+    center: {
+      x: fallback.x + fallback.w / 2,
+      y: fallback.y + fallback.h / 2
+    },
+    radius: Math.max(fallback.w, fallback.h) * 0.28,
+    label: 'Well Plaza',
+    rect: null
+  };
+}
+
+function applyWellPoisoningStatus(zone){
+  if (!zone) return;
+  const effectRadius = (zone.radius ?? 140) + 220;
+  for (const npc of state.npcs){
+    if (!npc) continue;
+    const type = npc.type;
+    const guardLike = type === 'scout' || type === 'militia';
+    const villager = type === 'villager';
+    if (!guardLike && !villager) continue;
+    const dx = (npc.x ?? 0) - zone.x;
+    const dy = (npc.y ?? 0) - zone.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > effectRadius) continue;
+    npc.statusFlags = npc.statusFlags || {};
+    if (npc.statusFlags.wellPoisoned) continue;
+    npc.statusFlags.wellPoisoned = { appliedAt: state.time, zoneId: 'well-plaza' };
+    if (typeof npc.baseSpeed === 'number'){
+      npc.baseSpeed *= guardLike ? 0.84 : 0.88;
+      npc.speed = npc.baseSpeed;
+    }
+    if (guardLike){
+      if (typeof npc.baseFovRange === 'number'){
+        npc.baseFovRange *= 0.88;
+        npc.fovRange = npc.baseFovRange;
+      }
+      if (typeof npc.hearingRadius === 'number'){
+        npc.hearingRadius = Math.max(80, npc.hearingRadius * 0.82);
+      }
+    }
+  }
+}
 
 function resolveOutpostPreset(preset){
   const village = VILLAGES[preset.villageIndex] || { x: 0, y: 0, w: 0, h: 0 };
@@ -229,6 +296,120 @@ const SUPPLY_STEPS = [
     completeText: 'The water reeks of swamp rot and bile.',
     onComplete(){
       addThreat(-6);
+    }
+  }
+];
+
+const POISON_WELL_STEPS = [
+  {
+    id: 'survey-plaza',
+    label: 'Shadow the well plaza',
+    anchor(mission){
+      const zone = mission.data?.plazaZone;
+      if (!zone) return null;
+      return {
+        x: zone.x,
+        y: zone.y - (zone.radius ?? 120) * 0.18,
+        radius: Math.max(100, (zone.radius ?? 120) * 0.8),
+        label: 'Well Plaza Overwatch'
+      };
+    },
+    radius: 118,
+    duration: 2.6,
+    maxDetection: 60,
+    requireLoad: 'light',
+    setLoad: 'heavy',
+    startText: 'You melt into the plaza bustle, counting militia sips at the well.',
+    hintText: 'Press E to map rotations around the well.',
+    cancelText: 'A glance lingers—wait until the crowd shields you.',
+    completeText: 'The patrol pattern is etched in your mind; toxins ready in your pack.',
+    onComplete(mission){
+      mission.data = mission.data || {};
+      mission.data.plazaScouted = true;
+      state.player.detection = clamp((state.player?.detection ?? 0) - 6, 0, 100);
+    }
+  },
+  {
+    id: 'dose-guard-casks',
+    label: 'Spike the guard casks',
+    anchor(mission){
+      const zone = mission.data?.plazaZone;
+      if (!zone) return null;
+      const shiftX = (zone.radius ?? 120) * -0.32;
+      const shiftY = (zone.radius ?? 120) * -0.18;
+      return {
+        x: zone.x + shiftX,
+        y: zone.y + shiftY,
+        radius: Math.max(86, (zone.radius ?? 120) * 0.55),
+        label: 'Militia Water Casks'
+      };
+    },
+    radius: 94,
+    duration: 3.1,
+    maxDetection: 52,
+    requireLoad: 'heavy',
+    setLoad: 'light',
+    startText: 'You heft the toxin satchel, slipping it over the militia casks.',
+    hintText: 'Press E to tip the venom into their reserve.',
+    cancelText: 'Bootsteps grow too close—you ease the satchel back down.',
+    completeText: 'The guard casks froth quietly—first sip will sour their guts.',
+    onComplete(){
+      addThreat(-6);
+    }
+  },
+  {
+    id: 'taint-buckets',
+    label: 'Taint the villagers’ buckets',
+    anchor(mission){
+      const zone = mission.data?.plazaZone;
+      if (!zone) return null;
+      const shiftX = (zone.radius ?? 120) * 0.34;
+      const shiftY = (zone.radius ?? 120) * 0.16;
+      return {
+        x: zone.x + shiftX,
+        y: zone.y + shiftY,
+        radius: Math.max(88, (zone.radius ?? 120) * 0.52),
+        label: 'Bucket Queue'
+      };
+    },
+    radius: 96,
+    duration: 3,
+    maxDetection: 50,
+    requireLoad: 'light',
+    setLoad: 'heavy',
+    startText: 'You trade smiles with villagers while drizzling rot into their pails.',
+    hintText: 'Press E to lace the waiting buckets.',
+    cancelText: 'A child watches too closely—you pause, feigning patience.',
+    completeText: 'A sheen spreads across the water as the toxin blooms.',
+    onComplete(){
+      state.player.detection = clamp((state.player?.detection ?? 0) - 4, 0, 100);
+    }
+  },
+  {
+    id: 'seed-ladle',
+    label: 'Seed the communal ladle',
+    anchor(mission){
+      const zone = mission.data?.plazaZone;
+      if (!zone) return null;
+      return {
+        x: zone.x,
+        y: zone.y,
+        radius: Math.max(82, (zone.radius ?? 120) * 0.48),
+        label: 'Well Rim'
+      };
+    },
+    radius: 90,
+    duration: 3.3,
+    maxDetection: 48,
+    requireLoad: 'heavy',
+    setLoad: 'light',
+    startText: 'You steady the dripping ladle, coating its handle in blackrot.',
+    hintText: 'Press E to finish seeding the ladle.',
+    cancelText: 'A militiaman clears his throat beside you—you hide the vial.',
+    completeText: 'The ladle gleams slick with toxin—the plaza is doomed to drink.',
+    onComplete(mission){
+      mission.data = mission.data || {};
+      mission.data.ladleSeeded = true;
     }
   }
 ];
@@ -593,6 +774,72 @@ const missionSpecs = {
       return `${completed}/${total} steps complete · Next: ${step.label}`;
     }
   },
+  'mission_poison_well': {
+    id: 'mission_poison_well',
+    label: 'Brackenreach Well Plaza',
+    getLocation(){
+      const zone = getWellPlazaAnchor();
+      return {
+        x: zone.x,
+        y: zone.y,
+        radius: zone.radius,
+        label: zone.label
+      };
+    },
+    createData(){
+      const zone = getWellPlazaAnchor();
+      return {
+        plazaZone: zone,
+        stealthLoad: 'light',
+        plazaScouted: false,
+        ladleSeeded: false
+      };
+    },
+    steps: POISON_WELL_STEPS,
+    onActivate(mission){
+      const zone = getWellPlazaAnchor();
+      mission.location = {
+        x: zone.x,
+        y: zone.y,
+        radius: zone.radius,
+        label: zone.label
+      };
+      mission.data = {
+        plazaZone: zone,
+        stealthLoad: 'light',
+        plazaScouted: false,
+        ladleSeeded: false
+      };
+    },
+    onReady(mission){
+      if (mission.rewardApplied) return;
+      mission.rewardApplied = true;
+      const zone = mission.data?.plazaZone || getWellPlazaAnchor();
+      applyWellPoisoningStatus(zone);
+      adjustGuardAlertness(-12);
+      adjustPopulationHealth(-0.22);
+      setRumorFlag('plague_origin', {
+        lines: [
+          'Villagers gag that the well tastes of rusted coins and fever.',
+          'Militia cough between rotations—the well water has gone wrong.'
+        ],
+        weight: 1.4,
+        questId: 'mission_poison_well',
+        status: 'completed'
+      });
+      toast('Well fouled. Guards grow sluggish and villagers whisper of plague.', 3.6);
+    },
+    progress(mission){
+      const total = POISON_WELL_STEPS.length;
+      const completed = mission.stepsState.filter(step => step.completed).length;
+      const load = mission.data?.stealthLoad === 'heavy' ? 'hauling toxins' : 'keeping light';
+      if (mission.completed) return 'Well plaza poisoned and gold collected.';
+      if (mission.ready) return 'The plaza drinks poison. Return for your reward.';
+      const step = POISON_WELL_STEPS[mission.stageIndex];
+      if (!step) return `${completed}/${total} steps complete.`;
+      return `${completed}/${total} steps complete · Load: ${load} · Next: ${step.label}`;
+    }
+  },
   'silence-the-scout': {
     id: 'silence-the-scout',
     label: 'Roaming Scout Captain',
@@ -768,6 +1015,17 @@ function tryStartStepAction(mission, spec, step){
   if (!step) return false;
   if (mission.activeAction) return true;
   mission.data = mission.data || {};
+  if (step.requireLoad && mission.data.stealthLoad && step.requireLoad !== mission.data.stealthLoad){
+    const now = state.time;
+    if (now >= (mission.lastFailAt ?? 0) + 2){
+      const message = step.requireLoad === 'heavy'
+        ? 'You need the heavier kit before attempting this.'
+        : 'Shed the heavy kit before you try this move.';
+      toast(message, 2.4);
+      mission.lastFailAt = now;
+    }
+    return true;
+  }
   const anchor = resolveAnchor(spec, mission, step);
   if (!anchor) return false;
   const player = state.player;
@@ -825,6 +1083,9 @@ function completeStep(mission, spec, step){
   const index = mission.stepsState.findIndex(entry => entry.id === step.id);
   if (index >= 0){
     mission.stepsState[index].completed = true;
+  }
+  if (mission.data && step.setLoad){
+    mission.data.stealthLoad = step.setLoad;
   }
   if (typeof step.onComplete === 'function'){
     step.onComplete(mission, spec);
@@ -1043,6 +1304,20 @@ function gatherTavernIntelLines(){
     }
     if (mission.id === 'poison-supply-lines'){
       lines.push('Caravan guards brew supper soon—spike stew and water before they march.');
+      continue;
+    }
+    if (mission.id === 'mission_poison_well'){
+      const total = POISON_WELL_STEPS.length;
+      const completed = mission.stepsState.filter(step => step.completed).length;
+      const loadHeavy = mission.data?.stealthLoad === 'heavy';
+      if (!mission.data?.plazaScouted){
+        lines.push('Case the well plaza first—track patrol sips before you start pouring.');
+      } else {
+        const loadPrompt = loadHeavy
+          ? 'You’re hauling the toxin—hit the guarded casks next.'
+          : 'Travel light through the crowd before the next pour.';
+        lines.push(`Well plaza poisoning ${completed}/${total}. ${loadPrompt}`);
+      }
       continue;
     }
     if (mission.id === 'mission_free_captives'){

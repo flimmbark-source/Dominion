@@ -21,6 +21,29 @@ import {
   gatherTavernIntelLines
 } from './tavernMissionSites.js';
 
+const WELL_ACCEPT_OPENERS = [
+  'He nudges a stoppered vial across the bar.',
+  'He taps a charcoal sketch of Brackenreach’s well plaza.'
+];
+
+const WELL_ACCEPT_PLANS = [
+  '“Case the crowd light, then haul the heavy rot when the militia blink.”',
+  '“Glide in empty-handed, then break out the heavy poison when the watch swaps.”',
+  '“Keep your steps feather-light until it’s time to heft the toxins.”'
+];
+
+const WELL_REWARD_LOOT = [
+  'He counts out a pouch lined with herb-stained cloth and a vial marked “Rot-Bloom.”',
+  'He slides a jingling purse plus a wrapped bundle of plague-dust ampoules.',
+  'He pushes over a damp pouch dripping with tonic fumes alongside your pay.'
+];
+
+const WELL_DARK_HUMOR = [
+  '“Brackenreach wanted stronger spirits—now their well will oblige.”',
+  '“Here’s to their next toast tasting like grave dirt,” he chuckles.',
+  '“May their morning tea come with a side of coughing fits,” he grins.'
+];
+
 const missionDefinitions = [
   registerQuestDefinition({
     id: 'snuff-out-signal',
@@ -74,6 +97,39 @@ const missionDefinitions = [
       state.player.gold += payout;
       toast(`Payment: +${payout} gold`, 2.4);
       return 'The barkeep sniffs. "Sick soldiers don\'t raid hard. Enjoy the quiet."';
+    }
+  }),
+  registerQuestDefinition({
+    id: 'mission_poison_well',
+    source: 'tavern',
+    initialStatus: 'available',
+    title: 'Poison the Well',
+    description: 'Foul the Brackenreach well so guards and villagers drink sickness.',
+    detail: 'Shadow the well plaza, swap between light steps and heavy toxin flasks, and seed every shared scoop before you vanish.',
+    intelHint: 'Brackenreach’s well stays crowded—travel light through the press, then haul the toxins when the militia look away.',
+    getProgressText(){
+      return getTavernMissionProgressText('mission_poison_well');
+    },
+    checkReady(){
+      return isTavernMissionReady('mission_poison_well');
+    },
+    onAccept(missionState){
+      activateTavernMissionSite('mission_poison_well');
+      missionState.data = { ...(missionState.data || {}), acceptedAt: state.time };
+      const pick = (arr) => arr[Math.floor(Math.random() * arr.length)] || '';
+      const opener = pick(WELL_ACCEPT_OPENERS);
+      const plan = pick(WELL_ACCEPT_PLANS);
+      return `${opener} ${plan}`.trim();
+    },
+    onComplete(){
+      completeTavernMissionSite('mission_poison_well');
+      const payout = 22;
+      state.player.gold += payout;
+      toast(`Payment: +${payout} gold`, 2.5);
+      const pick = (arr) => arr[Math.floor(Math.random() * arr.length)] || '';
+      const loot = pick(WELL_REWARD_LOOT) || 'He pays you in hush-money coin.';
+      const quip = pick(WELL_DARK_HUMOR);
+      return `${loot} ${quip}`.trim();
     }
   }),
   registerQuestDefinition({
