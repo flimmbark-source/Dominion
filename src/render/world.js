@@ -1043,20 +1043,6 @@ function drawWorldScene(){
     const facadeAlpha = insideHouse ? 0.2 : 1;
     drawHouseFacadeOverlays(h, geometry, visuals, { alpha: facadeAlpha });
   }
-  for (const d of state.doors){
-    drawExtrudedRect({
-      x: d.x,
-      y: d.y,
-      width: d.w,
-      depth: d.h,
-      height: 8,
-      skew: 4,
-      baseColor: '#0b0f17',
-      roofColor: '#223047',
-      shadowStrength: 0.22
-    });
-  }
-
   if (state.interior && state.interior.level === 1) {
     const h = state.houses[state.interior.houseId];
     const col = interiorFloorColor(1);
