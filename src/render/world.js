@@ -557,7 +557,6 @@ function drawHouseFacadeOverlays(house, geometry, visuals, options = {}){
       ctx.restore();
     }
     ctx.restore();
-  }
 
   if (visuals.theme?.questHook){
     const centerX = front[0].x + frontWidth / 2;
