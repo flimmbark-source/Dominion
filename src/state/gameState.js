@@ -1,5 +1,5 @@
 import { VILLAGES, WALL, WORLD } from '../data/world.js';
-import { TAVERN_INTERIOR } from './tavern.js';
+import { TAVERN_INTERIOR, getTavernDoorRect } from './tavern.js';
 import { createPlayerStats } from './playerStats.js';
 import { W, H } from '../game/canvas.js';
 
@@ -10,6 +10,23 @@ const playerSpawn = {
   x: mainVillage.x + 180,
   y: mainVillage.y + 460
 };
+
+const tavern = {
+  x: 5120,
+  y: 4760,
+  w: 220,
+  h: 200,
+  clearRadius: 56,
+  glowRadius: 56,
+  stump: { cx: 5230, cy: 4860, radius: 46 }
+};
+
+const tavernDoor = getTavernDoorRect(tavern);
+const tavernReturnPoint = tavernDoor
+  ? { x: tavernDoor.x + tavernDoor.w / 2, y: tavernDoor.y + tavernDoor.h / 2 }
+  : { x: tavern.x + tavern.w / 2, y: tavern.y + tavern.h / 2 };
+
+const initialTavernSpawn = { ...TAVERN_INTERIOR.spawn };
 
 const globalScope = typeof globalThis !== 'undefined' ? globalThis : {};
 
@@ -72,11 +89,13 @@ const developerSettings = resolveDeveloperTools();
 const state = {
   time: 0,
   pausedForShop: false,
-  messages: [],
-  camera: { x: mainVillage.x + mainVillage.w/2 - W/2, y: mainVillage.y + mainVillage.h/2 - H/2 },
+  messages: [
+    { text: 'You savor a goblin-brew alongside the tavern regulars.', expiresAt: 6 }
+  ],
+  camera: { x: 0, y: 0 },
   playerSpawn: { ...playerSpawn },
   player: {
-    x: playerSpawn.x, y: playerSpawn.y, r: 10, facing: 0,
+    x: initialTavernSpawn.x, y: initialTavernSpawn.y, r: 10, facing: -Math.PI / 2,
     vx: 0, vy: 0, sprinting: false,
     gold: 0, health: playerStats.base.maxHealth,
     detection: 0,
@@ -93,16 +112,8 @@ const state = {
   doors: [],
   houseSolids: [],
   chests: [],
-  tavern: {
-    x: 5120,
-    y: 4760,
-    w: 220,
-    h: 200,
-    clearRadius: 56,
-    glowRadius: 56,
-    stump: { cx: 5230, cy: 4860, radius: 46 }
-  },
-  tavernInteriorState: { active: false, returnPoint: null, dialog: null },
+  tavern,
+  tavernInteriorState: { active: true, returnPoint: { ...tavernReturnPoint }, dialog: null },
   tavernReentryBlockUntil: 0,
   npcs: [],
   villageInstances: [],
@@ -119,7 +130,7 @@ const state = {
   timeSinceSeen: 0,
   huntHeat: 0,
   nextSweeperSpawn: 0,
-  tavernPlayerInside: false,
+  tavernPlayerInside: true,
   shopOwned: new Set(),
   mapMode: 'minimal',
   questLogOpen: false,
