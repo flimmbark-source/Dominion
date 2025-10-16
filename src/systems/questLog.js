@@ -226,6 +226,7 @@ function getQuestDescriptors(options = {}){
     title: def.title,
     description: def.description,
     detail: def.detail,
+    narrative: def.narrative || null,
     status: quest.status,
     statusLabel: getQuestStatusLabel(quest.status),
     progress: typeof def.getProgressText === 'function' ? def.getProgressText(quest, def) : ''

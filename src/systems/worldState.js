@@ -60,6 +60,10 @@ function resetWorldState(){
   }
   state.outpostStates = {};
   state.rumorFlags = {};
+  state.worldIntel = {};
+  notifyWorldStateChange('outpostStates', state.outpostStates, null);
+  notifyWorldStateChange('rumorFlags', state.rumorFlags, null);
+  notifyWorldStateChange('worldIntel', state.worldIntel, null);
   state.safehouseAccess = {};
   state.villageEconomy = cloneCleanObject(DEFAULT_ECONOMY_STATE);
   notifyWorldStateChange('outpostStates', state.outpostStates, null);
@@ -83,6 +87,8 @@ function serializeWorldState(){
     rumorFlags: JSON.parse(JSON.stringify(state.rumorFlags || {})),
     safehouseAccess: JSON.parse(JSON.stringify(state.safehouseAccess || {})),
     villageEconomy: JSON.parse(JSON.stringify(state.villageEconomy || DEFAULT_ECONOMY_STATE))
+    worldIntel: JSON.parse(JSON.stringify(state.worldIntel || {})),
+    safehouseAccess: JSON.parse(JSON.stringify(state.safehouseAccess || {}))
   };
 }
 
@@ -111,8 +117,11 @@ function hydrateWorldState(snapshot = {}){
   if (!state.villageEconomy.productionNodes || typeof state.villageEconomy.productionNodes !== 'object'){
     state.villageEconomy.productionNodes = {};
   }
+  state.worldIntel = cloneCleanObject(snapshot.worldIntel);
   notifyWorldStateChange('outpostStates', state.outpostStates, null);
   notifyWorldStateChange('rumorFlags', state.rumorFlags, null);
+  notifyWorldStateChange('worldIntel', state.worldIntel, null);
+  state.safehouseAccess = cloneCleanObject(snapshot.safehouseAccess);
   notifyWorldStateChange('safehouseAccess', state.safehouseAccess, null);
   notifyWorldStateChange('villageEconomy', state.villageEconomy, null);
 }
@@ -483,6 +492,30 @@ function clearRumorFlag(flag){
   setRumorFlag(flag, false);
 }
 
+function updateWorldIntel(key, value){
+  if (!key) return null;
+  if (!state.worldIntel || typeof state.worldIntel !== 'object'){
+    state.worldIntel = {};
+  }
+  const previous = state.worldIntel[key];
+  if (value == null){
+    delete state.worldIntel[key];
+  } else if (typeof value === 'object'){
+    state.worldIntel[key] = cloneCleanObject(value);
+  } else {
+    state.worldIntel[key] = value;
+  }
+  notifyWorldStateChange('worldIntel', state.worldIntel, previous);
+  return state.worldIntel[key];
+}
+
+function getWorldIntel(key){
+  if (!key || !state.worldIntel || typeof state.worldIntel !== 'object') return null;
+  const value = state.worldIntel[key];
+  if (!value || typeof value !== 'object') return value ?? null;
+  return cloneCleanObject(value);
+}
+
 export {
   WORLD_STATE_RANGES,
   resetWorldState,
@@ -530,4 +563,6 @@ export {
   markVillageEconomyDamaged,
   scheduleGuardStrengthReduction,
   enqueueRevengeMissionSeed
+  updateWorldIntel,
+  getWorldIntel
 };

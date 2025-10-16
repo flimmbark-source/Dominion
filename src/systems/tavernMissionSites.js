@@ -1,5 +1,5 @@
 import { state } from '../state/gameState.js';
-import { VILLAGES } from '../data/world.js';
+import { VILLAGES, WALL } from '../data/world.js';
 import { clamp } from '../utils/math.js';
 import { toast } from '../ui/toast.js';
 import { addThreat } from './threat.js';
@@ -365,6 +365,211 @@ const SUPPLY_STEPS = [
   }
 ];
 
+let cachedHeistTarget = null;
+
+function describeHeistHouse(house, index){
+  if (!house) return 'Moonfen house';
+  const lane = house.side === 'north' ? 'north lane' : 'south quay';
+  return `House ${index + 1} on the ${lane}`;
+}
+
+function makeHeistAnchors(chest, house, label){
+  if (!house){
+    return {
+      entryAnchor: null,
+      chestAnchor: null,
+      escapeAnchor: null,
+      location: null
+    };
+  }
+  const door = house.door || { x: house.x + house.w / 2 - 10, y: house.y, w: 20, h: WALL };
+  const doorCenterX = door.x + door.w / 2;
+  const outsideOffset = house.side === 'north' ? door.h + 44 : -44;
+  const entryY = door.y + outsideOffset;
+  const parity = (chest.houseId ?? 0) % 2 === 0 ? -1 : 1;
+  const escapeX = doorCenterX + parity * 96;
+  const escapeY = entryY + (house.side === 'north' ? 28 : -28);
+  const location = {
+    x: house.x + house.w / 2,
+    y: house.y + house.h / 2,
+    radius: Math.max(150, house.w, house.h),
+    label
+  };
+  return {
+    entryAnchor: {
+      x: doorCenterX,
+      y: entryY,
+      radius: 92,
+      label: `Doorway to ${label}`
+    },
+    chestAnchor: {
+      x: chest.x,
+      y: chest.y,
+      radius: 64,
+      label: `Lockbox inside ${label}`
+    },
+    escapeAnchor: {
+      x: clamp(escapeX, location.x - 220, location.x + 220),
+      y: escapeY,
+      radius: 110,
+      label: `Alley near ${label}`
+    },
+    location
+  };
+}
+
+function isHeistTargetValid(target){
+  if (!target) return false;
+  const chest = state.chests?.[target.chestIndex];
+  if (!chest || chest.looted) return false;
+  if (chest.level != null && chest.level !== 0) return false;
+  const house = state.houses?.[target.houseId];
+  if (!house) return false;
+  return true;
+}
+
+function selectHeistTarget(){
+  if (!Array.isArray(state.chests) || !Array.isArray(state.houses)) return null;
+  const candidates = [];
+  state.chests.forEach((chest, index) => {
+    if (!chest || chest.looted) return;
+    if (chest.level != null && chest.level !== 0) return;
+    if (!Number.isInteger(chest.houseId)) return;
+    const house = state.houses[chest.houseId];
+    if (!house || (house.villageId != null && house.villageId !== 0)) return;
+    const label = describeHeistHouse(house, chest.houseId);
+    const anchors = makeHeistAnchors(chest, house, label);
+    if (!anchors.location) return;
+    candidates.push({
+      chestIndex: index,
+      houseId: chest.houseId,
+      houseLabel: label,
+      baseAmount: chest.amount ?? 0,
+      ...anchors
+    });
+  });
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => (b.baseAmount ?? 0) - (a.baseAmount ?? 0));
+  return candidates[0];
+}
+
+function ensureHeistTarget(){
+  if (isHeistTargetValid(cachedHeistTarget)) return cachedHeistTarget;
+  cachedHeistTarget = selectHeistTarget();
+  return cachedHeistTarget;
+}
+
+function getHeistChest(mission){
+  if (!mission?.data) return null;
+  const index = mission.data.targetChestIndex;
+  if (!Number.isInteger(index)) return null;
+  return state.chests?.[index] || null;
+}
+
+function computeHeistExposure(mission){
+  const playerDetection = clamp(state.player?.detection ?? 0, 0, 100);
+  const base = playerDetection / 100;
+  const anchor = mission?.data?.heistLocation || mission?.location || { x: state.player.x, y: state.player.y, radius: 160 };
+  const radius = anchor.radius ?? 160;
+  const noiseEvents = Array.isArray(state.noiseEvents) ? state.noiseEvents : [];
+  const now = state.time;
+  let weight = 0;
+  for (const ev of noiseEvents){
+    if (!ev) continue;
+    const dx = (ev.x ?? anchor.x) - anchor.x;
+    const dy = (ev.y ?? anchor.y) - anchor.y;
+    const dist = Math.hypot(dx, dy);
+    const reach = (ev.radius ?? 0) + radius;
+    if (dist > reach) continue;
+    const span = Math.max(0.1, ev.duration ?? (ev.expiresAt != null && ev.createdAt != null ? ev.expiresAt - ev.createdAt : 6));
+    const remaining = ev.expiresAt != null ? Math.max(0, ev.expiresAt - now) : 0;
+    const progress = span > 0 ? clamp(1 - remaining / span, 0, 1) : 1;
+    weight += clamp(progress, 0.2, 1);
+  }
+  const noiseFactor = clamp(weight * 0.25, 0, 1);
+  const exposure = clamp(base * 0.7 + noiseFactor * 0.3, 0, 1);
+  return Math.round(exposure * 100);
+}
+
+const HEIST_STEPS = [
+  {
+    id: 'breach-entry',
+    label: 'Slip through the lamplit door',
+    anchor(mission){
+      return mission.data?.entryAnchor || mission.location;
+    },
+    radius: 92,
+    duration: 2.6,
+    maxDetection: 50,
+    startText: 'You time your breath with the patrol and reach for the latch.',
+    hintText: 'Press E at the doorway with detection under 50 to melt inside.',
+    cancelText: 'Footsteps scrape nearby—you freeze against the wall.',
+    completeText: 'You ghost through the doorway before lantern light swings back.',
+    onComplete(mission){
+      mission.data = mission.data || {};
+      mission.data.entered = true;
+      mission.data.lastExposure = computeHeistExposure(mission);
+      state.player.detection = clamp((state.player?.detection ?? 0) - 6, 0, 100);
+    }
+  },
+  {
+    id: 'lift-lockbox',
+    label: 'Lift the lockbox lid',
+    anchor(mission){
+      if (mission.data?.chestAnchor) return mission.data.chestAnchor;
+      const chest = getHeistChest(mission);
+      if (chest){
+        return { x: chest.x, y: chest.y, radius: 64, label: 'Lockbox cache' };
+      }
+      return mission.location;
+    },
+    radius: 70,
+    duration: 3.3,
+    maxDetection: 54,
+    startText: 'You kneel by the lockbox, picks whispering at the tumblers.',
+    hintText: 'Press E beside the lockbox to pick it quietly.',
+    cancelText: 'Boards creak overhead—you pause until the noise fades.',
+    completeText: 'The lockbox yields; coin spills into your satchel.',
+    onComplete(mission){
+      mission.data = mission.data || {};
+      const chest = getHeistChest(mission);
+      let haul = 0;
+      if (chest && !chest.looted){
+        chest.looted = true;
+        haul = chest.amount ?? 0;
+        chest.amount = 0;
+      }
+      mission.data.lootAmount = (mission.data.lootAmount ?? 0) + haul;
+      mission.data.chestOpened = true;
+      mission.data.lastExposure = computeHeistExposure(mission);
+      if (haul > 0){
+        state.player.gold += haul;
+        toast(`Lifted ${haul} gold from the lockbox.`, 2.6);
+      } else {
+        toast('The lockbox was already picked clean.', 2.4);
+      }
+      state.player.detection = clamp((state.player?.detection ?? 0) + 12, 0, 100);
+      addThreat(8);
+    }
+  },
+  {
+    id: 'slip-away',
+    label: 'Vanish into the moonlit lane',
+    anchor(mission){
+      return mission.data?.escapeAnchor || mission.location;
+    },
+    radius: 104,
+    duration: 2.4,
+    maxDetection: 58,
+    startText: 'You edge toward the alley, ears tuned for distant patrols.',
+    hintText: 'Press E in the alley to disappear into the night.',
+    cancelText: 'A window snaps open—you duck back into shadow.',
+    completeText: 'You fade into the alley, clutching the heavy purse.',
+    onComplete(mission){
+      mission.data = mission.data || {};
+      mission.data.escaped = true;
+      mission.data.lastExposure = computeHeistExposure(mission);
+      mission.data.escapeTime = state.time;
 const POISON_WELL_STEPS = [
   {
     id: 'survey-plaza',
@@ -839,6 +1044,58 @@ const missionSpecs = {
       return `${completed}/${total} steps complete · Next: ${step.label}`;
     }
   },
+  'mission_steal_gold': {
+    id: 'mission_steal_gold',
+    label: 'Moonfen Ledger Heist',
+    getLocation(){
+      const target = ensureHeistTarget();
+      if (target?.location){
+        return { ...target.location };
+      }
+      const moonfen = VILLAGES[0];
+      return {
+        x: moonfen.x + moonfen.w / 2,
+        y: moonfen.y + moonfen.h / 2,
+        radius: 200,
+        label: 'Moonfen Lanes'
+      };
+    },
+    steps: HEIST_STEPS,
+    createData(){
+      const target = ensureHeistTarget();
+      if (!target){
+        return { unavailable: true };
+      }
+      return {
+        targetChestIndex: target.chestIndex,
+        houseId: target.houseId,
+        entryAnchor: target.entryAnchor ? { ...target.entryAnchor } : null,
+        chestAnchor: target.chestAnchor ? { ...target.chestAnchor } : null,
+        escapeAnchor: target.escapeAnchor ? { ...target.escapeAnchor } : null,
+        heistLocation: target.location ? { ...target.location } : null,
+        houseLabel: target.houseLabel,
+        estimatedTake: target.baseAmount ?? 0,
+        lootAmount: 0,
+        chestOpened: false,
+        escaped: false,
+        lastExposure: 0
+      };
+    },
+    onActivate(mission){
+      mission.data = mission.data || {};
+      if (mission.data.unavailable){
+        mission.active = false;
+        mission.ready = false;
+        mission.completed = false;
+        mission.stageIndex = 0;
+        mission.stepsState = HEIST_STEPS.map(step => ({ id: step.id, completed: false }));
+        cachedHeistTarget = null;
+        toast('No ripe ledgers tonight—the street already lies quiet.', 2.6);
+        return;
+      }
+      if (mission.data.heistLocation){
+        mission.location = { ...mission.data.heistLocation };
+      }
   'mission_poison_well': {
     id: 'mission_poison_well',
     label: 'Brackenreach Well Plaza',
@@ -879,6 +1136,33 @@ const missionSpecs = {
     onReady(mission){
       if (mission.rewardApplied) return;
       mission.rewardApplied = true;
+      mission.data = mission.data || {};
+      mission.data.finishedAt = state.time;
+      mission.data.lastExposure = computeHeistExposure(mission);
+      cachedHeistTarget = null;
+      toast('Gold secured. Return to the barkeep before suspicion spikes.', 2.6);
+    },
+    progress(mission){
+      const data = mission.data || {};
+      if (data.unavailable){
+        return 'No stocked houses tonight—give the lanes time to fatten up again.';
+      }
+      const total = HEIST_STEPS.length;
+      const completed = mission.stepsState.filter(step => step.completed).length;
+      const exposure = computeHeistExposure(mission);
+      if (mission.completed){
+        return `Heist wrapped. Exposure Index ${exposure}.`;
+      }
+      if (mission.ready){
+        return `Spoils bagged—report back. Exposure Index ${exposure}.`;
+      }
+      const step = HEIST_STEPS[mission.stageIndex];
+      if (!step){
+        return `${completed}/${total} steps complete · Exposure ${exposure}`;
+      }
+      const next = step.label;
+      const suffix = data.houseLabel ? ` @ ${data.houseLabel}` : '';
+      return `${completed}/${total} steps complete · Exposure ${exposure} · Next: ${next}${suffix}`;
       const zone = mission.data?.plazaZone || getWellPlazaAnchor();
       applyWellPoisoningStatus(zone);
       adjustGuardAlertness(-12);
@@ -1667,6 +1951,18 @@ function gatherTavernIntelLines(){
       } else {
         lines.push('Follow the subtle trail markers to intercept the scout captain.');
       }
+      continue;
+    }
+    if (mission.id === 'mission_steal_gold'){
+      const label = mission.data?.houseLabel || 'the marked house';
+      if (step.id === 'lift-lockbox'){
+        lines.push(`You\'re inside ${label}—lift the lockbox without spiking exposure.`);
+      } else if (step.id === 'slip-away'){
+        lines.push(`Lockbox cracked. Fade from ${label} before the watch loops back.`);
+      } else {
+        lines.push(`Case ${label}\'s doorway and slip inside when the patrol turns.`);
+      }
+      continue;
     }
   }
   return lines;
