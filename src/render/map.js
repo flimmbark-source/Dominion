@@ -3,6 +3,7 @@ import { state } from '../state/gameState.js';
 import { WORLD, VILLAGES } from '../data/world.js';
 import { roads, pathSegments } from '../world/terrain.js';
 import { TAU, clamp } from '../utils/math.js';
+import { getQuestDefinition, getQuestState } from '../systems/questLog.js';
 
 const MAP_POI_COLORS = {
   'shady-trader': '#d0a74e',
@@ -10,6 +11,201 @@ const MAP_POI_COLORS = {
   'cursed-shrine': '#b57bf8',
   'bog-sprite': '#66e0a0'
 };
+
+const QUEST_MARKER_COLORS = {
+  active: {
+    fill: 'rgba(255, 232, 140, 0.24)',
+    stroke: '#ffe06d',
+    core: '#fff1b6'
+  },
+  pending: {
+    fill: 'rgba(255, 211, 117, 0.16)',
+    stroke: '#e8c56d',
+    core: '#ffe5a6'
+  }
+};
+
+function getFontSize(font){
+  const match = typeof font === 'string' ? font.match(/(\d+(?:\.\d+)?)px/) : null;
+  return match ? parseFloat(match[1]) : 12;
+}
+
+function prettifyStageId(id){
+  if (!id || typeof id !== 'string') return '';
+  return id
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, letter => letter.toUpperCase());
+}
+
+function drawTrackedQuestTargets({ toMap, scale, mapX, mapY, mapW, mapH }){
+  const trackedId = state.trackedQuestId;
+  if (!trackedId) return null;
+
+  const quest = getQuestState(trackedId);
+  if (!quest) return null;
+
+  const def = getQuestDefinition(trackedId);
+  const targets = Array.isArray(quest.data?.targets) ? quest.data.targets : [];
+  const positionedTargets = targets.filter(target => {
+    if (!target) return false;
+    if (!Array.isArray(target.position)) return false;
+    const [x, y] = target.position;
+    return Number.isFinite(x) && Number.isFinite(y);
+  });
+
+  const visibleTargets = positionedTargets.filter(target => {
+    const status = typeof target.status === 'string' ? target.status.toLowerCase() : 'pending';
+    return status !== 'completed';
+  });
+
+  const questTitle = def?.title || quest.id || 'Tracked quest';
+  const progressText = typeof def?.getProgressText === 'function'
+    ? def.getProgressText(quest, def) || ''
+    : '';
+
+  const primaryTarget = visibleTargets.find(target => (target.status || '').toLowerCase() === 'active')
+    || visibleTargets[0]
+    || positionedTargets[0]
+    || null;
+
+  const objectiveText = primaryTarget?.objective
+    || primaryTarget?.phaseName
+    || prettifyStageId(quest.data?.stage || quest.stage)
+    || '';
+
+  if (!visibleTargets.length){
+    return {
+      questTitle,
+      progressText,
+      objectiveText,
+      hasMarkers: false
+    };
+  }
+
+  ctx.save();
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+
+  for (const target of visibleTargets){
+    const [tx, ty] = target.position;
+    const status = typeof target.status === 'string' ? target.status.toLowerCase() : 'pending';
+    const palette = status === 'active' ? QUEST_MARKER_COLORS.active : QUEST_MARKER_COLORS.pending;
+    const center = toMap(tx, ty);
+    const radiusWorld = clamp(Number.isFinite(target.radius) ? target.radius : 140, 60, Math.max(WORLD.W, WORLD.H));
+    const radiusPx = clamp(radiusWorld * scale, 18, Math.min(mapW, mapH));
+    const coreRadius = clamp(radiusPx * 0.22, 4, 14 * Math.max(1, scale));
+
+    ctx.beginPath();
+    ctx.fillStyle = palette.fill;
+    ctx.arc(center.x, center.y, radiusPx, 0, TAU);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.strokeStyle = palette.stroke;
+    ctx.lineWidth = Math.max(1.2, 2.1 * Math.sqrt(scale));
+    ctx.arc(center.x, center.y, radiusPx, 0, TAU);
+    ctx.stroke();
+
+    ctx.shadowColor = 'rgba(255, 225, 150, 0.45)';
+    ctx.shadowBlur = Math.max(8, 18 * scale);
+    ctx.beginPath();
+    ctx.fillStyle = palette.core;
+    ctx.arc(center.x, center.y, coreRadius, 0, TAU);
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.lineWidth = Math.max(1, 1.4 * Math.sqrt(scale));
+    ctx.strokeStyle = 'rgba(38, 26, 10, 0.6)';
+    ctx.arc(center.x, center.y, coreRadius, 0, TAU);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+
+  return {
+    questTitle,
+    progressText,
+    objectiveText,
+    hasMarkers: true
+  };
+}
+
+function drawTrackedQuestSummary(summary, mapX, mapY, mapW, mapH){
+  if (!summary) return;
+
+  const lines = [];
+  lines.push({
+    text: summary.questTitle,
+    font: '600 15px system-ui',
+    color: '#ffe7a4'
+  });
+
+  if (summary.progressText){
+    lines.push({
+      text: summary.progressText,
+      font: '12px system-ui',
+      color: '#c1d4ee'
+    });
+  }
+
+  if (summary.hasMarkers && summary.objectiveText){
+    lines.push({
+      text: summary.objectiveText,
+      font: '12px system-ui',
+      color: '#ffe8bc'
+    });
+  } else if (!summary.hasMarkers){
+    lines.push({
+      text: 'No known objectives marked on the map yet.',
+      font: '12px system-ui',
+      color: '#d0d8e6'
+    });
+  }
+
+  const paddingX = 14;
+  const paddingY = 10;
+  const lineSpacing = 4;
+
+  let panelWidth = 160;
+  let panelHeight = paddingY * 2;
+
+  for (const line of lines){
+    ctx.font = line.font;
+    const metrics = ctx.measureText(line.text);
+    const lineWidth = metrics.width;
+    const fontSize = getFontSize(line.font);
+    panelWidth = Math.max(panelWidth, Math.ceil(lineWidth) + paddingX * 2);
+    panelHeight += fontSize;
+    line.height = fontSize;
+  }
+
+  panelHeight += lineSpacing * (lines.length - 1);
+  panelWidth = Math.min(panelWidth, mapW - 24);
+  panelWidth = Math.max(panelWidth, 160);
+
+  const panelX = clamp(mapX + 18, mapX + 18, mapX + mapW - panelWidth - 18);
+  const panelY = clamp(mapY + mapH - panelHeight - 18, mapY + 18, mapY + mapH - panelHeight - 18);
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(12, 18, 28, 0.88)';
+  ctx.fillRect(panelX, panelY, panelWidth, panelHeight);
+  ctx.strokeStyle = '#435570';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(panelX + 0.5, panelY + 0.5, panelWidth - 1, panelHeight - 1);
+
+  let cursorY = panelY + paddingY;
+  for (const line of lines){
+    ctx.font = line.font;
+    ctx.fillStyle = line.color;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(line.text, panelX + paddingX, cursorY);
+    cursorY += line.height + lineSpacing;
+  }
+
+  ctx.restore();
+}
 
 function drawWorldMapOverlay(){
   ctx.save();
@@ -180,6 +376,8 @@ function drawWorldMapOverlay(){
     ctx.globalAlpha = 1;
   }
 
+  const questSummary = drawTrackedQuestTargets({ toMap, scale, mapX, mapY, mapW, mapH });
+
   if (!state.player.dead){
     const playerPt = toMap(state.player.x, state.player.y);
     ctx.fillStyle = '#5cc16d';
@@ -193,6 +391,8 @@ function drawWorldMapOverlay(){
 
   ctx.globalAlpha = 1;
   ctx.restore();
+
+  drawTrackedQuestSummary(questSummary, mapX, mapY, mapW, mapH);
 
   const fogStrength = clamp(1 - visibility, 0, 1);
   if (fogStrength > 0.05){
