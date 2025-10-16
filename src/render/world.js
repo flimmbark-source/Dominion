@@ -47,6 +47,32 @@ function adjustHexColor(hex, factor){
   return `#${nr.toString(16).padStart(2, '0')}${ng.toString(16).padStart(2, '0')}${nb.toString(16).padStart(2, '0')}`;
 }
 
+function wrapSpeechLines(text, font, maxWidth){
+  const content = typeof text === 'string' ? text : String(text ?? '');
+  if (!content) return [];
+  const prevFont = ctx.font;
+  if (font) ctx.font = font;
+  const words = content.split(/\s+/).filter(Boolean);
+  if (words.length === 0){
+    if (font) ctx.font = prevFont;
+    return [];
+  }
+  const lines = [];
+  let current = words[0];
+  for (let i = 1; i < words.length; i++){
+    const attempt = `${current} ${words[i]}`;
+    if (ctx.measureText(attempt).width > maxWidth){
+      lines.push(current);
+      current = words[i];
+    } else {
+      current = attempt;
+    }
+  }
+  if (current) lines.push(current);
+  if (font) ctx.font = prevFont;
+  return lines;
+}
+
 const HOUSE_PALETTES = [
   { id: 'deep-slate', base: '#1b2638', roof: '#2f3f5b', trim: '#d1d8e2', window: '#e9f0ff' },
   { id: 'warm-clay', base: '#3a2a1b', roof: '#5a4030', trim: '#f0d2a4', window: '#fbe7c3' },
@@ -1074,6 +1100,7 @@ function drawWorldScene(){
     if (showDebugFov) drawFOV(npc);
     drawNpc3D(npc);
     drawNpcWeaponSwing(npc);
+    drawNpcSpeechBubble(npc);
   }
 
   drawInteractionPrompts();
@@ -1090,6 +1117,86 @@ function drawWorldScene(){
   drawTrapDisarmProgress(p);
 
   drawDamageNumbers();
+
+  ctx.restore();
+}
+
+function drawNpcSpeechBubble(npc){
+  if (!npc || !npc.speechBubble) return;
+  const bubble = npc.speechBubble;
+  const now = state.time;
+  if (now >= bubble.expiresAt){
+    npc.speechBubble = null;
+    return;
+  }
+
+  const fadeDuration = Math.max(bubble.fadeDuration ?? 0.001, 0.001);
+  const fadeStart = bubble.fadeStart ?? (bubble.expiresAt - fadeDuration);
+  let alpha = 1;
+  if (now > fadeStart){
+    alpha = clamp(1 - (now - fadeStart) / fadeDuration, 0, 1);
+  }
+  if (alpha <= 0){
+    npc.speechBubble = null;
+    return;
+  }
+
+  const font = '600 15px system-ui';
+  const maxWidth = 240;
+  const lines = wrapSpeechLines(bubble.text, font, maxWidth);
+  if (!lines.length){
+    npc.speechBubble = null;
+    return;
+  }
+
+  ctx.save();
+  ctx.font = font;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  const lineHeight = 18;
+  let widest = 0;
+  for (const line of lines){
+    widest = Math.max(widest, ctx.measureText(line).width);
+  }
+  const paddingX = 14;
+  const paddingY = 9;
+  const tailHeight = 14;
+  const bubbleWidth = Math.max(72, widest + paddingX * 2);
+  const bubbleHeight = lines.length * lineHeight + paddingY * 2;
+  const baseX = npc.x;
+  const baseY = npc.y - 28;
+  const boxX = baseX - bubbleWidth / 2;
+  const boxY = baseY - bubbleHeight - tailHeight;
+
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = 'rgba(10, 18, 30, 0.78)';
+  ctx.strokeStyle = 'rgba(203, 224, 255, 0.88)';
+  ctx.lineWidth = 1.4;
+
+  const radius = 10;
+  ctx.beginPath();
+  ctx.moveTo(boxX + radius, boxY);
+  ctx.lineTo(boxX + bubbleWidth - radius, boxY);
+  ctx.quadraticCurveTo(boxX + bubbleWidth, boxY, boxX + bubbleWidth, boxY + radius);
+  ctx.lineTo(boxX + bubbleWidth, boxY + bubbleHeight - radius);
+  ctx.quadraticCurveTo(boxX + bubbleWidth, boxY + bubbleHeight, boxX + bubbleWidth - radius, boxY + bubbleHeight);
+  ctx.lineTo(baseX + 16, boxY + bubbleHeight);
+  ctx.lineTo(baseX, boxY + bubbleHeight + tailHeight);
+  ctx.lineTo(baseX - 16, boxY + bubbleHeight);
+  ctx.lineTo(boxX + radius, boxY + bubbleHeight);
+  ctx.quadraticCurveTo(boxX, boxY + bubbleHeight, boxX, boxY + bubbleHeight - radius);
+  ctx.lineTo(boxX, boxY + radius);
+  ctx.quadraticCurveTo(boxX, boxY, boxX + radius, boxY);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = '#eaf4ff';
+  for (let i = 0; i < lines.length; i++){
+    const textY = boxY + paddingY + i * lineHeight + lineHeight / 2;
+    ctx.fillText(lines[i], baseX, textY);
+  }
 
   ctx.restore();
 }

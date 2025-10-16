@@ -191,7 +191,8 @@ function makeNPC(type, x, y, waypoints=null, options = {}){
     chasingTarget: null,
     activeTargetIsChase: false,
     activeTargetBeforeChase: null,
-    attackSwing: null
+    attackSwing: null,
+    speechBubble: null
   };
 
   if (typeof options.initialPause === 'number' && options.initialPause > 0){
