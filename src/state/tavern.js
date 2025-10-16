@@ -5,7 +5,8 @@ const TAVERN_INTERIOR = {
   height: 360,
   wallThickness: 28,
   exitBuffer: 24,
-  spawn: { x: 320, y: 300 },
+  // Seat the player at the south side of the center table instead of the corner.
+  spawn: { x: 304, y: 308 },
   exit: { x: 292, y: 326, w: 56, h: 28 },
   barkeep: { x: 320, y: 124, radius: 18, interactRadius: 72 },
   barRect: { x: 160, y: 140, w: 320, h: 24 },
