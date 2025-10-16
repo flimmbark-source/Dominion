@@ -207,6 +207,9 @@ const missionDefinitions = [
       };
       const exposureLine = exposure != null ? ` Exposure Index ${exposure}.` : '';
       return `${HEIST_NARRATIVE.success} You pocket ${payout} gold from ${label}.${exposureLine}`;
+    }
+  }),
+  registerQuestDefinition({
     id: 'mission_poison_well',
     source: 'tavern',
     initialStatus: 'available',
