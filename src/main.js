@@ -452,13 +452,13 @@ function update(dt){
   }
 
   let missionInteracted = false;
-  if (!inTavernInterior && !state.interior && !barkeepDialogueActive){
-    if (interactPressed){
-      missionInteracted = handleTavernMissionInteraction({ interactPressed: true });
-      if (missionInteracted){
-        interactPressed = false;
-      }
+  if (!barkeepDialogueActive && interactPressed){
+    missionInteracted = handleTavernMissionInteraction({ interactPressed: true });
+    if (missionInteracted){
+      interactPressed = false;
     }
+  }
+  if (!inTavernInterior && !state.interior && !barkeepDialogueActive){
     if (interactPressed){
       const spoke = tryTalkToVillager();
       if (!spoke){

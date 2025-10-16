@@ -48,8 +48,10 @@ function resetWorldState(){
   }
   state.outpostStates = {};
   state.rumorFlags = {};
+  state.worldIntel = {};
   notifyWorldStateChange('outpostStates', state.outpostStates, null);
   notifyWorldStateChange('rumorFlags', state.rumorFlags, null);
+  notifyWorldStateChange('worldIntel', state.worldIntel, null);
   notifyWorldStateChange('reset', serializeWorldState(), null);
 }
 
@@ -62,7 +64,8 @@ function serializeWorldState(){
     darklordReinforcementDelay: state.darklordReinforcementDelay,
     villagePopulationHealth: state.villagePopulationHealth,
     outpostStates: JSON.parse(JSON.stringify(state.outpostStates || {})),
-    rumorFlags: JSON.parse(JSON.stringify(state.rumorFlags || {}))
+    rumorFlags: JSON.parse(JSON.stringify(state.rumorFlags || {})),
+    worldIntel: JSON.parse(JSON.stringify(state.worldIntel || {}))
   };
 }
 
@@ -79,8 +82,10 @@ function hydrateWorldState(snapshot = {}){
   setMetric('villagePopulationHealth', snapshot.villagePopulationHealth ?? getMetricDefault('villagePopulationHealth'));
   state.outpostStates = cloneCleanObject(snapshot.outpostStates);
   state.rumorFlags = cloneCleanObject(snapshot.rumorFlags);
+  state.worldIntel = cloneCleanObject(snapshot.worldIntel);
   notifyWorldStateChange('outpostStates', state.outpostStates, null);
   notifyWorldStateChange('rumorFlags', state.rumorFlags, null);
+  notifyWorldStateChange('worldIntel', state.worldIntel, null);
 }
 
 function cloneCleanObject(value){
@@ -248,6 +253,30 @@ function clearRumorFlag(flag){
   setRumorFlag(flag, false);
 }
 
+function updateWorldIntel(key, value){
+  if (!key) return null;
+  if (!state.worldIntel || typeof state.worldIntel !== 'object'){
+    state.worldIntel = {};
+  }
+  const previous = state.worldIntel[key];
+  if (value == null){
+    delete state.worldIntel[key];
+  } else if (typeof value === 'object'){
+    state.worldIntel[key] = cloneCleanObject(value);
+  } else {
+    state.worldIntel[key] = value;
+  }
+  notifyWorldStateChange('worldIntel', state.worldIntel, previous);
+  return state.worldIntel[key];
+}
+
+function getWorldIntel(key){
+  if (!key || !state.worldIntel || typeof state.worldIntel !== 'object') return null;
+  const value = state.worldIntel[key];
+  if (!value || typeof value !== 'object') return value ?? null;
+  return cloneCleanObject(value);
+}
+
 export {
   WORLD_STATE_RANGES,
   resetWorldState,
@@ -279,5 +308,7 @@ export {
   clearOutpostState,
   getOutpostState,
   setRumorFlag,
-  clearRumorFlag
+  clearRumorFlag,
+  updateWorldIntel,
+  getWorldIntel
 };

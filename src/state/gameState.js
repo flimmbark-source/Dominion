@@ -91,7 +91,8 @@ const state = {
   darklordReinforcementDelay: 0,
   villagePopulationHealth: 0.9,
   outpostStates: {},
-  rumorFlags: {}
+  rumorFlags: {},
+  worldIntel: {}
 };
 
 export { state, mainVillage };

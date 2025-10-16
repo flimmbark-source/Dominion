@@ -20,6 +20,19 @@ import {
   getTavernMissionProgressText,
   gatherTavernIntelLines
 } from './tavernMissionSites.js';
+import {
+  raiseVillageSuspicion,
+  queueGuardInvestigationNoise,
+  grantTradeRouteIntel,
+  flagTradeCaravanSeedRumor
+} from './worldStateHelpers.js';
+
+const HEIST_NARRATIVE = Object.freeze({
+  title: 'Skim the Ledger House',
+  intro: 'He taps an ink-stained ledger. "North lane\'s bookkeeper just tallied the tithe. Slip inside, skim their chest, then ghost back."',
+  success: 'He weighs the purse and grins. "That ledger sings—now we know when their caravan rolls."',
+  failure: 'He wipes the bar. "No ripe ledgers tonight—the households are still awake."'
+});
 
 const missionDefinitions = [
   registerQuestDefinition({
@@ -74,6 +87,79 @@ const missionDefinitions = [
       state.player.gold += payout;
       toast(`Payment: +${payout} gold`, 2.4);
       return 'The barkeep sniffs. "Sick soldiers don\'t raid hard. Enjoy the quiet."';
+    }
+  }),
+  registerQuestDefinition({
+    id: 'mission_steal_gold',
+    source: 'tavern',
+    initialStatus: 'available',
+    title: HEIST_NARRATIVE.title,
+    narrative: HEIST_NARRATIVE,
+    description: 'Skim a ledger-keeper\'s rainy-day stash without waking the lane.',
+    detail: 'Mark the lamplit doorway, slip inside unseen, lift the family lockbox, then vanish before suspicion spikes.',
+    intelHint: 'Word is a north-lane ledger-keeper just balanced their books—their chest sits near the stairwell.',
+    rumor: 'Lantern never dies on the north lane—folks say a fat purse hides behind that door.',
+    getProgressText(){
+      return getTavernMissionProgressText('mission_steal_gold');
+    },
+    checkReady(){
+      return isTavernMissionReady('mission_steal_gold');
+    },
+    onAccept(missionState){
+      const activated = activateTavernMissionSite('mission_steal_gold');
+      const site = state.tavernMissionSites?.mission_steal_gold;
+      if (!activated || site?.data?.unavailable){
+        if (site){
+          site.active = false;
+          site.ready = false;
+        }
+        return HEIST_NARRATIVE.failure;
+      }
+      const previous = missionState.data || {};
+      missionState.data = {
+        ...previous,
+        acceptedAt: state.time,
+        targetLabel: site?.data?.houseLabel || null,
+        estimatedTake: site?.data?.estimatedTake ?? previous.estimatedTake,
+        lastExposure: site?.data?.lastExposure ?? previous.lastExposure
+      };
+      return HEIST_NARRATIVE.intro;
+    },
+    onComplete(missionState){
+      const site = state.tavernMissionSites?.mission_steal_gold;
+      const location = site?.data?.heistLocation || site?.location || null;
+      const label = site?.data?.houseLabel || missionState.data?.targetLabel || 'the mark';
+      const lootAmount = site?.data?.lootAmount ?? 0;
+      const exposure = site?.data?.lastExposure ?? missionState.data?.lastExposure ?? null;
+      const payout = 14 + Math.round(lootAmount * 0.35);
+      completeTavernMissionSite('mission_steal_gold');
+      state.player.gold += payout;
+      toast(`Payment: +${payout} gold`, 2.6);
+      raiseVillageSuspicion(9);
+      if (location){
+        queueGuardInvestigationNoise({
+          x: location.x,
+          y: location.y,
+          radius: (location.radius ?? 200) + 40,
+          source: 'mission_steal_gold'
+        });
+      }
+      const intel = grantTradeRouteIntel({
+        amount: 1,
+        note: 'Ledger skim revealed a caravan departing the marsh road at dusk.',
+        toastText: 'Intel gained: caravan schedule added to your ledger.'
+      });
+      flagTradeCaravanSeedRumor({ discoveredAt: state.time, source: 'mission_steal_gold' });
+      missionState.data = {
+        ...(missionState.data || {}),
+        targetLabel: label,
+        lastPayout: payout,
+        lastHeistLoot: lootAmount,
+        lastExposure: exposure,
+        tradeLeads: intel?.leads ?? missionState.data?.tradeLeads ?? null
+      };
+      const exposureLine = exposure != null ? ` Exposure Index ${exposure}.` : '';
+      return `${HEIST_NARRATIVE.success} You pocket ${payout} gold from ${label}.${exposureLine}`;
     }
   }),
   registerQuestDefinition({
