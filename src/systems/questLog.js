@@ -127,6 +127,22 @@ function unlockQuest(id, options = {}){
   return { changed: true, quest, def, message };
 }
 
+function hideQuest(id, options = {}){
+  const def = getQuestDefinition(id);
+  if (!def) return { changed: false, quest: null, def: null, message: null };
+  const quest = ensureQuestEntry(def);
+  if (quest.status === 'hidden'){
+    if (options.merge){
+      mergeQuestData(quest, options.merge);
+    }
+    return { changed: false, quest, def, message: null };
+  }
+  mergeQuestData(quest, options.merge);
+  const time = options.time ?? state.time;
+  updateQuestRecord(quest, 'hidden', time);
+  return { changed: true, quest, def, message: null };
+}
+
 function activateQuest(id, options = {}){
   const def = getQuestDefinition(id);
   if (!def) return { changed: false, quest: null, def: null, message: null };
@@ -271,6 +287,7 @@ export {
   getQuestIntelHints,
   getQuestRumors,
   unlockQuest,
+  hideQuest,
   activateQuest,
   markQuestReady,
   completeQuest,

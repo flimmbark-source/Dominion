@@ -133,6 +133,7 @@ const state = {
   proceduralQuests: [],
   quests: [],
   tavernMissionSites: null,
+  tavernMissionRoster: [],
   noiseEvents: [],
   alarmLevel: 0,
   alarmUntil: 0,

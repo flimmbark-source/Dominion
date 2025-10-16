@@ -11,6 +11,7 @@ import {
   completeQuest,
   markQuestReady,
   unlockQuest,
+  hideQuest,
   getQuestIntelHints
 } from './questLog.js';
 import {
@@ -80,6 +81,8 @@ const FORGE_REWARD_FLAVOR = [
   'He counts out a heavy pouch flecked with ember soot and slides over a forged nail charm.',
   'He pays in smoke-scented silver alongside a packet of quench salts as proof.'
 ];
+
+const MAX_VISIBLE_TAVERN_MISSIONS = 3;
 
 const missionDefinitions = [
   registerQuestDefinition({
@@ -400,13 +403,69 @@ const missionDefinitions = [
 
 const missionById = new Map(missionDefinitions.map(def => [def.id, def]));
 
-function initBarkeepMissions(){
-  missionDefinitions.forEach(def => {
+function getMissionRoster(){
+  if (!Array.isArray(state.tavernMissionRoster)){
+    state.tavernMissionRoster = [];
+  }
+  return state.tavernMissionRoster;
+}
+
+function ensureMissionRoster(){
+  const roster = getMissionRoster();
+  const nextRoster = [];
+  const rosterSet = new Set();
+
+  for (const id of roster){
+    const quest = getQuestState(id);
+    if (!quest){
+      continue;
+    }
+    if (quest.status === 'completed'){
+      hideQuest(id);
+      continue;
+    }
+    if (quest.status === 'hidden'){
+      unlockQuest(id);
+    }
+    if (rosterSet.has(id)){
+      continue;
+    }
+    nextRoster.push(id);
+    rosterSet.add(id);
+  }
+
+  state.tavernMissionRoster = nextRoster;
+
+  for (const def of missionDefinitions){
+    if (state.tavernMissionRoster.length >= MAX_VISIBLE_TAVERN_MISSIONS) break;
+    if (rosterSet.has(def.id)) continue;
     const quest = getQuestState(def.id);
-    if (!quest || quest.status === 'hidden'){
+    if (!quest) continue;
+    if (quest.status === 'completed'){
+      hideQuest(def.id);
+      continue;
+    }
+    state.tavernMissionRoster.push(def.id);
+    rosterSet.add(def.id);
+    if (quest.status === 'hidden'){
       unlockQuest(def.id);
     }
-  });
+  }
+
+  for (const def of missionDefinitions){
+    if (rosterSet.has(def.id)) continue;
+    const quest = getQuestState(def.id);
+    if (!quest) continue;
+    if (quest.status === 'completed' || quest.status === 'hidden') continue;
+    if (quest.status === 'active' || quest.status === 'ready') continue;
+    hideQuest(def.id);
+  }
+
+  return state.tavernMissionRoster;
+}
+
+function initBarkeepMissions(){
+  ensureMissionRoster();
 }
 
 function isBarkeepDialogueActive(){
@@ -446,6 +505,7 @@ function openIntel(refresh = false){
 function openMissionList(){
   const dialog = state.tavernInteriorState.dialog;
   if (!dialog) return;
+  ensureMissionRoster();
   dialog.view = 'mission-list';
   dialog.focusMissionId = null;
 }
@@ -462,7 +522,11 @@ function getMissionState(id){
 }
 
 function getMissionDescriptors(){
-  return getQuestDescriptors({ source: 'tavern' });
+  const roster = ensureMissionRoster();
+  if (!roster.length) return [];
+  const descriptors = getQuestDescriptors({ source: 'tavern' });
+  const byId = new Map(descriptors.map(item => [item.id, item]));
+  return roster.map(id => byId.get(id)).filter(Boolean);
 }
 
 function pickIntelLine(){
@@ -517,6 +581,7 @@ function acceptMission(missionState, def){
   if (missionState.status === 'completed' || missionState.status === 'ready') return null;
   const result = activateQuest(def.id, { merge: missionState.data });
   missionState.data = { ...(missionState.data || {}), notifiedReady: false };
+  ensureMissionRoster();
   if (result.message) return result.message;
   return 'The barkeep nods and scribbles your mark beside the ledger.';
 }
@@ -524,6 +589,7 @@ function acceptMission(missionState, def){
 function turnInMission(missionState, def){
   if (!missionState || !def) return null;
   const result = completeQuest(def.id, { merge: missionState.data });
+  ensureMissionRoster();
   if (result.message) return result.message;
   return 'He seals the deal with a quiet clink of coin.';
 }
