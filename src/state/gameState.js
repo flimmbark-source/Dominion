@@ -94,7 +94,8 @@ const state = {
   villagerTrust: 8,
   outpostStates: {},
   rumorFlags: {},
-  safehouseAccess: {}
+  safehouseAccess: {},
+  villageEconomy: null
 };
 
 export { state, mainVillage };

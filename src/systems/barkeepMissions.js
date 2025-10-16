@@ -44,6 +44,30 @@ const WELL_DARK_HUMOR = [
   '“May their morning tea come with a side of coughing fits,” he grins.'
 ];
 
+const FORGE_ACCEPT_OPENERS = [
+  'He taps a soot-smudged map of Moonfen’s forge.',
+  'He slides over a scrap of the blacksmith’s shift roster, stained with ash.',
+  'He raps the bar with a forged nail. “The forge keeps them armed.”'
+];
+
+const FORGE_ACCEPT_WARNINGS = [
+  '“Those torches burn hot—move only when the light dies,” he warns.',
+  '“The smith’s eyes are keen. Wait for the bellows to sigh before you act.”',
+  '“Bright yard, sharp ears. Let the glow fall before every move,” he mutters.'
+];
+
+const FORGE_REWARD_PROMISES = [
+  '“Snap his temper chain and militia blades dull by dawn,” he promises.',
+  '“Kill the forge and their armory starves—your purse won’t,” he grins.',
+  '“When their swords chip, they’ll remember who quenched the fire for coin,” he says.'
+];
+
+const FORGE_REWARD_FLAVOR = [
+  'He presses slag-black coin and a coiled strip of tempered wire into your palm.',
+  'He counts out a heavy pouch flecked with ember soot and slides over a forged nail charm.',
+  'He pays in smoke-scented silver alongside a packet of quench salts as proof.'
+];
+
 const missionDefinitions = [
   registerQuestDefinition({
     id: 'snuff-out-signal',
@@ -130,6 +154,39 @@ const missionDefinitions = [
       const loot = pick(WELL_REWARD_LOOT) || 'He pays you in hush-money coin.';
       const quip = pick(WELL_DARK_HUMOR);
       return `${loot} ${quip}`.trim();
+    }
+  }),
+  registerQuestDefinition({
+    id: 'mission_sabotage_forge',
+    source: 'tavern',
+    initialStatus: 'available',
+    title: 'Sabotage the Moonfen Forge',
+    description: 'Risk: Moonfen’s forge yard blazes bright and guards linger close—move only when their light falters.',
+    detail: 'Reward: Jam the bellows, foul the quench, and snap the temper chain to choke their weapon flow for a hefty payout.',
+    intelHint: 'Revelation: Watch the bellows rhythm—every lull drops the light low enough to strike unseen.',
+    getProgressText(){
+      return getTavernMissionProgressText('mission_sabotage_forge');
+    },
+    checkReady(){
+      return isTavernMissionReady('mission_sabotage_forge');
+    },
+    onAccept(missionState){
+      activateTavernMissionSite('mission_sabotage_forge');
+      missionState.data = { ...(missionState.data || {}), acceptedAt: state.time };
+      const pick = (arr) => arr[Math.floor(Math.random() * arr.length)] || '';
+      const opener = pick(FORGE_ACCEPT_OPENERS);
+      const warning = pick(FORGE_ACCEPT_WARNINGS);
+      return `${opener} ${warning}`.trim();
+    },
+    onComplete(){
+      completeTavernMissionSite('mission_sabotage_forge');
+      const payout = 26;
+      state.player.gold += payout;
+      toast(`Payment: +${payout} gold`, 2.7);
+      const pick = (arr) => arr[Math.floor(Math.random() * arr.length)] || '';
+      const flavor = pick(FORGE_REWARD_FLAVOR) || 'He pays you with coin still warm from the forge.';
+      const promise = pick(FORGE_REWARD_PROMISES);
+      return `${flavor} ${promise}`.trim();
     }
   }),
   registerQuestDefinition({
