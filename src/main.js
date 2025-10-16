@@ -128,6 +128,17 @@ const DEATH_FADE_OUT_DURATION = 1.2;
 const DEATH_FADE_IN_DURATION = 1.2;
 const DEATH_TEXT_FADE_IN_DURATION = 0.35;
 
+function seatPlayerAtTavernSpawn(){
+  if (!state.tavernInteriorState.active) return;
+  const spawn = TAVERN_INTERIOR.spawn;
+  const player = state.player;
+  player.x = spawn.x;
+  player.y = spawn.y;
+  player.vx = 0;
+  player.vy = 0;
+  player.facing = -Math.PI / 2;
+}
+
 function startDeathSequence(){
   if (state.deathSequence) return;
 
@@ -847,7 +858,9 @@ function drawDeathOverlay(){
   }
 }
 
+seatPlayerAtTavernSpawn();
 runTests();
+seatPlayerAtTavernSpawn();
 requestAnimationFrame((t)=>{ lastT = t; loop(t); });
 
 // Credits: You're the dark lord now.
