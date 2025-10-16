@@ -21,7 +21,7 @@ const WORLD_EVENTS = [
       {
         id: 'exploration',
         name: 'Bargain with the fairy',
-        focus: { x: 5920, y: 5320 },
+        focus: { x: 6360, y: 5640 },
         radius: 220,
         cues: {
           motes: { count: 12, orbitRadius: 120, color: 'rgba(168, 255, 214, 0.85)', drift: 20 },
@@ -32,7 +32,7 @@ const WORLD_EVENTS = [
           {
             id: 'prop-fae-fairy-roost',
             type: 'fae-bargain-circle',
-            position: { x: 5920, y: 5320 },
+            position: { x: 6360, y: 5640 },
             radius: 100,
             orientation: -0.28
           }
@@ -49,7 +49,7 @@ const WORLD_EVENTS = [
       {
         id: 'challenge',
         name: 'Steal the runestones',
-        focus: { x: 6080, y: 5480 },
+        focus: { x: 6880, y: 6160 },
         radius: 150,
         cues: {
           runeGlow: { color: '#b57bf8', pulse: 3.6, radius: 120 },
@@ -65,7 +65,7 @@ const WORLD_EVENTS = [
           {
             id: 'prop-fae-runestones',
             type: 'fae-runestone-cluster',
-            position: { x: 6080, y: 5480 },
+            position: { x: 6880, y: 6160 },
             radius: 120,
             orientation: 0.32
           }
@@ -95,8 +95,8 @@ const WORLD_EVENTS = [
       {
         id: 'exploration',
         name: 'Trace the whispers',
-        focus: { x: 3200, y: 6240 },
-        radius: 240,
+        focus: { x: 3640, y: 6880 },
+        radius: 360,
         cues: {
           witheredTrail: { segments: 6, spread: 90 },
           ghostSilhouettes: { count: 4, radius: 150, drift: 18 }
@@ -105,14 +105,14 @@ const WORLD_EVENTS = [
           {
             id: 'prop-mire-moonblossom',
             type: 'moonblossom-patch',
-            position: { x: 3480, y: 6400 },
+            position: { x: 3760, y: 7080 },
             radius: 110,
             orientation: 0.12
           },
           {
             id: 'prop-mire-bog-idol',
             type: 'bog-idol-cache',
-            position: { x: 2980, y: 6580 },
+            position: { x: 3480, y: 7200 },
             radius: 105,
             orientation: -0.18
           }
@@ -121,7 +121,7 @@ const WORLD_EVENTS = [
           {
             id: 'moonblossom',
             description: 'Harvest moonblossom petals from a luminous patch.',
-            position: { x: 3480, y: 6400 },
+            position: { x: 3760, y: 7080 },
             radius: 120,
             poiId: 'poi-mire-moonblossom',
             propId: 'prop-mire-moonblossom',
@@ -133,7 +133,7 @@ const WORLD_EVENTS = [
           {
             id: 'bog-idol',
             description: 'Recover a bog idol from the hag den.',
-            position: { x: 2980, y: 6580 },
+            position: { x: 3480, y: 7200 },
             radius: 120,
             poiId: 'poi-mire-bog-idol',
             propId: 'prop-mire-bog-idol',
@@ -148,8 +148,8 @@ const WORLD_EVENTS = [
       {
         id: 'challenge',
         name: 'Cleanse the shrine',
-        focus: { x: 3200, y: 6200 },
-        radius: 170,
+        focus: { x: 4120, y: 7560 },
+        radius: 210,
         cues: {
           shrineChains: { count: 3, radius: 110 },
           swampGlow: { color: '#8be6c2', pulse: 3.8, radius: 150 }
@@ -158,7 +158,7 @@ const WORLD_EVENTS = [
           {
             id: 'prop-mire-shrine-core',
             type: 'cursed-shrine-core',
-            position: { x: 3200, y: 6200 },
+            position: { x: 4120, y: 7560 },
             radius: 120,
             orientation: 0
           }
@@ -188,7 +188,7 @@ const WORLD_EVENTS = [
       {
         id: 'exploration',
         name: 'Follow the trail',
-        focus: { x: 4480, y: 3320 },
+        focus: { x: 4080, y: 2820 },
         radius: 240,
         cues: {
           wagonRuts: { length: 200, width: 36 },
@@ -198,7 +198,7 @@ const WORLD_EVENTS = [
           {
             id: 'prop-ember-trail-cart',
             type: 'overturned-cart',
-            position: { x: 4480, y: 3320 },
+            position: { x: 4080, y: 2820 },
             radius: 120,
             orientation: -0.42
           }
@@ -220,8 +220,8 @@ const WORLD_EVENTS = [
       {
         id: 'challenge',
         name: 'Break the ambush',
-        focus: { x: 4300, y: 3120 },
-        radius: 190,
+        focus: { x: 3560, y: 2160 },
+        radius: 200,
         cues: {
           torchGlow: { color: '#ffae62', radius: 150 },
           patrolSmoke: { count: 3, radius: 160 },
@@ -236,7 +236,7 @@ const WORLD_EVENTS = [
           {
             id: 'prop-ember-supply-cache',
             type: 'raider-supply-cache',
-            position: { x: 4300, y: 3120 },
+            position: { x: 3560, y: 2160 },
             radius: 120,
             orientation: 0.18
           }
