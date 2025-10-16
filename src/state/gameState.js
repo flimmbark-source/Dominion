@@ -154,11 +154,10 @@ const state = {
   villagerTrust: 8,
   outpostStates: {},
   rumorFlags: {},
-  houseFacadeCache: new Map()
+  houseFacadeCache: new Map(),
   safehouseAccess: {},
-  villageEconomy: null
+  villageEconomy: null,
   worldIntel: {},
-  safehouseAccess: {},
   developer: {
     toolsEnabled: developerSettings.toolsEnabled,
     showFov: developerSettings.toolsEnabled && developerSettings.showFov
