@@ -2732,6 +2732,25 @@ function buildTorchCone(npc){
   const fovAngle = Math.max(Math.PI / 64, npc.fovAngle || Math.PI / 2);
   const halfFov = fovAngle / 2;
   const range = baseRange * 1.05;
+
+  const cache = npc._torchConeCache;
+  if (cache){
+    const facingDelta = Math.abs(angleDifference(npc.facing, cache.facing || 0));
+    const moved = Math.hypot(npc.x - (cache.x || 0), npc.y - (cache.y || 0));
+    const stale = (state.time ?? 0) - (cache.time ?? 0);
+    if (
+      cache.baseRange === baseRange &&
+      cache.fovAngle === fovAngle &&
+      cache.interior === state.interior &&
+      Math.abs(cache.range - range) < 0.01 &&
+      facingDelta < 0.035 &&
+      moved < 1.5 &&
+      stale < 0.35
+    ){
+      return cache;
+    }
+  }
+
   const blockers = gatherTorchBlockers(npc, range);
   const offsets = [];
   const offsetEpsilon = 0.0006;
@@ -2769,11 +2788,26 @@ function buildTorchCone(npc){
     }
   }
 
-  if (offsets.length < 2) return null;
+  if (offsets.length < 2){
+    npc._torchConeCache = null;
+    return null;
+  }
 
   offsets.sort((a, b) => a - b);
   const points = offsets.map(offset => castTorchRay(npc, npc.facing + offset, range, blockers));
-  return { points, range };
+  const result = {
+    points,
+    range,
+    baseRange,
+    fovAngle,
+    facing: npc.facing,
+    x: npc.x,
+    y: npc.y,
+    interior: state.interior,
+    time: state.time ?? 0
+  };
+  npc._torchConeCache = result;
+  return result;
 }
 
 function traceTorchConePath(origin, points){
