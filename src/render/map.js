@@ -3,6 +3,7 @@ import { state } from '../state/gameState.js';
 import { WORLD, VILLAGES } from '../data/world.js';
 import { roads, pathSegments } from '../world/terrain.js';
 import { TAU, clamp } from '../utils/math.js';
+import { getQuestDefinition, getQuestState } from '../systems/questLog.js';
 
 const MAP_POI_COLORS = {
   'shady-trader': '#d0a74e',
@@ -10,6 +11,144 @@ const MAP_POI_COLORS = {
   'cursed-shrine': '#b57bf8',
   'bog-sprite': '#66e0a0'
 };
+
+const QUEST_MARKER_COLORS = {
+  active: {
+    ring: 'rgba(255, 232, 140, 0.32)',
+    stroke: '#ffe06d',
+    core: '#fff1b6'
+  },
+  pending: {
+    ring: 'rgba(255, 211, 117, 0.2)',
+    stroke: '#e8c56d',
+    core: '#ffe5a6'
+  }
+};
+
+function prettifyStageId(id){
+  if (!id || typeof id !== 'string') return '';
+  return id
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, letter => letter.toUpperCase());
+}
+
+function drawTrackedQuestTargets({ toMap, scale, mapX, mapY, mapW, mapH }){
+  const trackedId = state.trackedQuestId;
+  if (!trackedId) return null;
+
+  const quest = getQuestState(trackedId);
+  if (!quest) return null;
+
+  const def = getQuestDefinition(trackedId);
+  const targets = Array.isArray(quest.data?.targets) ? quest.data.targets : [];
+  const positionedTargets = targets.filter(target => {
+    if (!target) return false;
+    if (!Array.isArray(target.position)) return false;
+    const [x, y] = target.position;
+    return Number.isFinite(x) && Number.isFinite(y);
+  });
+
+  const visibleTargets = positionedTargets.filter(target => {
+    const status = typeof target.status === 'string' ? target.status.toLowerCase() : 'pending';
+    return status !== 'completed';
+  });
+
+  const primaryTarget = visibleTargets.find(target => (target.status || '').toLowerCase() === 'active')
+    || visibleTargets[0]
+    || positionedTargets[0]
+    || null;
+
+  if (!primaryTarget) return null;
+
+  const [tx, ty] = primaryTarget.position;
+  const status = typeof primaryTarget.status === 'string' ? primaryTarget.status.toLowerCase() : 'pending';
+  const palette = status === 'active' ? QUEST_MARKER_COLORS.active : QUEST_MARKER_COLORS.pending;
+  const center = toMap(tx, ty);
+  const radiusWorld = clamp(Number.isFinite(primaryTarget.radius) ? primaryTarget.radius : 140, 60, Math.max(WORLD.W, WORLD.H));
+  const guidanceRadius = clamp(radiusWorld * scale, 28, Math.min(mapW, mapH) * 0.35);
+  const outerRadius = clamp(guidanceRadius * 0.4, 14, 30 * Math.max(1, Math.sqrt(scale)));
+  const innerRadius = Math.max(outerRadius * 0.45, 6);
+  const tickLength = Math.max(outerRadius * 0.45, 10 * Math.sqrt(scale));
+
+  ctx.save();
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+
+  ctx.beginPath();
+  ctx.setLineDash([8 * Math.max(1, scale), 6 * Math.max(1, scale)]);
+  ctx.strokeStyle = palette.ring;
+  ctx.lineWidth = Math.max(1.5, 2.1 * Math.sqrt(scale));
+  ctx.arc(center.x, center.y, guidanceRadius, 0, TAU);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.shadowColor = 'rgba(255, 225, 150, 0.45)';
+  ctx.shadowBlur = Math.max(8, 18 * scale);
+  ctx.beginPath();
+  ctx.fillStyle = palette.core;
+  ctx.arc(center.x, center.y, innerRadius * 0.55, 0, TAU);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  ctx.beginPath();
+  ctx.lineWidth = Math.max(2, 2.6 * Math.sqrt(scale));
+  ctx.strokeStyle = palette.stroke;
+  ctx.arc(center.x, center.y, outerRadius, 0, TAU);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.lineWidth = Math.max(1.5, 2 * Math.sqrt(scale));
+  ctx.strokeStyle = palette.stroke;
+  ctx.moveTo(center.x - tickLength, center.y);
+  ctx.lineTo(center.x - innerRadius * 0.8, center.y);
+  ctx.moveTo(center.x + innerRadius * 0.8, center.y);
+  ctx.lineTo(center.x + tickLength, center.y);
+  ctx.moveTo(center.x, center.y - tickLength);
+  ctx.lineTo(center.x, center.y - innerRadius * 0.8);
+  ctx.moveTo(center.x, center.y + innerRadius * 0.8);
+  ctx.lineTo(center.x, center.y + tickLength);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.lineWidth = Math.max(1, 1.5 * Math.sqrt(scale));
+  ctx.strokeStyle = 'rgba(26, 18, 6, 0.65)';
+  ctx.arc(center.x, center.y, innerRadius * 0.55, 0, TAU);
+  ctx.stroke();
+
+  ctx.restore();
+
+  const questTitle = def?.title || quest.id || 'Tracked quest';
+  const objectiveText = primaryTarget?.objective
+    || primaryTarget?.phaseName
+    || prettifyStageId(quest.data?.stage || quest.stage)
+    || '';
+
+  if (objectiveText){
+    ctx.save();
+    const labelFont = '600 13px system-ui';
+    ctx.font = labelFont;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    const label = `${questTitle}: ${objectiveText}`;
+    const metrics = ctx.measureText(label);
+    const paddingX = 8;
+    const paddingY = 6;
+    const labelWidth = Math.min(metrics.width + paddingX * 2, mapW - 24);
+    const labelHeight = 20;
+    const labelX = clamp(center.x, mapX + labelWidth / 2 + 12, mapX + mapW - labelWidth / 2 - 12);
+    const labelY = clamp(center.y - outerRadius - 10, mapY + labelHeight + 12, mapY + mapH - 12);
+
+    ctx.fillStyle = 'rgba(12, 18, 28, 0.82)';
+    ctx.fillRect(labelX - labelWidth / 2, labelY - labelHeight, labelWidth, labelHeight);
+    ctx.strokeStyle = '#435570';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(labelX - labelWidth / 2 + 0.5, labelY - labelHeight + 0.5, labelWidth - 1, labelHeight - 1);
+
+    ctx.fillStyle = '#ffe7a4';
+    ctx.fillText(label, labelX, labelY - paddingY / 2);
+    ctx.restore();
+  }
+}
 
 function drawWorldMapOverlay(){
   ctx.save();
@@ -179,6 +318,8 @@ function drawWorldMapOverlay(){
     }
     ctx.globalAlpha = 1;
   }
+
+  drawTrackedQuestTargets({ toMap, scale, mapX, mapY, mapW, mapH });
 
   if (!state.player.dead){
     const playerPt = toMap(state.player.x, state.player.y);

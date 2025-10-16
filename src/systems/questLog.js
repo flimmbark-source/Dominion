@@ -127,6 +127,22 @@ function unlockQuest(id, options = {}){
   return { changed: true, quest, def, message };
 }
 
+function hideQuest(id, options = {}){
+  const def = getQuestDefinition(id);
+  if (!def) return { changed: false, quest: null, def: null, message: null };
+  const quest = ensureQuestEntry(def);
+  if (quest.status === 'hidden'){
+    if (options.merge){
+      mergeQuestData(quest, options.merge);
+    }
+    return { changed: false, quest, def, message: null };
+  }
+  mergeQuestData(quest, options.merge);
+  const time = options.time ?? state.time;
+  updateQuestRecord(quest, 'hidden', time);
+  return { changed: true, quest, def, message: null };
+}
+
 function activateQuest(id, options = {}){
   const def = getQuestDefinition(id);
   if (!def) return { changed: false, quest: null, def: null, message: null };
@@ -219,18 +235,23 @@ function getQuestEntries({ source, includeHidden = false } = {}){
     .filter(Boolean);
 }
 
+const ACCEPTED_STATUSES = new Set(['active', 'ready', 'completed']);
+
 function getQuestDescriptors(options = {}){
-  const entries = getQuestEntries(options);
-  return entries.map(({ quest, def }) => ({
-    id: quest.id,
-    title: def.title,
-    description: def.description,
-    detail: def.detail,
-    narrative: def.narrative || null,
-    status: quest.status,
-    statusLabel: getQuestStatusLabel(quest.status),
-    progress: typeof def.getProgressText === 'function' ? def.getProgressText(quest, def) : ''
-  }));
+  const { acceptedOnly = false, ...entryOptions } = options;
+  const entries = getQuestEntries(entryOptions);
+  return entries
+    .filter(({ quest }) => !acceptedOnly || ACCEPTED_STATUSES.has(quest.status))
+    .map(({ quest, def }) => ({
+      id: quest.id,
+      title: def.title,
+      description: def.description,
+      detail: def.detail,
+      narrative: def.narrative || null,
+      status: quest.status,
+      statusLabel: getQuestStatusLabel(quest.status),
+      progress: typeof def.getProgressText === 'function' ? def.getProgressText(quest, def) : ''
+    }));
 }
 
 function getQuestIntelHints({ source, includeCompleted = false } = {}){
@@ -271,6 +292,7 @@ export {
   getQuestIntelHints,
   getQuestRumors,
   unlockQuest,
+  hideQuest,
   activateQuest,
   markQuestReady,
   completeQuest,

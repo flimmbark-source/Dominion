@@ -1,6 +1,7 @@
 import { state, mainVillage } from '../state/gameState.js';
 import { clamp } from '../utils/math.js';
 import { toast } from '../ui/toast.js';
+import { showNpcSpeech } from '../npc/npcSpeech.js';
 import { addThreat } from './threat.js';
 import { BASE_WHISPERS, HIGH_THREAT_WHISPERS, TASK_HINT_WHISPERS } from '../data/villagerDialog.js';
 import { getQuestRumors, unlockQuest } from './questLog.js';
@@ -164,7 +165,7 @@ function tryTalkToVillager(){
   const line = chooseVillagerLine(npc);
   if (!line) return false;
   npc.dialogCooldown = state.time + 5.5;
-  toast(line.text, 3.6);
+  showNpcSpeech(npc, line.text);
   if (line.questId){
     const result = unlockQuest(line.questId, { merge: { discoveredBy: 'rumor' } });
     if (result && result.changed && result.message){
@@ -217,7 +218,7 @@ function tryPickpocketVillager(){
     player.detection = clamp(player.detection + 28, 0, 100);
     npc.pickpocketCooldown = state.time + 20;
     npc.dialogCooldown = state.time + 8;
-    toast('The villager snaps around. "Thief!"', 2.6);
+    showNpcSpeech(npc, 'The villager snaps around. "Thief!"');
     addThreat(18);
     incrementVillageSuspicion(12);
     adjustPopulationHealth(-0.02);

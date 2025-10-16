@@ -11,7 +11,11 @@ import {
   grantSafehouseAccess,
   adjustGuardAlertness,
   adjustPopulationHealth,
-  setRumorFlag
+  setRumorFlag,
+  markVillageEconomyDamaged,
+  pauseProductionNode,
+  scheduleGuardStrengthReduction,
+  enqueueRevengeMissionSeed
 } from './worldState.js';
 import { getVillageInstance } from '../world/villageTemplates.js';
 
@@ -84,6 +88,67 @@ function applyWellPoisoningStatus(zone){
       }
     }
   }
+}
+
+function getForgeAnchor(){
+  const instance = getVillageInstance(0);
+  const placed = instance?.placedHouses || [];
+  const target = placed.find(entry => entry?.spec?.id === 'armory')
+    || placed.find(entry => entry?.spec?.id === 'smithy')
+    || null;
+  if (target){
+    const { spec, placement } = target;
+    const rect = { x: placement.x, y: placement.y, w: spec.w, h: spec.h };
+    const cx = rect.x + rect.w / 2;
+    const cy = rect.y + rect.h / 2;
+    const doorW = 22;
+    const offset = clamp(placement.doorOffset ?? spec.doorOffset ?? 0.5, 0.05, 0.95);
+    const doorX = rect.x + Math.round((rect.w - doorW) * offset);
+    const doorY = spec.side === 'north' ? rect.y + rect.h : rect.y;
+    const doorCenter = doorX + doorW / 2;
+    const outward = spec.side === 'north' ? 26 : -26;
+    const yard = { x: doorCenter, y: doorY + outward };
+    return {
+      x: cx,
+      y: cy,
+      radius: Math.max(120, Math.max(rect.w, rect.h) * 0.72),
+      label: spec.id === 'smithy' ? 'Moonfen Forge' : 'Moonfen Armory Forge',
+      rect,
+      door: { x: doorX, y: doorY, w: doorW, facing: spec.side, center: { x: doorCenter, y: doorY } },
+      yard
+    };
+  }
+  const fallback = VILLAGES[0] || { x: 0, y: 0, w: 260, h: 260 };
+  return {
+    x: fallback.x + fallback.w * 0.58,
+    y: fallback.y + fallback.h * 0.36,
+    radius: Math.max(110, Math.max(fallback.w, fallback.h) * 0.22),
+    label: 'Moonfen Forge',
+    rect: null,
+    door: null,
+    yard: null
+  };
+}
+
+function sampleAmbientLight(x, y){
+  const time = state.time ?? 0;
+  const guardFactor = clamp((state.guardAlertness ?? 28) / 100, 0, 1);
+  const cycle = Math.sin(time * 0.06 + (x + y) * 0.0013);
+  const mist = Math.cos(time * 0.03 + x * 0.0021);
+  const base = 0.55 + 0.22 * cycle + 0.1 * mist;
+  return clamp(base + guardFactor * 0.18, 0.05, 1);
+}
+
+function getLocalLightLevel(anchor, mission){
+  if (!anchor) return 1;
+  const base = sampleAmbientLight(anchor.x, anchor.y);
+  const modifier = mission?.data?.lightModifier ?? 0;
+  return clamp(base + modifier, 0, 1);
+}
+
+function formatLightPercent(value){
+  if (value == null) return null;
+  return `${Math.round(clamp(value, 0, 1) * 100)}%`;
 }
 
 function resolveOutpostPreset(preset){
@@ -505,6 +570,10 @@ const HEIST_STEPS = [
       mission.data.escaped = true;
       mission.data.lastExposure = computeHeistExposure(mission);
       mission.data.escapeTime = state.time;
+    }
+  }
+];
+
 const POISON_WELL_STEPS = [
   {
     id: 'survey-plaza',
@@ -814,6 +883,137 @@ const SCOUT_STEPS = [
   }
 ];
 
+const FORGE_SABOTAGE_STEPS = [
+  {
+    id: 'trace-torches',
+    label: 'Trace the torch cadence',
+    anchor(mission){
+      const forge = mission.data?.forgeAnchor;
+      if (forge?.yard){
+        return {
+          x: forge.yard.x,
+          y: forge.yard.y,
+          radius: Math.max(96, (forge.radius ?? 120) * 0.5),
+          label: 'Forge Yard Shadow'
+        };
+      }
+      if (forge){
+        return {
+          x: forge.x,
+          y: forge.y + (forge.radius ?? 100) * 0.4,
+          radius: forge.radius ?? 120,
+          label: 'Forge Yard Shadow'
+        };
+      }
+      return null;
+    },
+    radius: 110,
+    duration: 2.6,
+    maxDetection: 60,
+    maxLight: 0.82,
+    lightFailText: 'Torchlight floods the yard—wait for the glow to ebb.',
+    startText: 'You hug the forge wall, breathing with the torch sweeps.',
+    hintText: 'Press E once the torch cadence slows.',
+    cancelText: 'The forge blaze flares—you slip back into shadow.',
+    completeText: 'You memorize the torch rhythm and mark the safe angles.',
+    onComplete(mission){
+      mission.data = mission.data || {};
+      mission.data.lightModifier = mission.data.lightModifier ?? 0;
+      mission.data.lastLightSample = getLocalLightLevel(mission.data?.forgeAnchor || mission.location, mission);
+      state.player.detection = clamp((state.player?.detection ?? 0) - 6, 0, 100);
+    }
+  },
+  {
+    id: 'jam-bellows',
+    label: 'Jam the bellows catch',
+    anchor(mission){
+      const forge = mission.data?.forgeAnchor;
+      if (forge?.rect){
+        return {
+          x: forge.rect.x + forge.rect.w * 0.32,
+          y: forge.rect.y + forge.rect.h * 0.44,
+          radius: Math.max(88, Math.max(forge.rect.w, forge.rect.h) * 0.32),
+          label: 'Forge Bellows'
+        };
+      }
+      return null;
+    },
+    radius: 96,
+    duration: 3.1,
+    maxDetection: 58,
+    maxLight: 0.68,
+    lightFailText: 'The blaze roars too bright—wait for the shadows before wedging the bellows.',
+    startText: 'You slide a wooden wedge toward the bellows latch.',
+    hintText: 'Press E when the light dips and the smith turns away.',
+    cancelText: 'A spill of sparks forces you to withdraw your hand.',
+    completeText: 'The bellows seize up, starving the coals of air.',
+    onComplete(mission){
+      mission.data = mission.data || {};
+      mission.data.lightModifier = (mission.data.lightModifier ?? 0) - 0.18;
+      mission.data.bellowsJammed = true;
+    }
+  },
+  {
+    id: 'salt-quench',
+    label: 'Salt the quench trough',
+    anchor(mission){
+      const forge = mission.data?.forgeAnchor;
+      if (forge?.rect){
+        return {
+          x: forge.rect.x + forge.rect.w * 0.74,
+          y: forge.rect.y + forge.rect.h * 0.62,
+          radius: Math.max(90, Math.max(forge.rect.w, forge.rect.h) * 0.34),
+          label: 'Quench Trough'
+        };
+      }
+      return null;
+    },
+    radius: 100,
+    duration: 3.2,
+    maxDetection: 56,
+    maxLight: 0.58,
+    lightFailText: 'The forge glare would catch the glittering salt—wait for dimmer light.',
+    startText: 'You uncork a pouch of salt and ash over the quench water.',
+    hintText: 'Press E as the forge light dips under half-strength.',
+    cancelText: 'Lantern light sweeps the trough—you palm the salt for now.',
+    completeText: 'Salt clouds the trough—any tempered steel will shatter brittle.',
+    onComplete(mission){
+      mission.data = mission.data || {};
+      mission.data.lightModifier = (mission.data.lightModifier ?? 0) - 0.22;
+      mission.data.quenchSalted = true;
+    }
+  },
+  {
+    id: 'fracture-chain',
+    label: 'Fracture the temper chain',
+    anchor(mission){
+      const forge = mission.data?.forgeAnchor;
+      if (forge?.rect){
+        return {
+          x: forge.rect.x + forge.rect.w * 0.52,
+          y: forge.rect.y + forge.rect.h * 0.28,
+          radius: Math.max(92, Math.max(forge.rect.w, forge.rect.h) * 0.3),
+          label: 'Temper Chain'
+        };
+      }
+      return null;
+    },
+    radius: 104,
+    duration: 3.4,
+    maxDetection: 54,
+    maxLight: 0.5,
+    lightFailText: 'Too bright—the snap would shine across the yard. Wait it out.',
+    startText: 'You raise a cold chisel toward the temper chain linkage.',
+    hintText: 'Press E once the coals settle into dull red.',
+    cancelText: 'A flare races across the coals—you ease the chisel back.',
+    completeText: 'The temper chain snaps; the forge clatters into silence.',
+    onComplete(mission){
+      mission.data = mission.data || {};
+      mission.data.productionSapped = true;
+    }
+  }
+];
+
 const missionSpecs = {
   'snuff-out-signal': {
     id: 'snuff-out-signal',
@@ -1031,6 +1231,39 @@ const missionSpecs = {
       if (mission.data.heistLocation){
         mission.location = { ...mission.data.heistLocation };
       }
+    },
+    onReady(mission){
+      if (mission.rewardApplied) return;
+      mission.rewardApplied = true;
+      mission.data = mission.data || {};
+      mission.data.finishedAt = state.time;
+      mission.data.lastExposure = computeHeistExposure(mission);
+      cachedHeistTarget = null;
+      toast('Gold secured. Return to the barkeep before suspicion spikes.', 2.6);
+    },
+    progress(mission){
+      const data = mission.data || {};
+      if (data.unavailable){
+        return 'No stocked houses tonight—give the lanes time to fatten up again.';
+      }
+      const total = HEIST_STEPS.length;
+      const completed = mission.stepsState.filter(step => step.completed).length;
+      const exposure = computeHeistExposure(mission);
+      if (mission.completed){
+        return `Heist wrapped. Exposure Index ${exposure}.`;
+      }
+      if (mission.ready){
+        return `Spoils bagged—report back. Exposure Index ${exposure}.`;
+      }
+      const step = HEIST_STEPS[mission.stageIndex];
+      if (!step){
+        return `${completed}/${total} steps complete · Exposure ${exposure}`;
+      }
+      const next = step.label;
+      const suffix = data.houseLabel ? ` @ ${data.houseLabel}` : '';
+      return `${completed}/${total} steps complete · Exposure ${exposure} · Next: ${next}${suffix}`;
+    }
+  },
   'mission_poison_well': {
     id: 'mission_poison_well',
     label: 'Brackenreach Well Plaza',
@@ -1071,33 +1304,6 @@ const missionSpecs = {
     onReady(mission){
       if (mission.rewardApplied) return;
       mission.rewardApplied = true;
-      mission.data = mission.data || {};
-      mission.data.finishedAt = state.time;
-      mission.data.lastExposure = computeHeistExposure(mission);
-      cachedHeistTarget = null;
-      toast('Gold secured. Return to the barkeep before suspicion spikes.', 2.6);
-    },
-    progress(mission){
-      const data = mission.data || {};
-      if (data.unavailable){
-        return 'No stocked houses tonight—give the lanes time to fatten up again.';
-      }
-      const total = HEIST_STEPS.length;
-      const completed = mission.stepsState.filter(step => step.completed).length;
-      const exposure = computeHeistExposure(mission);
-      if (mission.completed){
-        return `Heist wrapped. Exposure Index ${exposure}.`;
-      }
-      if (mission.ready){
-        return `Spoils bagged—report back. Exposure Index ${exposure}.`;
-      }
-      const step = HEIST_STEPS[mission.stageIndex];
-      if (!step){
-        return `${completed}/${total} steps complete · Exposure ${exposure}`;
-      }
-      const next = step.label;
-      const suffix = data.houseLabel ? ` @ ${data.houseLabel}` : '';
-      return `${completed}/${total} steps complete · Exposure ${exposure} · Next: ${next}${suffix}`;
       const zone = mission.data?.plazaZone || getWellPlazaAnchor();
       applyWellPoisoningStatus(zone);
       adjustGuardAlertness(-12);
@@ -1122,6 +1328,93 @@ const missionSpecs = {
       const step = POISON_WELL_STEPS[mission.stageIndex];
       if (!step) return `${completed}/${total} steps complete.`;
       return `${completed}/${total} steps complete · Load: ${load} · Next: ${step.label}`;
+    }
+  },
+  'mission_sabotage_forge': {
+    id: 'mission_sabotage_forge',
+    label: 'Moonfen Forge',
+    getLocation(){
+      const forge = getForgeAnchor();
+      return {
+        x: forge.x,
+        y: forge.y,
+        radius: forge.radius,
+        label: forge.label
+      };
+    },
+    createData(){
+      const forge = getForgeAnchor();
+      return {
+        forgeAnchor: forge,
+        stealthLoad: 'light',
+        lightModifier: 0,
+        lastLightSample: null,
+        bellowsJammed: false,
+        quenchSalted: false,
+        productionSapped: false
+      };
+    },
+    steps: FORGE_SABOTAGE_STEPS,
+    onActivate(mission){
+      const forge = getForgeAnchor();
+      mission.location = {
+        x: forge.x,
+        y: forge.y,
+        radius: forge.radius,
+        label: forge.label
+      };
+      mission.data = {
+        forgeAnchor: forge,
+        stealthLoad: 'light',
+        lightModifier: 0,
+        lastLightSample: null,
+        bellowsJammed: false,
+        quenchSalted: false,
+        productionSapped: false
+      };
+    },
+    onReady(mission){
+      if (mission.rewardApplied) return;
+      mission.rewardApplied = true;
+      const pauseDuration = 150;
+      scheduleGuardStrengthReduction({ total: 14, duration: 140, initialDelay: 12, source: 'forge-sabotage' });
+      markVillageEconomyDamaged({
+        duration: 150,
+        repairWindow: 210,
+        hostileDuration: 180,
+        productionNodeId: 'moonfen-forge',
+        pauseDuration,
+        reason: 'sabotaged-forge',
+        cause: 'mission_sabotage_forge'
+      });
+      pauseProductionNode('moonfen-forge', {
+        duration: pauseDuration,
+        reason: 'sabotaged-forge',
+        cause: 'mission_sabotage_forge'
+      });
+      enqueueRevengeMissionSeed('revenge_moonfen_forge', {
+        templateId: 'revenge-strike',
+        context: {
+          target: 'moonfen-forge',
+          triggeredAt: state.time,
+          owner: 'blacksmith',
+          sourceQuest: 'mission_sabotage_forge'
+        },
+        reward: { type: 'threat', amount: 10 }
+      });
+      addThreat(-12);
+      toast('Forge silenced. Guard arms dwindle while the smith vows revenge.', 3.6);
+    },
+    progress(mission){
+      const total = FORGE_SABOTAGE_STEPS.length;
+      const completed = mission.stepsState.filter(step => step.completed).length;
+      const lightPercent = formatLightPercent(mission.data?.lastLightSample);
+      if (mission.completed) return 'Forge crippled and payment collected.';
+      if (mission.ready) return 'Forge production halted—collect your cut.';
+      const step = FORGE_SABOTAGE_STEPS[mission.stageIndex];
+      const lightInfo = lightPercent ? ` · Light ${lightPercent}` : '';
+      if (!step) return `${completed}/${total} steps complete${lightInfo}.`;
+      return `${completed}/${total} steps complete${lightInfo} · Next: ${step.label}`;
     }
   },
   'silence-the-scout': {
@@ -1325,6 +1618,19 @@ function tryStartStepAction(mission, spec, step){
     }
     return true;
   }
+  if (step.maxLight != null){
+    const lightLevel = getLocalLightLevel(anchor, mission);
+    mission.data.lastLightSample = lightLevel;
+    if (lightLevel > step.maxLight){
+      const now = state.time;
+      if (now >= (mission.lastFailAt ?? 0) + 2){
+        const message = step.lightFailText || 'Too bright—wait for the shadows to lengthen.';
+        toast(message, 2.4);
+        mission.lastFailAt = now;
+      }
+      return true;
+    }
+  }
   if (mission.data.alerted && state.time < (mission.data.noiseCooldownUntil ?? 0)){
     if (state.time >= (mission.data.lastNoiseToast ?? 0) + 2.2){
       toast('The outpost is on edge—wait for the noise to fade.', 2.3);
@@ -1414,6 +1720,20 @@ function handleActiveAction(mission, spec){
       toast(step.cancelText, 2.2);
     }
     return;
+  }
+  if (step.maxLight != null){
+    const lightLevel = getLocalLightLevel(anchor, mission);
+    mission.data = mission.data || {};
+    mission.data.lastLightSample = lightLevel;
+    if (lightLevel > step.maxLight + 0.05){
+      mission.activeAction = null;
+      if (step.cancelText){
+        toast(step.cancelText, 2.2);
+      } else {
+        toast('The light flares—you break off the move.', 2.2);
+      }
+      return;
+    }
   }
   if (state.time >= action.endsAt){
     completeStep(mission, spec, step);
@@ -1612,6 +1932,25 @@ function gatherTavernIntelLines(){
       } else {
         const label = mission.data?.targetOutpost?.label || 'outpost pens';
         lines.push(`Keep quiet at ${label}. ${freed}/${total} cages opened—two shouts and the alarm will blare.`);
+      }
+      continue;
+    }
+    if (mission.id === 'mission_sabotage_forge'){
+      const total = FORGE_SABOTAGE_STEPS.length;
+      const completed = mission.stepsState.filter(step => step.completed).length;
+      const nextStep = FORGE_SABOTAGE_STEPS[mission.stageIndex];
+      const lightPercent = formatLightPercent(mission.data?.lastLightSample);
+      if (!mission.data?.bellowsJammed){
+        const tail = lightPercent ? ` Light hovers near ${lightPercent}.` : '';
+        lines.push(`Trace the torch cadence at the forge—wait for the glow to dip before you jam the bellows.${tail}`.trim());
+      } else if (!mission.data?.quenchSalted){
+        const threshold = nextStep?.maxLight != null ? `${Math.round(nextStep.maxLight * 100)}% light` : 'the dimmest moment';
+        const tail = lightPercent ? ` Current light ${lightPercent}.` : '';
+        lines.push(`Forge sabotage ${completed}/${total}. Salt the quench when light drops under ${threshold}.${tail}`.trim());
+      } else {
+        const threshold = nextStep?.maxLight != null ? `${Math.round(nextStep.maxLight * 100)}% light` : 'deep shadow';
+        const tail = lightPercent ? ` Current light ${lightPercent}.` : '';
+        lines.push(`Bellows wedged and trough fouled—snap the temper chain once light slips below ${threshold}.${tail}`.trim());
       }
       continue;
     }

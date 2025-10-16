@@ -11,6 +11,7 @@ import {
   completeQuest,
   markQuestReady,
   unlockQuest,
+  hideQuest,
   getQuestIntelHints
 } from './questLog.js';
 import {
@@ -56,6 +57,32 @@ const WELL_DARK_HUMOR = [
   '“Here’s to their next toast tasting like grave dirt,” he chuckles.',
   '“May their morning tea come with a side of coughing fits,” he grins.'
 ];
+
+const FORGE_ACCEPT_OPENERS = [
+  'He taps a soot-smudged map of Moonfen’s forge.',
+  'He slides over a scrap of the blacksmith’s shift roster, stained with ash.',
+  'He raps the bar with a forged nail. “The forge keeps them armed.”'
+];
+
+const FORGE_ACCEPT_WARNINGS = [
+  '“Those torches burn hot—move only when the light dies,” he warns.',
+  '“The smith’s eyes are keen. Wait for the bellows to sigh before you act.”',
+  '“Bright yard, sharp ears. Let the glow fall before every move,” he mutters.'
+];
+
+const FORGE_REWARD_PROMISES = [
+  '“Snap his temper chain and militia blades dull by dawn,” he promises.',
+  '“Kill the forge and their armory starves—your purse won’t,” he grins.',
+  '“When their swords chip, they’ll remember who quenched the fire for coin,” he says.'
+];
+
+const FORGE_REWARD_FLAVOR = [
+  'He presses slag-black coin and a coiled strip of tempered wire into your palm.',
+  'He counts out a heavy pouch flecked with ember soot and slides over a forged nail charm.',
+  'He pays in smoke-scented silver alongside a packet of quench salts as proof.'
+];
+
+const MAX_VISIBLE_TAVERN_MISSIONS = 3;
 
 const missionDefinitions = [
   registerQuestDefinition({
@@ -183,6 +210,9 @@ const missionDefinitions = [
       };
       const exposureLine = exposure != null ? ` Exposure Index ${exposure}.` : '';
       return `${HEIST_NARRATIVE.success} You pocket ${payout} gold from ${label}.${exposureLine}`;
+    }
+  }),
+  registerQuestDefinition({
     id: 'mission_poison_well',
     source: 'tavern',
     initialStatus: 'available',
@@ -213,6 +243,39 @@ const missionDefinitions = [
       const loot = pick(WELL_REWARD_LOOT) || 'He pays you in hush-money coin.';
       const quip = pick(WELL_DARK_HUMOR);
       return `${loot} ${quip}`.trim();
+    }
+  }),
+  registerQuestDefinition({
+    id: 'mission_sabotage_forge',
+    source: 'tavern',
+    initialStatus: 'available',
+    title: 'Sabotage the Moonfen Forge',
+    description: 'Risk: Moonfen’s forge yard blazes bright and guards linger close—move only when their light falters.',
+    detail: 'Reward: Jam the bellows, foul the quench, and snap the temper chain to choke their weapon flow for a hefty payout.',
+    intelHint: 'Revelation: Watch the bellows rhythm—every lull drops the light low enough to strike unseen.',
+    getProgressText(){
+      return getTavernMissionProgressText('mission_sabotage_forge');
+    },
+    checkReady(){
+      return isTavernMissionReady('mission_sabotage_forge');
+    },
+    onAccept(missionState){
+      activateTavernMissionSite('mission_sabotage_forge');
+      missionState.data = { ...(missionState.data || {}), acceptedAt: state.time };
+      const pick = (arr) => arr[Math.floor(Math.random() * arr.length)] || '';
+      const opener = pick(FORGE_ACCEPT_OPENERS);
+      const warning = pick(FORGE_ACCEPT_WARNINGS);
+      return `${opener} ${warning}`.trim();
+    },
+    onComplete(){
+      completeTavernMissionSite('mission_sabotage_forge');
+      const payout = 26;
+      state.player.gold += payout;
+      toast(`Payment: +${payout} gold`, 2.7);
+      const pick = (arr) => arr[Math.floor(Math.random() * arr.length)] || '';
+      const flavor = pick(FORGE_REWARD_FLAVOR) || 'He pays you with coin still warm from the forge.';
+      const promise = pick(FORGE_REWARD_PROMISES);
+      return `${flavor} ${promise}`.trim();
     }
   }),
   registerQuestDefinition({
@@ -340,13 +403,69 @@ const missionDefinitions = [
 
 const missionById = new Map(missionDefinitions.map(def => [def.id, def]));
 
-function initBarkeepMissions(){
-  missionDefinitions.forEach(def => {
+function getMissionRoster(){
+  if (!Array.isArray(state.tavernMissionRoster)){
+    state.tavernMissionRoster = [];
+  }
+  return state.tavernMissionRoster;
+}
+
+function ensureMissionRoster(){
+  const roster = getMissionRoster();
+  const nextRoster = [];
+  const rosterSet = new Set();
+
+  for (const id of roster){
+    const quest = getQuestState(id);
+    if (!quest){
+      continue;
+    }
+    if (quest.status === 'completed'){
+      hideQuest(id);
+      continue;
+    }
+    if (quest.status === 'hidden'){
+      unlockQuest(id);
+    }
+    if (rosterSet.has(id)){
+      continue;
+    }
+    nextRoster.push(id);
+    rosterSet.add(id);
+  }
+
+  state.tavernMissionRoster = nextRoster;
+
+  for (const def of missionDefinitions){
+    if (state.tavernMissionRoster.length >= MAX_VISIBLE_TAVERN_MISSIONS) break;
+    if (rosterSet.has(def.id)) continue;
     const quest = getQuestState(def.id);
-    if (!quest || quest.status === 'hidden'){
+    if (!quest) continue;
+    if (quest.status === 'completed'){
+      hideQuest(def.id);
+      continue;
+    }
+    state.tavernMissionRoster.push(def.id);
+    rosterSet.add(def.id);
+    if (quest.status === 'hidden'){
       unlockQuest(def.id);
     }
-  });
+  }
+
+  for (const def of missionDefinitions){
+    if (rosterSet.has(def.id)) continue;
+    const quest = getQuestState(def.id);
+    if (!quest) continue;
+    if (quest.status === 'completed' || quest.status === 'hidden') continue;
+    if (quest.status === 'active' || quest.status === 'ready') continue;
+    hideQuest(def.id);
+  }
+
+  return state.tavernMissionRoster;
+}
+
+function initBarkeepMissions(){
+  ensureMissionRoster();
 }
 
 function isBarkeepDialogueActive(){
@@ -386,6 +505,7 @@ function openIntel(refresh = false){
 function openMissionList(){
   const dialog = state.tavernInteriorState.dialog;
   if (!dialog) return;
+  ensureMissionRoster();
   dialog.view = 'mission-list';
   dialog.focusMissionId = null;
 }
@@ -402,7 +522,11 @@ function getMissionState(id){
 }
 
 function getMissionDescriptors(){
-  return getQuestDescriptors({ source: 'tavern' });
+  const roster = ensureMissionRoster();
+  if (!roster.length) return [];
+  const descriptors = getQuestDescriptors({ source: 'tavern' });
+  const byId = new Map(descriptors.map(item => [item.id, item]));
+  return roster.map(id => byId.get(id)).filter(Boolean);
 }
 
 function pickIntelLine(){
@@ -457,6 +581,7 @@ function acceptMission(missionState, def){
   if (missionState.status === 'completed' || missionState.status === 'ready') return null;
   const result = activateQuest(def.id, { merge: missionState.data });
   missionState.data = { ...(missionState.data || {}), notifiedReady: false };
+  ensureMissionRoster();
   if (result.message) return result.message;
   return 'The barkeep nods and scribbles your mark beside the ledger.';
 }
@@ -464,6 +589,7 @@ function acceptMission(missionState, def){
 function turnInMission(missionState, def){
   if (!missionState || !def) return null;
   const result = completeQuest(def.id, { merge: missionState.data });
+  ensureMissionRoster();
   if (result.message) return result.message;
   return 'He seals the deal with a quiet clink of coin.';
 }

@@ -3,7 +3,7 @@ import { state } from '../state/gameState.js';
 import { clamp, TAU } from '../utils/math.js';
 import { getWeaponSwingConfig } from '../utils/weaponSwing.js';
 import { getThreatFraction, getThreatStage } from '../systems/threat.js';
-import { drawTerrain, drawGoblinTavern } from '../world/terrain.js';
+import { drawTerrain, drawGoblinTavern, gatherForestSolidsAround } from '../world/terrain.js';
 import { drawGoblin } from './goblin.js';
 import { getRenderableStairs, fillHouseInterior, interiorFloorColor } from '../world/houses.js';
 import {
@@ -45,6 +45,32 @@ function adjustHexColor(hex, factor){
   const ng = mixChannel(g);
   const nb = mixChannel(b);
   return `#${nr.toString(16).padStart(2, '0')}${ng.toString(16).padStart(2, '0')}${nb.toString(16).padStart(2, '0')}`;
+}
+
+function wrapSpeechLines(text, font, maxWidth){
+  const content = typeof text === 'string' ? text : String(text ?? '');
+  if (!content) return [];
+  const prevFont = ctx.font;
+  if (font) ctx.font = font;
+  const words = content.split(/\s+/).filter(Boolean);
+  if (words.length === 0){
+    if (font) ctx.font = prevFont;
+    return [];
+  }
+  const lines = [];
+  let current = words[0];
+  for (let i = 1; i < words.length; i++){
+    const attempt = `${current} ${words[i]}`;
+    if (ctx.measureText(attempt).width > maxWidth){
+      lines.push(current);
+      current = words[i];
+    } else {
+      current = attempt;
+    }
+  }
+  if (current) lines.push(current);
+  if (font) ctx.font = prevFont;
+  return lines;
 }
 
 const HOUSE_PALETTES = [
@@ -226,7 +252,8 @@ function drawExtrudedRect({
   skew,
   baseColor,
   roofColor,
-  shadowStrength = 0.2
+  shadowStrength = 0.2,
+  faceOpacity
 }){
   const slope = Math.min(depth * 0.75, height * 0.9);
   const topColor = roofColor ?? adjustHexColor(baseColor, 0.25);
@@ -235,6 +262,8 @@ function drawExtrudedRect({
   const rightColor = adjustHexColor(baseColor, -0.4);
   const highlightColor = adjustHexColor(topColor, 0.25);
   const dropStrength = 0.18 + shadowStrength * 0.65;
+  const topOpacity = clamp(faceOpacity?.top ?? 1, 0, 1);
+  const frontOpacity = clamp(faceOpacity?.front ?? 1, 0, 1);
 
   const top = [
     { x: x - skew, y: y - height },
@@ -280,18 +309,29 @@ function drawExtrudedRect({
   drawPolygon(left);
   ctx.fillStyle = rightColor;
   drawPolygon(right);
-  ctx.fillStyle = frontColor;
-  drawPolygon(front);
-  ctx.fillStyle = topColor;
-  drawPolygon(top);
+  if (frontOpacity > 0){
+    ctx.save();
+    ctx.globalAlpha *= frontOpacity;
+    ctx.fillStyle = frontColor;
+    drawPolygon(front);
+    ctx.restore();
+  }
 
-  ctx.strokeStyle = highlightColor;
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(top[0].x, top[0].y);
-  ctx.lineTo(top[1].x, top[1].y);
-  ctx.lineTo(top[2].x, top[2].y);
-  ctx.stroke();
+  if (topOpacity > 0){
+    ctx.save();
+    ctx.globalAlpha *= topOpacity;
+    ctx.fillStyle = topColor;
+    drawPolygon(top);
+
+    ctx.strokeStyle = highlightColor;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(top[0].x, top[0].y);
+    ctx.lineTo(top[1].x, top[1].y);
+    ctx.lineTo(top[2].x, top[2].y);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   ctx.restore();
 
@@ -379,13 +419,18 @@ function drawHouseFactionDecor(front, width, height, visuals){
   }
 }
 
-function drawHouseFacadeOverlays(house, geometry, visuals){
+function drawHouseFacadeOverlays(house, geometry, visuals, options = {}){
   if (!geometry || !visuals) return;
   const front = geometry.front;
   if (!front || front.length < 4) return;
   const frontWidth = front[1].x - front[0].x;
   const frontHeight = front[2].y - front[0].y;
   if (frontWidth <= 6 || frontHeight <= 6) return;
+  const alpha = clamp(options.alpha ?? 1, 0, 1);
+  if (alpha <= 0) return;
+
+  ctx.save();
+  ctx.globalAlpha *= alpha;
 
   const layout = visuals.windowLayout;
   if (layout && layout.rows > 0 && layout.cols > 0){
@@ -453,7 +498,6 @@ function drawHouseFacadeOverlays(house, geometry, visuals){
     ctx.restore();
   }
 
-  if (house.side === 'south' && house.door){
     ctx.save();
     const minDoorWidth = Math.max(14, frontWidth * 0.22);
     const maxDoorWidth = Math.max(minDoorWidth, frontWidth * 0.55);
@@ -464,6 +508,32 @@ function drawHouseFacadeOverlays(house, geometry, visuals){
     const doorLeft = clamp(rawDoorLeft, front[0].x + 4, front[1].x - doorWidth - 4);
     const doorBottom = front[2].y - 2;
     const doorTop = doorBottom - doorHeight;
+
+    ctx.fillStyle = visuals.doorStyle.color;
+    ctx.fillRect(doorLeft, doorTop, doorWidth, doorHeight);
+
+    ctx.strokeStyle = visuals.doorStyle.frameColor;
+    ctx.lineWidth = 1.4;
+    ctx.strokeRect(doorLeft + 0.5, doorTop + 0.5, doorWidth - 1, doorHeight - 1);
+
+    const knobY = doorTop + doorHeight * 0.55;
+    const knobX = doorLeft + doorWidth * 0.78;
+    ctx.beginPath();
+    ctx.fillStyle = mixHexColor(visuals.doorStyle.color, '#000000', 0.6);
+    ctx.arc(knobX, knobY, 1.8, 0, TAU);
+    ctx.fill();
+
+    if (visuals.doorStyle.awning){
+      const awningHeight = Math.min(doorHeight * 0.32, 14);
+      const awningWidth = doorWidth + 16;
+      const awningLeft = doorLeft - 8;
+      const awningTop = doorTop - awningHeight + 1;
+      ctx.fillStyle = visuals.doorStyle.awning.color;
+      ctx.fillRect(awningLeft, awningTop, awningWidth, awningHeight);
+      ctx.fillStyle = visuals.doorStyle.awning.stripe;
+      ctx.fillRect(awningLeft, awningTop + awningHeight * 0.55, awningWidth, awningHeight * 0.45);
+    }
+
     if (visuals.sign){
       ctx.save();
       const signWidth = Math.min(Math.max(doorWidth * 0.6, 14), 28);
@@ -509,6 +579,8 @@ function drawHouseFacadeOverlays(house, geometry, visuals){
     ctx.stroke();
     ctx.restore();
   }
+
+  ctx.restore();
 }
 
 function drawChest3D(chest){
@@ -939,6 +1011,9 @@ function drawWorldScene(){
   for (let i = 0; i < state.houses.length; i++){
     const h = state.houses[i];
     const visuals = getHouseVisualDescriptor(h);
+    const insideHouse = state.interior?.houseId === i;
+    const topOpacity = insideHouse ? 0.08 : 1;
+    const frontOpacity = insideHouse ? 0.25 : 1;
     const geometry = drawExtrudedRect({
       x: h.x,
       y: h.y,
@@ -965,8 +1040,12 @@ function drawWorldScene(){
       roofColor: '#223047',
       shadowStrength: 0.22
     });
+    if (topOpacity > 0.2){
+      drawHouseRoofTrim(geometry, visuals);
+    }
+    const facadeAlpha = insideHouse ? 0.2 : 1;
+    drawHouseFacadeOverlays(h, geometry, visuals, { alpha: facadeAlpha });
   }
-
   if (state.interior && state.interior.level === 1) {
     const h = state.houses[state.interior.houseId];
     const col = interiorFloorColor(1);
@@ -1004,10 +1083,13 @@ function drawWorldScene(){
     drawChest3D(c);
   }
 
+  const showDebugFov = !!(state.developer?.showFov);
+
   for (const npc of state.npcs){
-    if (state.debugCones) drawFOV(npc);
+    if (showDebugFov) drawFOV(npc);
     drawNpc3D(npc);
     drawNpcWeaponSwing(npc);
+    drawNpcSpeechBubble(npc);
   }
 
   drawInteractionPrompts();
@@ -1024,6 +1106,86 @@ function drawWorldScene(){
   drawTrapDisarmProgress(p);
 
   drawDamageNumbers();
+
+  ctx.restore();
+}
+
+function drawNpcSpeechBubble(npc){
+  if (!npc || !npc.speechBubble) return;
+  const bubble = npc.speechBubble;
+  const now = state.time;
+  if (now >= bubble.expiresAt){
+    npc.speechBubble = null;
+    return;
+  }
+
+  const fadeDuration = Math.max(bubble.fadeDuration ?? 0.001, 0.001);
+  const fadeStart = bubble.fadeStart ?? (bubble.expiresAt - fadeDuration);
+  let alpha = 1;
+  if (now > fadeStart){
+    alpha = clamp(1 - (now - fadeStart) / fadeDuration, 0, 1);
+  }
+  if (alpha <= 0){
+    npc.speechBubble = null;
+    return;
+  }
+
+  const font = '600 15px system-ui';
+  const maxWidth = 240;
+  const lines = wrapSpeechLines(bubble.text, font, maxWidth);
+  if (!lines.length){
+    npc.speechBubble = null;
+    return;
+  }
+
+  ctx.save();
+  ctx.font = font;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  const lineHeight = 18;
+  let widest = 0;
+  for (const line of lines){
+    widest = Math.max(widest, ctx.measureText(line).width);
+  }
+  const paddingX = 14;
+  const paddingY = 9;
+  const tailHeight = 14;
+  const bubbleWidth = Math.max(72, widest + paddingX * 2);
+  const bubbleHeight = lines.length * lineHeight + paddingY * 2;
+  const baseX = npc.x;
+  const baseY = npc.y - 28;
+  const boxX = baseX - bubbleWidth / 2;
+  const boxY = baseY - bubbleHeight - tailHeight;
+
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = 'rgba(10, 18, 30, 0.78)';
+  ctx.strokeStyle = 'rgba(203, 224, 255, 0.88)';
+  ctx.lineWidth = 1.4;
+
+  const radius = 10;
+  ctx.beginPath();
+  ctx.moveTo(boxX + radius, boxY);
+  ctx.lineTo(boxX + bubbleWidth - radius, boxY);
+  ctx.quadraticCurveTo(boxX + bubbleWidth, boxY, boxX + bubbleWidth, boxY + radius);
+  ctx.lineTo(boxX + bubbleWidth, boxY + bubbleHeight - radius);
+  ctx.quadraticCurveTo(boxX + bubbleWidth, boxY + bubbleHeight, boxX + bubbleWidth - radius, boxY + bubbleHeight);
+  ctx.lineTo(baseX + 16, boxY + bubbleHeight);
+  ctx.lineTo(baseX, boxY + bubbleHeight + tailHeight);
+  ctx.lineTo(baseX - 16, boxY + bubbleHeight);
+  ctx.lineTo(boxX + radius, boxY + bubbleHeight);
+  ctx.quadraticCurveTo(boxX, boxY + bubbleHeight, boxX, boxY + bubbleHeight - radius);
+  ctx.lineTo(boxX, boxY + radius);
+  ctx.quadraticCurveTo(boxX, boxY, boxX + radius, boxY);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = '#eaf4ff';
+  for (let i = 0; i < lines.length; i++){
+    const textY = boxY + paddingY + i * lineHeight + lineHeight / 2;
+    ctx.fillText(lines[i], baseX, textY);
+  }
 
   ctx.restore();
 }
@@ -1102,26 +1264,12 @@ function drawVillageTrapMarkers(){
     const intensity = clamp(base + patience * 0.55 + proximity * 0.45, 0, 1);
 
     if (!trap.completed){
-      drawTrapAmbientCue(trap, intensity, cycle);
-      ctx.globalAlpha = 0.35 + 0.35 * intensity;
-      ctx.strokeStyle = '#e5b76c';
-      ctx.lineWidth = 1.8;
-      ctx.beginPath();
-      ctx.arc(trap.x, trap.y, 12 + intensity * 2.5, 0, TAU);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(trap.x - 7, trap.y);
-      ctx.lineTo(trap.x + 7, trap.y);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(trap.x, trap.y - 7);
-      ctx.lineTo(trap.x, trap.y + 7);
-      ctx.stroke();
-      ctx.globalAlpha = 0.55 + 0.35 * intensity;
+      drawTrapIcon(trap, intensity, cycle);
+      ctx.globalAlpha = 0.7;
       ctx.font = '10px "Trebuchet MS", system-ui';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      ctx.fillStyle = 'rgba(247, 214, 156, 0.85)';
+      ctx.fillStyle = 'rgba(186, 197, 214, 0.85)';
       ctx.fillText(trap.label, trap.x, trap.y + 16);
     } else {
       const fade = clamp(1 - (state.time - trap.completedAt) / 4, 0, 1);
@@ -1143,42 +1291,106 @@ function drawVillageTrapMarkers(){
   }
 }
 
-function drawTrapAmbientCue(trap, intensity, cycle){
-  const radius = 26 + intensity * 18;
-  const alpha = 0.16 + intensity * 0.32;
-  drawRadialGlow(trap.x, trap.y, radius, '#f4c67b', alpha);
-  const orbitRadius = radius * (0.65 + intensity * 0.15);
-  drawOrbitingDots({ x: trap.x, y: trap.y - 6 }, {
-    count: Math.round(6 + intensity * 8),
-    orbitRadius,
-    color: 'rgba(255, 214, 160, 0.75)',
-    drift: 10 + intensity * 8,
-    size: 2.8
-  }, cycle * 0.9);
-  drawTrapTripwireGleam(trap, intensity, cycle);
-  if (intensity > 0.6){
-    const loudness = clamp((intensity - 0.6) / 0.4, 0, 1);
-    drawRipples({ x: trap.x, y: trap.y }, radius * (1.2 + loudness * 0.4), cycle * 0.6, `rgba(255, 200, 150, ${0.08 + loudness * 0.18})`);
-  }
-}
-
-function drawTrapTripwireGleam(trap, intensity, cycle){
-  if (!cueWithinView(trap.x, trap.y, 80)) return;
+function drawTrapIcon(trap, intensity, cycle){
+  if (!cueWithinView(trap.x, trap.y, 120)) return;
   ctx.save();
-  ctx.translate(trap.x, trap.y - 4);
-  ctx.rotate(Math.sin(cycle * 0.8 + trap.x * 0.012 + trap.y * 0.008) * 0.22);
-  ctx.globalAlpha = 0.25 + intensity * 0.4;
-  ctx.strokeStyle = 'rgba(255, 226, 170, 0.9)';
-  ctx.lineWidth = 1.2 + intensity;
-  const span = 20 + intensity * 14;
+  ctx.translate(trap.x, trap.y);
+  const baseAlpha = 0.4 + intensity * 0.25;
+  const rimAlpha = 0.55 + intensity * 0.3;
+  const accentAlpha = 0.5 + intensity * 0.35;
+  const sheen = 0.2 + intensity * 0.4;
+
+  // subtle focus ring to replace the old glow
+  ctx.globalAlpha = 0.25 + intensity * 0.25;
+  ctx.strokeStyle = 'rgba(126, 140, 164, 0.8)';
+  ctx.lineWidth = 2.2;
   ctx.beginPath();
-  ctx.moveTo(-span, 0);
-  ctx.lineTo(span, 0);
+  ctx.arc(0, 0, 14 + intensity * 1.5, 0, TAU);
+  ctx.stroke();
+
+  ctx.globalAlpha = 1;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+
+  // lower jaw
+  ctx.fillStyle = `rgba(96, 106, 124, ${baseAlpha})`;
+  ctx.strokeStyle = `rgba(64, 72, 86, ${rimAlpha})`;
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.moveTo(-14, 4);
+  for (let i = 0; i < 6; i++){
+    const step = i * 4;
+    ctx.lineTo(-14 + step + 2, 8);
+    ctx.lineTo(-14 + step + 4, 4);
+  }
+  ctx.lineTo(14, 4);
+  ctx.lineTo(14, 6);
+  ctx.lineTo(-14, 6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // upper jaw
+  ctx.beginPath();
+  ctx.moveTo(-14, -4);
+  for (let i = 0; i < 6; i++){
+    const step = i * 4;
+    ctx.lineTo(-14 + step + 2, -8);
+    ctx.lineTo(-14 + step + 4, -4);
+  }
+  ctx.lineTo(14, -4);
+  ctx.lineTo(14, -6);
+  ctx.lineTo(-14, -6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // hinge plate
+  ctx.fillStyle = `rgba(72, 82, 98, ${accentAlpha})`;
+  ctx.strokeStyle = `rgba(46, 54, 66, ${rimAlpha})`;
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(-4, -2);
+  ctx.lineTo(4, -2);
+  ctx.lineTo(4, 2);
+  ctx.lineTo(-4, 2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // tension spring arms
+  ctx.strokeStyle = `rgba(150, 162, 182, ${rimAlpha})`;
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(-14, -5.5);
+  ctx.lineTo(-19, -10);
+  ctx.lineTo(-19, 10);
+  ctx.lineTo(-14, 5.5);
+  ctx.moveTo(14, -5.5);
+  ctx.lineTo(19, -10);
+  ctx.lineTo(19, 10);
+  ctx.lineTo(14, 5.5);
+  ctx.stroke();
+
+  // highlight glint
+  ctx.globalAlpha = sheen;
+  ctx.strokeStyle = 'rgba(224, 232, 245, 0.9)';
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  ctx.arc(0, -5, 10, Math.PI * 0.1, Math.PI * 0.4);
   ctx.stroke();
   ctx.beginPath();
-  ctx.moveTo(-span * 0.65, -3 - intensity * 2);
-  ctx.lineTo(span * 0.65, 3 + intensity * 2);
+  ctx.arc(0, 5, 10, -Math.PI * 0.4, -Math.PI * 0.1);
   ctx.stroke();
+
+  // subtle mechanical jitter for life
+  const offset = Math.sin(cycle * 1.2 + trap.id * 0.37) * 0.8 * intensity;
+  ctx.globalAlpha = 0.6 * intensity;
+  ctx.fillStyle = 'rgba(255, 216, 120, 0.6)';
+  ctx.beginPath();
+  ctx.ellipse(0, offset, 6, 2, 0, 0, TAU);
+  ctx.fill();
+
   ctx.restore();
 }
 
@@ -2609,19 +2821,228 @@ function drawFOV(npc){
   ctx.restore();
 }
 
-function drawTorchlight(){
-  if (!state.debugCones){
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    for (const npc of state.npcs.filter(n=>n.type==='scout')){
-      const grad = ctx.createRadialGradient(npc.x, npc.y, 10, npc.x, npc.y, 70);
-      grad.addColorStop(0, 'rgba(255,220,120,0.12)');
-      grad.addColorStop(1, 'rgba(255,220,120,0)');
-      ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.arc(npc.x, npc.y, 70, 0, TAU); ctx.fill();
+function angleDifference(a, b){
+  return Math.atan2(Math.sin(a - b), Math.cos(a - b));
+}
+
+function segmentRectIntersection(x1, y1, x2, y2, rect){
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  let t0 = 0;
+  let t1 = 1;
+  const p = [-dx, dx, -dy, dy];
+  const q = [x1 - rect.x, rect.x + rect.w - x1, y1 - rect.y, rect.y + rect.h - y1];
+
+  for (let i = 0; i < 4; i++){
+    const pi = p[i];
+    const qi = q[i];
+    if (pi === 0){
+      if (qi < 0) return null;
+      continue;
     }
-    ctx.restore();
+    const t = qi / pi;
+    if (pi < 0){
+      if (t > t1) return null;
+      if (t > t0) t0 = t;
+    } else {
+      if (t < t0) return null;
+      if (t < t1) t1 = t;
+    }
   }
+
+  if (t0 < 0 && t1 < 0) return null;
+  const hitT = t0 < 0 ? t1 : t0;
+  if (hitT <= 0 || hitT > 1) return null;
+
+  return {
+    t: hitT,
+    x: x1 + dx * hitT,
+    y: y1 + dy * hitT
+  };
+}
+
+function castTorchRay(origin, angle, range, blockers){
+  const dirX = Math.cos(angle);
+  const dirY = Math.sin(angle);
+  const targetX = origin.x + dirX * range;
+  const targetY = origin.y + dirY * range;
+  let closest = null;
+
+  for (const rect of blockers){
+    const hit = segmentRectIntersection(origin.x, origin.y, targetX, targetY, rect);
+    if (!hit) continue;
+    if (hit.t <= 0) continue;
+    if (!closest || hit.t < closest.t){
+      closest = hit;
+    }
+  }
+
+  if (closest){
+    const distance = range * closest.t;
+    const retreat = Math.min(4, Math.max(0, distance - 0.6));
+    return {
+      x: closest.x - dirX * retreat,
+      y: closest.y - dirY * retreat
+    };
+  }
+
+  return { x: targetX, y: targetY };
+}
+
+function gatherTorchBlockers(npc, range){
+  const blockers = state.houseSolids ? state.houseSolids.slice() : [];
+  if (!state.interior){
+    blockers.push(...gatherForestSolidsAround(npc.x, npc.y, range + 160));
+    const tavern = state.tavern;
+    if (tavern){
+      blockers.push({ x: tavern.x, y: tavern.y, w: tavern.w, h: tavern.h });
+    }
+  }
+  return blockers;
+}
+
+function buildTorchCone(npc){
+  const baseRange = Math.max(40, npc.fovRange || 160);
+  const fovAngle = Math.max(Math.PI / 64, npc.fovAngle || Math.PI / 2);
+  const halfFov = fovAngle / 2;
+  const range = baseRange * 1.05;
+
+  const cache = npc._torchConeCache;
+  if (cache){
+    const facingDelta = Math.abs(angleDifference(npc.facing, cache.facing || 0));
+    const moved = Math.hypot(npc.x - (cache.x || 0), npc.y - (cache.y || 0));
+    const stale = (state.time ?? 0) - (cache.time ?? 0);
+    if (
+      cache.baseRange === baseRange &&
+      cache.fovAngle === fovAngle &&
+      cache.interior === state.interior &&
+      Math.abs(cache.range - range) < 0.01 &&
+      facingDelta < 0.035 &&
+      moved < 1.5 &&
+      stale < 0.35
+    ){
+      return cache;
+    }
+  }
+
+  const blockers = gatherTorchBlockers(npc, range);
+  const offsets = [];
+  const offsetEpsilon = 0.0006;
+
+  const addOffset = (offset) => {
+    if (offset < -halfFov - 0.02 || offset > halfFov + 0.02) return;
+    for (const existing of offsets){
+      if (Math.abs(existing - offset) < offsetEpsilon) return;
+    }
+    offsets.push(offset);
+  };
+
+  const baseSamples = Math.max(18, Math.ceil(fovAngle / (Math.PI / 48)));
+  for (let i = 0; i <= baseSamples; i++){
+    const t = i / baseSamples;
+    const offset = -halfFov + fovAngle * t;
+    addOffset(offset);
+  }
+
+  for (const rect of blockers){
+    const corners = [
+      { x: rect.x, y: rect.y },
+      { x: rect.x + rect.w, y: rect.y },
+      { x: rect.x + rect.w, y: rect.y + rect.h },
+      { x: rect.x, y: rect.y + rect.h }
+    ];
+    for (const corner of corners){
+      const cornerAngle = Math.atan2(corner.y - npc.y, corner.x - npc.x);
+      const offset = angleDifference(cornerAngle, npc.facing);
+      if (Math.abs(offset) <= halfFov + 0.02){
+        addOffset(offset);
+        addOffset(offset - 0.012);
+        addOffset(offset + 0.012);
+      }
+    }
+  }
+
+  if (offsets.length < 2){
+    npc._torchConeCache = null;
+    return null;
+  }
+
+  offsets.sort((a, b) => a - b);
+  const points = offsets.map(offset => castTorchRay(npc, npc.facing + offset, range, blockers));
+  const result = {
+    points,
+    range,
+    baseRange,
+    fovAngle,
+    facing: npc.facing,
+    x: npc.x,
+    y: npc.y,
+    interior: state.interior,
+    time: state.time ?? 0
+  };
+  npc._torchConeCache = result;
+  return result;
+}
+
+function traceTorchConePath(origin, points){
+  if (!points.length) return false;
+  ctx.beginPath();
+  ctx.moveTo(origin.x, origin.y);
+  for (const pt of points){
+    ctx.lineTo(pt.x, pt.y);
+  }
+  ctx.closePath();
+  return true;
+}
+
+function drawTorchlight(){
+  const scouts = state.npcs.filter(npc => npc.type === 'scout');
+  if (!scouts.length) return;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineJoin = 'round';
+
+  for (const npc of scouts){
+    const cone = buildTorchCone(npc);
+    if (!cone || cone.points.length < 2) continue;
+
+    const flicker = 0.84 + Math.sin(state.time * 6.2 + npc.x * 0.01 + npc.y * 0.015) * 0.1;
+    const range = cone.range;
+
+    traceTorchConePath(npc, cone.points);
+    ctx.fillStyle = `rgba(255, 210, 130, ${(0.06 * flicker).toFixed(3)})`;
+    ctx.fill();
+
+    ctx.save();
+    traceTorchConePath(npc, cone.points);
+    ctx.clip();
+    const gradientRadius = Math.max(range * 0.85, range - 24);
+    const grad = ctx.createRadialGradient(npc.x, npc.y, 6, npc.x, npc.y, gradientRadius);
+    grad.addColorStop(0, `rgba(255, 238, 190, ${(0.32 * flicker).toFixed(3)})`);
+    grad.addColorStop(0.45, `rgba(255, 224, 150, ${(0.18 * flicker).toFixed(3)})`);
+    grad.addColorStop(1, 'rgba(255, 210, 120, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(npc.x - gradientRadius, npc.y - gradientRadius, gradientRadius * 2, gradientRadius * 2);
+    ctx.restore();
+
+    traceTorchConePath(npc, cone.points);
+    ctx.strokeStyle = `rgba(255, 200, 120, ${(0.18 * flicker).toFixed(3)})`;
+    ctx.lineWidth = Math.max(8, range * 0.08);
+    ctx.stroke();
+
+    traceTorchConePath(npc, cone.points);
+    ctx.strokeStyle = `rgba(255, 236, 190, ${(0.12 * flicker).toFixed(3)})`;
+    ctx.lineWidth = Math.max(3.5, range * 0.028);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(npc.x, npc.y, Math.min(16, range * 0.18), 0, TAU);
+    ctx.fillStyle = `rgba(255, 230, 170, ${(0.22 * flicker).toFixed(3)})`;
+    ctx.fill();
+  }
+
+  ctx.restore();
 }
 
 export { drawWorldScene, drawCastle, drawFOV, drawTorchlight };

@@ -98,18 +98,27 @@ function createEdgeStairs(h, houseId){
 }
 
 function getActiveSolids(anchor = state.player){
-  if (state.tavernInteriorState.active){
+  const inTavernOnly = state.tavernInteriorState.active && !state.interior;
+  if (inTavernOnly){
     return TAVERN_SOLIDS.slice();
   }
+
   const solids = state.houseSolids.slice();
+
   if (state.interior && state.interior.level === 1){
     const h = state.houses[state.interior.houseId];
     const doorBlock = { x: h.door.x, y: h.side === 'north' ? (h.y + h.h - WALL) : h.y, w: h.door.w, h: WALL };
     solids.push(doorBlock);
   }
+
+  if (state.tavernInteriorState.active){
+    solids.push(...TAVERN_SOLIDS);
+  }
+
   if (!state.interior && anchor){
     solids.push(...gatherForestSolidsAround(anchor.x, anchor.y, 360));
   }
+
   return solids;
 }
 
@@ -243,7 +252,6 @@ function resolveSideHouseCollisions(village, entries){
 
 function initHouses(){
   state.houses = [];
-  state.doors = [];
   state.houseSolids = [];
   state.chests = [];
   state.stairs = [];
@@ -286,8 +294,6 @@ function initHouses(){
   });
 
   rebuildHouseSolids();
-  state.doors = state.houses.map(h => ({ x: h.door.x, y: h.door.y, w: h.door.w, h: h.door.h, side: h.side }));
-
   state.houses.forEach((h, i) => {
     const p = randomInHouseInterior(h, 16);
     state.chests.push({ x:p.x, y:p.y, w:18, h:12, amount: 40 + Math.floor(Math.random()*60), looted:false, houseId:i, level:0 });

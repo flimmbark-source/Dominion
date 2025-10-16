@@ -125,9 +125,17 @@ const NPC_ARCHETYPES = {
   }
 };
 
+function resolveWaypoints(x, y, waypoints){
+  if (Array.isArray(waypoints) && waypoints.length > 0){
+    return waypoints;
+  }
+  return [{ x, y }];
+}
+
 function makeNPC(type, x, y, waypoints=null, options = {}){
   const config = NPC_ARCHETYPES[type] || NPC_ARCHETYPES.villager;
   const defaultState = config.defaultState || NPC_STATE.PATROL;
+  const resolvedWaypoints = resolveWaypoints(x, y, waypoints);
   const npc = {
     type,
     x,
@@ -139,7 +147,7 @@ function makeNPC(type, x, y, waypoints=null, options = {}){
     baseFovAngle: config.fovAngle,
     fovRange: config.fovRange,
     baseFovRange: config.fovRange,
-    waypoints: waypoints || [{ x, y }],
+    waypoints: resolvedWaypoints,
     wpIndex: 0,
     activeTarget: null,
     dialogCooldown: 0,
@@ -191,7 +199,8 @@ function makeNPC(type, x, y, waypoints=null, options = {}){
     chasingTarget: null,
     activeTargetIsChase: false,
     activeTargetBeforeChase: null,
-    attackSwing: null
+    attackSwing: null,
+    speechBubble: null
   };
 
   if (typeof options.initialPause === 'number' && options.initialPause > 0){
@@ -219,7 +228,8 @@ function offsetWaypoints(villageIndex, pts){
 
 function addVillageNPC(type, villageIndex, x, y, localWaypoints, options = {}){
   const origin = offsetPoint(villageIndex, x, y);
-  const worldWaypoints = localWaypoints ? offsetWaypoints(villageIndex, localWaypoints) : null;
+  const hasRoute = Array.isArray(localWaypoints) && localWaypoints.length > 0;
+  const worldWaypoints = hasRoute ? offsetWaypoints(villageIndex, localWaypoints) : null;
   const spawnOptions = { homeVillage: villageIndex, ...options };
   const npc = makeNPC(type, origin.x, origin.y, worldWaypoints, spawnOptions);
   state.npcs.push(npc);
@@ -554,33 +564,74 @@ function spawnVillageDefender(villageIndex, options = {}){
 function spawnDarkRaid(targetVillageIndex, count, options = {}){
   const targetVillage = VILLAGES[targetVillageIndex];
   if (!targetVillage || count <= 0) return 0;
-  const muster = {
-    x: state.castle.x - 140,
-    y: state.castle.y + (options.musterOffset ?? 20)
-  };
+
+  const castle = state.castle;
   const targetCenter = {
     x: targetVillage.x + targetVillage.w / 2,
     y: targetVillage.y + targetVillage.h / 2
   };
+
+  let dirX = targetCenter.x - castle.x;
+  let dirY = targetCenter.y - castle.y;
+  let dirLen = Math.hypot(dirX, dirY);
+  if (dirLen < 1){
+    dirX = -1;
+    dirY = 0;
+    dirLen = 1;
+  }
+  dirX /= dirLen;
+  dirY /= dirLen;
+
+  const perpX = -dirY;
+  const perpY = dirX;
+  const lateralOffset = options.musterOffset ?? 0;
+  const targetDistance = dirLen;
+  const spawnStride = 140;
+  const rallyStride = 280;
+  const marchTarget = Math.max(rallyStride + 200, targetDistance * 0.45);
+  const marchMin = rallyStride + 100;
+  const marchMax = Math.max(marchMin, targetDistance - 220);
+  const marchStride = clamp(marchTarget, marchMin, marchMax);
+
+  const spawnBase = {
+    x: castle.x + dirX * spawnStride,
+    y: castle.y + dirY * spawnStride
+  };
+  const rallyBase = {
+    x: castle.x + dirX * rallyStride,
+    y: castle.y + dirY * rallyStride
+  };
+  const marchBase = {
+    x: castle.x + dirX * marchStride,
+    y: castle.y + dirY * marchStride
+  };
+
   let spawned = 0;
   for (let i = 0; i < count; i++){
-    const spread = (i - (count - 1) / 2) * 18;
-    const spawnX = state.castle.x - 60 - Math.random() * 60;
-    const spawnY = state.castle.y + spread;
-    const rally = {
-      x: muster.x + Math.random() * 80 - 40,
-      y: muster.y + Math.random() * 80 - 40
-    };
-    const strike = {
+    const spreadIndex = i - (count - 1) / 2;
+    const baseLateral = lateralOffset + spreadIndex * 28 + (Math.random() - 0.5) * 26;
+    const spawnPoint = clampTargetToWorld({
+      x: spawnBase.x + perpX * baseLateral,
+      y: spawnBase.y + perpY * baseLateral
+    });
+    const rally = clampTargetToWorld({
+      x: rallyBase.x + perpX * (baseLateral + (Math.random() - 0.5) * 24),
+      y: rallyBase.y + perpY * (baseLateral + (Math.random() - 0.5) * 24)
+    });
+    const march = clampTargetToWorld({
+      x: marchBase.x + perpX * (baseLateral + (Math.random() - 0.5) * 60),
+      y: marchBase.y + perpY * (baseLateral + (Math.random() - 0.5) * 60)
+    });
+    const strike = clampTargetToWorld({
       x: targetCenter.x + Math.random() * 160 - 80,
       y: targetCenter.y + Math.random() * 160 - 80
-    };
-    const approach = {
+    });
+    const approach = clampTargetToWorld({
       x: targetCenter.x + Math.random() * 60 - 30,
       y: targetCenter.y + Math.random() * 60 - 30
-    };
-    const waypoints = [rally, strike, approach];
-    const npc = makeNPC('raider', spawnX, spawnY, waypoints, {
+    });
+    const waypoints = [rally, march, strike, approach];
+    const npc = makeNPC('raider', spawnPoint.x, spawnPoint.y, waypoints, {
       faction: 'darkLord',
       role: 'raider',
       targetVillage: targetVillageIndex,
