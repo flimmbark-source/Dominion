@@ -125,9 +125,17 @@ const NPC_ARCHETYPES = {
   }
 };
 
+function resolveWaypoints(x, y, waypoints){
+  if (Array.isArray(waypoints) && waypoints.length > 0){
+    return waypoints;
+  }
+  return [{ x, y }];
+}
+
 function makeNPC(type, x, y, waypoints=null, options = {}){
   const config = NPC_ARCHETYPES[type] || NPC_ARCHETYPES.villager;
   const defaultState = config.defaultState || NPC_STATE.PATROL;
+  const resolvedWaypoints = resolveWaypoints(x, y, waypoints);
   const npc = {
     type,
     x,
@@ -139,7 +147,7 @@ function makeNPC(type, x, y, waypoints=null, options = {}){
     baseFovAngle: config.fovAngle,
     fovRange: config.fovRange,
     baseFovRange: config.fovRange,
-    waypoints: waypoints || [{ x, y }],
+    waypoints: resolvedWaypoints,
     wpIndex: 0,
     activeTarget: null,
     dialogCooldown: 0,
@@ -220,7 +228,8 @@ function offsetWaypoints(villageIndex, pts){
 
 function addVillageNPC(type, villageIndex, x, y, localWaypoints, options = {}){
   const origin = offsetPoint(villageIndex, x, y);
-  const worldWaypoints = localWaypoints ? offsetWaypoints(villageIndex, localWaypoints) : null;
+  const hasRoute = Array.isArray(localWaypoints) && localWaypoints.length > 0;
+  const worldWaypoints = hasRoute ? offsetWaypoints(villageIndex, localWaypoints) : null;
   const spawnOptions = { homeVillage: villageIndex, ...options };
   const npc = makeNPC(type, origin.x, origin.y, worldWaypoints, spawnOptions);
   state.npcs.push(npc);
