@@ -154,6 +154,7 @@ const state = {
   villagerTrust: 8,
   outpostStates: {},
   rumorFlags: {},
+  houseFacadeCache: new Map()
   safehouseAccess: {},
   villageEconomy: null
   worldIntel: {},

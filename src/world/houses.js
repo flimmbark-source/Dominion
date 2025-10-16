@@ -247,6 +247,11 @@ function initHouses(){
   state.houseSolids = [];
   state.chests = [];
   state.stairs = [];
+  if (state.houseFacadeCache instanceof Map){
+    state.houseFacadeCache.clear();
+  } else {
+    state.houseFacadeCache = new Map();
+  }
   VILLAGES.forEach((village, vIndex) => {
     const instance = getVillageInstance(vIndex);
     const housesBySide = { north: [], south: [] };

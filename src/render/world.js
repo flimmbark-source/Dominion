@@ -47,6 +47,176 @@ function adjustHexColor(hex, factor){
   return `#${nr.toString(16).padStart(2, '0')}${ng.toString(16).padStart(2, '0')}${nb.toString(16).padStart(2, '0')}`;
 }
 
+const HOUSE_PALETTES = [
+  { id: 'deep-slate', base: '#1b2638', roof: '#2f3f5b', trim: '#d1d8e2', window: '#e9f0ff' },
+  { id: 'warm-clay', base: '#3a2a1b', roof: '#5a4030', trim: '#f0d2a4', window: '#fbe7c3' },
+  { id: 'sage-stone', base: '#2f3a32', roof: '#4c5d51', trim: '#d6e3d4', window: '#f1f7ed' },
+  { id: 'ember-brick', base: '#452a2a', roof: '#613b3a', trim: '#f3c6b3', window: '#fee6dc' },
+  { id: 'storm-plaster', base: '#2f2f3a', roof: '#4d4b5f', trim: '#e3e0f1', window: '#f0f3ff' }
+];
+
+const ROOF_TRIM_OPTIONS = [
+  { id: 'none', type: 'none' },
+  { id: 'ridge-gold', type: 'ridge', color: '#f3d9a2', width: 3 },
+  { id: 'ridge-silver', type: 'ridge', color: '#c8d6ef', width: 2.2 },
+  { id: 'chevron', type: 'chevron', color: '#e6c98b', spacing: 18, width: 1.2 },
+  { id: 'edge-band', type: 'edge', color: '#f2e2c6', width: 1.6 }
+];
+
+const DEFAULT_HOUSE_THEME = { faction: 'villager', accent: '#d6c3a4', signSymbol: null, questHook: false };
+const HOUSE_THEME_RULES = [
+  { match: /(smith|forge|armory|fletcher)/i, faction: 'crafters', accent: '#df7a45', signSymbol: '⚒' },
+  { match: /(guild|abbot|scribe|council)/i, faction: 'council', accent: '#b58ce0', signSymbol: '✶', questHook: true },
+  { match: /(inn|mess|tavern|baker|market)/i, faction: 'civilians', accent: '#d9b173', signSymbol: '☕' },
+  { match: /(barracks|watch|guard|tower)/i, faction: 'militia', accent: '#7db0e8', signSymbol: '⛨' },
+  { match: /(apothecary|herb|alchemist|pilgrim)/i, faction: 'herbalist', accent: '#85d9bb', signSymbol: '✿', questHook: true },
+  { match: /(stables|bunks|boat|fisher)/i, faction: 'trades', accent: '#d7c686', signSymbol: '♞' }
+];
+
+function hashHouseKey(text){
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i++){
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function makeSeededRandom(seed){
+  let stateValue = seed >>> 0;
+  return () => {
+    stateValue = (stateValue + 0x6d2b79f5) | 0;
+    let t = Math.imul(stateValue ^ (stateValue >>> 15), 1 | stateValue);
+    t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function ensureHouseFacadeCache(){
+  if (!(state.houseFacadeCache instanceof Map)){
+    state.houseFacadeCache = new Map();
+  }
+  return state.houseFacadeCache;
+}
+
+function getHouseSpec(house){
+  if (!house || !Number.isInteger(house.villageId)) return null;
+  const instance = state.villageInstances?.[house.villageId];
+  const placed = instance?.placedHouses;
+  if (!placed || !placed.length) return null;
+  let best = null;
+  let bestScore = Infinity;
+  for (const entry of placed){
+    const dx = Math.abs(entry.placement.x - house.x);
+    const dy = Math.abs(entry.placement.y - house.y);
+    const score = dx + dy;
+    if (score < bestScore){
+      best = entry;
+      bestScore = score;
+    }
+  }
+  return best?.spec || null;
+}
+
+function resolveHouseTheme(spec){
+  if (!spec || !spec.id){
+    return { ...DEFAULT_HOUSE_THEME };
+  }
+  for (const rule of HOUSE_THEME_RULES){
+    if (rule.match.test(spec.id)){
+      return {
+        faction: rule.faction,
+        accent: rule.accent,
+        signSymbol: rule.signSymbol || null,
+        questHook: !!rule.questHook
+      };
+    }
+  }
+  return { ...DEFAULT_HOUSE_THEME };
+}
+
+function getHouseVisualDescriptor(house){
+  const cache = ensureHouseFacadeCache();
+  const keyParts = [
+    house.villageId ?? 'v',
+    house.side || 'side',
+    Math.round(house.x),
+    Math.round(house.y),
+    Math.round(house.w),
+    Math.round(house.h),
+    Math.round(house.door?.x ?? 0),
+    Math.round(house.door?.y ?? 0)
+  ];
+  const cacheKey = keyParts.join(':');
+  let descriptor = cache.get(cacheKey);
+  if (descriptor) return descriptor;
+
+  const spec = getHouseSpec(house);
+  const seed = hashHouseKey(`${cacheKey}:${spec?.id ?? 'generic'}`);
+  const rand = makeSeededRandom(seed);
+  const palette = HOUSE_PALETTES[Math.floor(rand() * HOUSE_PALETTES.length)] || HOUSE_PALETTES[0];
+  const roofTrim = ROOF_TRIM_OPTIONS[Math.floor(rand() * ROOF_TRIM_OPTIONS.length)] || ROOF_TRIM_OPTIONS[0];
+  const height = 16 + Math.round(rand() * 6);
+  const skew = 7 + Math.round(rand() * 4);
+  const shadowStrength = 0.24 + rand() * 0.12;
+  const theme = resolveHouseTheme(spec);
+  const accentColor = theme.accent || palette.trim;
+  const windowRows = 1 + Math.floor(rand() * 2);
+  const windowCols = 2 + Math.floor(rand() * 3);
+  const tallWindows = rand() > 0.55;
+  const shutters = rand() > 0.4;
+  const windowColor = mixHexColor(palette.window, '#ffffff', 0.2);
+  const frameColor = palette.trim;
+  const baseColor = mixHexColor(palette.base, accentColor, 0.08);
+  const roofColor = mixHexColor(palette.roof, accentColor, 0.18);
+
+  descriptor = {
+    key: cacheKey,
+    palette,
+    roofTrim,
+    baseColor,
+    roofColor,
+    height,
+    skew,
+    shadowStrength,
+    specId: spec?.id ?? null,
+    theme,
+    accentColor,
+    windowLayout: {
+      rows: windowRows,
+      cols: windowCols,
+      tall: tallWindows,
+      shutters,
+      color: windowColor,
+      frame: frameColor,
+      shutterColor: mixHexColor(accentColor, '#000000', 0.35),
+      glow: mixHexColor(windowColor, '#ffffff', 0.35)
+    },
+    doorStyle: {
+      color: mixHexColor(palette.base, accentColor, 0.45),
+      frameColor: mixHexColor(frameColor, accentColor, 0.15),
+      awning: rand() > 0.65
+        ? {
+            color: mixHexColor(accentColor, '#000000', 0.4),
+            stripe: mixHexColor(accentColor, '#ffffff', 0.4)
+          }
+        : null
+    },
+    sign: null
+  };
+
+  if (theme.signSymbol){
+    descriptor.sign = {
+      color: accentColor,
+      symbol: theme.signSymbol,
+      background: mixHexColor(accentColor, '#000000', 0.65)
+    };
+  }
+
+  cache.set(cacheKey, descriptor);
+  return descriptor;
+}
+
 function drawPolygon(points){
   ctx.beginPath();
   ctx.moveTo(points[0].x, points[0].y);
@@ -136,6 +306,245 @@ function drawExtrudedRect({
   ctx.restore();
 
   return { top, front, left, right, drop };
+}
+
+function drawHouseRoofTrim(geometry, visuals){
+  if (!geometry || !visuals) return;
+  const trim = visuals.roofTrim;
+  if (!trim || trim.type === 'none') return;
+  const top = geometry.top;
+  if (!top || top.length < 4) return;
+
+  ctx.save();
+  ctx.strokeStyle = trim.color || visuals.accentColor || '#f0e2c6';
+  ctx.lineWidth = trim.width ?? 1.6;
+
+  if (trim.type === 'ridge'){
+    const startX = (top[0].x + top[3].x) / 2;
+    const startY = (top[0].y + top[3].y) / 2;
+    const endX = (top[1].x + top[2].x) / 2;
+    const endY = (top[1].y + top[2].y) / 2;
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+  } else if (trim.type === 'edge'){
+    ctx.beginPath();
+    ctx.moveTo(top[0].x, top[0].y);
+    ctx.lineTo(top[1].x, top[1].y);
+    ctx.lineTo(top[2].x, top[2].y);
+    ctx.stroke();
+  } else if (trim.type === 'chevron'){
+    const frontStart = top[2];
+    const frontEnd = top[3];
+    const frontLength = Math.hypot(frontEnd.x - frontStart.x, frontEnd.y - frontStart.y);
+    const steps = Math.max(2, Math.floor(frontLength / (trim.spacing ?? 18)));
+    const stepX = (frontEnd.x - frontStart.x) / steps;
+    const stepY = (frontEnd.y - frontStart.y) / steps;
+    const diagX = (top[1].x - top[2].x) / steps;
+    const diagY = (top[1].y - top[2].y) / steps;
+    ctx.strokeStyle = trim.color || ctx.strokeStyle;
+    ctx.lineWidth = trim.width ?? 1.2;
+    for (let i = 0; i < steps; i++){
+      const sx = frontStart.x + stepX * i;
+      const sy = frontStart.y + stepY * i;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(sx + diagX, sy + diagY);
+      ctx.stroke();
+    }
+  }
+
+  ctx.restore();
+}
+
+function drawHouseFactionDecor(front, width, height, visuals){
+  const faction = visuals?.theme?.faction;
+  if (!faction) return;
+
+  if (faction === 'militia'){
+    const bandWidth = Math.max(6, width * 0.08);
+    const bandColor = mixHexColor(visuals.accentColor, '#000000', 0.3);
+    ctx.fillStyle = bandColor;
+    ctx.fillRect(front[0].x + 2, front[0].y + 6, bandWidth, height * 0.7);
+    ctx.fillRect(front[1].x - bandWidth - 2, front[0].y + 6, bandWidth, height * 0.7);
+  } else if (faction === 'crafters'){
+    const trimColor = mixHexColor(visuals.accentColor, '#ffffff', 0.25);
+    ctx.fillStyle = trimColor;
+    ctx.fillRect(front[0].x + 4, front[0].y + height * 0.55, width - 8, 3.5);
+  } else if (faction === 'herbalist'){
+    const radius = Math.min(width, height) * 0.1;
+    ctx.fillStyle = mixHexColor(visuals.accentColor, '#ffffff', 0.35);
+    ctx.beginPath();
+    ctx.ellipse(front[0].x + width * 0.26, front[0].y + height * 0.32, radius, radius * 0.8, 0, 0, TAU);
+    ctx.fill();
+  } else if (faction === 'council'){
+    const bannerWidth = Math.max(5, width * 0.06);
+    ctx.fillStyle = mixHexColor(visuals.accentColor, '#000000', 0.25);
+    ctx.fillRect(front[0].x + width / 2 - bannerWidth / 2, front[0].y + 6, bannerWidth, height * 0.65);
+  } else if (faction === 'trades'){
+    const stripeHeight = Math.max(4, height * 0.08);
+    ctx.fillStyle = mixHexColor(visuals.accentColor, '#ffffff', 0.2);
+    ctx.fillRect(front[0].x + 6, front[2].y - stripeHeight - 4, width - 12, stripeHeight);
+  }
+}
+
+function drawHouseFacadeOverlays(house, geometry, visuals){
+  if (!geometry || !visuals) return;
+  const front = geometry.front;
+  if (!front || front.length < 4) return;
+  const frontWidth = front[1].x - front[0].x;
+  const frontHeight = front[2].y - front[0].y;
+  if (frontWidth <= 6 || frontHeight <= 6) return;
+
+  const layout = visuals.windowLayout;
+  if (layout && layout.rows > 0 && layout.cols > 0){
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(front[0].x, front[0].y);
+    ctx.lineTo(front[1].x, front[1].y);
+    ctx.lineTo(front[2].x, front[2].y);
+    ctx.lineTo(front[3].x, front[3].y);
+    ctx.closePath();
+    ctx.clip();
+
+    drawHouseFactionDecor(front, frontWidth, frontHeight, visuals);
+
+    const marginX = frontWidth * 0.09;
+    const marginY = frontHeight * 0.16;
+    const cellWidth = (frontWidth - marginX * 2) / layout.cols;
+    const cellHeight = (frontHeight - marginY * 2) / Math.max(1, layout.rows);
+    const windowWidth = cellWidth * (layout.tall ? 0.52 : 0.46);
+    const windowHeight = cellHeight * (layout.tall ? 0.78 : 0.58);
+
+    for (let row = 0; row < layout.rows; row++){
+      for (let col = 0; col < layout.cols; col++){
+        const centerX = front[0].x + marginX + cellWidth * col + cellWidth / 2;
+        const centerY = front[0].y + marginY + cellHeight * row + cellHeight / 2;
+        const wx = centerX - windowWidth / 2;
+        const wy = centerY - windowHeight / 2;
+
+        if (layout.glow){
+          ctx.globalAlpha = 0.35;
+          ctx.fillStyle = layout.glow;
+          ctx.fillRect(wx - 1.5, wy - 1.5, windowWidth + 3, windowHeight + 3);
+          ctx.globalAlpha = 1;
+        }
+
+        ctx.fillStyle = layout.color;
+        ctx.fillRect(wx, wy, windowWidth, windowHeight);
+
+        if (layout.frame){
+          ctx.strokeStyle = layout.frame;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(wx + 0.5, wy + 0.5, windowWidth - 1, windowHeight - 1);
+        }
+
+        if (layout.shutters){
+          const shutterWidth = Math.min(windowWidth * 0.26, 9);
+          ctx.fillStyle = layout.shutterColor;
+          ctx.fillRect(wx - shutterWidth - 1, wy, shutterWidth, windowHeight);
+          ctx.fillRect(wx + windowWidth + 1, wy, shutterWidth, windowHeight);
+        }
+      }
+    }
+
+    ctx.restore();
+  } else {
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(front[0].x, front[0].y);
+    ctx.lineTo(front[1].x, front[1].y);
+    ctx.lineTo(front[2].x, front[2].y);
+    ctx.lineTo(front[3].x, front[3].y);
+    ctx.closePath();
+    ctx.clip();
+    drawHouseFactionDecor(front, frontWidth, frontHeight, visuals);
+    ctx.restore();
+  }
+
+  if (house.side === 'south' && house.door && visuals.doorStyle){
+    ctx.save();
+    const minDoorWidth = Math.max(14, frontWidth * 0.22);
+    const maxDoorWidth = Math.max(minDoorWidth, frontWidth * 0.55);
+    const targetDoorWidth = house.door.w * 0.9;
+    const doorWidth = clamp(targetDoorWidth, minDoorWidth, maxDoorWidth);
+    const doorHeight = clamp(frontHeight * 0.62, 16, frontHeight - 6);
+    const rawDoorLeft = house.door.x + (house.door.w - doorWidth) / 2;
+    const doorLeft = clamp(rawDoorLeft, front[0].x + 4, front[1].x - doorWidth - 4);
+    const doorBottom = front[2].y - 2;
+    const doorTop = doorBottom - doorHeight;
+
+    ctx.fillStyle = visuals.doorStyle.color;
+    ctx.fillRect(doorLeft, doorTop, doorWidth, doorHeight);
+
+    ctx.strokeStyle = visuals.doorStyle.frameColor;
+    ctx.lineWidth = 1.4;
+    ctx.strokeRect(doorLeft + 0.5, doorTop + 0.5, doorWidth - 1, doorHeight - 1);
+
+    const knobY = doorTop + doorHeight * 0.55;
+    const knobX = doorLeft + doorWidth * 0.78;
+    ctx.beginPath();
+    ctx.fillStyle = mixHexColor(visuals.doorStyle.color, '#000000', 0.6);
+    ctx.arc(knobX, knobY, 1.8, 0, TAU);
+    ctx.fill();
+
+    if (visuals.doorStyle.awning){
+      const awningHeight = Math.min(doorHeight * 0.32, 14);
+      const awningWidth = doorWidth + 16;
+      const awningLeft = doorLeft - 8;
+      const awningTop = doorTop - awningHeight + 1;
+      ctx.fillStyle = visuals.doorStyle.awning.color;
+      ctx.fillRect(awningLeft, awningTop, awningWidth, awningHeight);
+      ctx.fillStyle = visuals.doorStyle.awning.stripe;
+      ctx.fillRect(awningLeft, awningTop + awningHeight * 0.55, awningWidth, awningHeight * 0.45);
+    }
+
+    if (visuals.sign){
+      ctx.save();
+      const signWidth = Math.min(Math.max(doorWidth * 0.6, 14), 28);
+      const signHeight = Math.min(Math.max(doorHeight * 0.32, 10), 22);
+      const rawSignLeft = doorLeft + doorWidth + 6;
+      const signLeft = clamp(rawSignLeft, front[0].x + 6, front[1].x - signWidth - 4);
+      const rawSignTop = doorTop + doorHeight * 0.2;
+      const signTop = clamp(rawSignTop, front[0].y + 6, front[2].y - signHeight - 6);
+      ctx.fillStyle = visuals.sign.background;
+      ctx.fillRect(signLeft, signTop, signWidth, signHeight);
+      ctx.strokeStyle = visuals.sign.color;
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(signLeft + 0.5, signTop + 0.5, signWidth - 1, signHeight - 1);
+      if (visuals.sign.symbol){
+        ctx.fillStyle = visuals.sign.color;
+        ctx.font = '11px system-ui';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(visuals.sign.symbol, signLeft + signWidth / 2, signTop + signHeight / 2 + 0.5);
+      }
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  if (visuals.theme?.questHook){
+    const centerX = front[0].x + frontWidth / 2;
+    const centerY = front[0].y + frontHeight * 0.28;
+    const radiusX = frontWidth * 0.45;
+    const radiusY = frontHeight * 0.32;
+    ctx.save();
+    ctx.globalAlpha = 0.22;
+    ctx.fillStyle = visuals.accentColor;
+    ctx.beginPath();
+    ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 0.7;
+    ctx.strokeStyle = visuals.accentColor;
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash([4, 5]);
+    ctx.beginPath();
+    ctx.ellipse(centerX, centerY, radiusX * 0.55, radiusY * 0.38, 0, 0, TAU);
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 
 function drawChest3D(chest){
@@ -563,18 +972,22 @@ function drawWorldScene(){
   drawTerrain({ treeFilter: treeBehindPlayer });
   drawCastle();
 
-  for (const h of state.houses){
-    drawExtrudedRect({
+  for (let i = 0; i < state.houses.length; i++){
+    const h = state.houses[i];
+    const visuals = getHouseVisualDescriptor(h);
+    const geometry = drawExtrudedRect({
       x: h.x,
       y: h.y,
       width: h.w,
       depth: h.h,
-      height: 18,
-      skew: 9,
-      baseColor: '#1b2638',
-      roofColor: '#2f3f5b',
-      shadowStrength: 0.3
+      height: visuals.height,
+      skew: visuals.skew,
+      baseColor: visuals.baseColor || visuals.palette.base,
+      roofColor: visuals.roofColor || visuals.palette.roof,
+      shadowStrength: visuals.shadowStrength
     });
+    drawHouseRoofTrim(geometry, visuals);
+    drawHouseFacadeOverlays(h, geometry, visuals);
   }
   for (const d of state.doors){
     drawExtrudedRect({
