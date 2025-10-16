@@ -98,18 +98,27 @@ function createEdgeStairs(h, houseId){
 }
 
 function getActiveSolids(anchor = state.player){
-  if (state.tavernInteriorState.active){
+  const inTavernOnly = state.tavernInteriorState.active && !state.interior;
+  if (inTavernOnly){
     return TAVERN_SOLIDS.slice();
   }
+
   const solids = state.houseSolids.slice();
+
   if (state.interior && state.interior.level === 1){
     const h = state.houses[state.interior.houseId];
     const doorBlock = { x: h.door.x, y: h.side === 'north' ? (h.y + h.h - WALL) : h.y, w: h.door.w, h: WALL };
     solids.push(doorBlock);
   }
+
+  if (state.tavernInteriorState.active){
+    solids.push(...TAVERN_SOLIDS);
+  }
+
   if (!state.interior && anchor){
     solids.push(...gatherForestSolidsAround(anchor.x, anchor.y, 360));
   }
+
   return solids;
 }
 
