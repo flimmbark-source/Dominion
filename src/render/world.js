@@ -1044,6 +1044,7 @@ function drawWorldScene(){
     drawHouseFacadeOverlays(h, geometry, visuals, { alpha: facadeAlpha });
   }
   for (const d of state.doors){
+    if (d.side !== 'south') continue;
     drawExtrudedRect({
       x: d.x,
       y: d.y,
