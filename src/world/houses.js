@@ -243,7 +243,6 @@ function resolveSideHouseCollisions(village, entries){
 
 function initHouses(){
   state.houses = [];
-  state.doors = [];
   state.houseSolids = [];
   state.chests = [];
   state.stairs = [];
@@ -286,8 +285,6 @@ function initHouses(){
   });
 
   rebuildHouseSolids();
-  state.doors = state.houses.map(h => ({ x: h.door.x, y: h.door.y, w: h.door.w, h: h.door.h, side: h.side }));
-
   state.houses.forEach((h, i) => {
     const p = randomInHouseInterior(h, 16);
     state.chests.push({ x:p.x, y:p.y, w:18, h:12, amount: 40 + Math.floor(Math.random()*60), looted:false, houseId:i, level:0 });

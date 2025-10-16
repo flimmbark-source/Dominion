@@ -109,7 +109,6 @@ const state = {
     dead: false
   },
   houses: [],
-  doors: [],
   houseSolids: [],
   chests: [],
   tavern,
