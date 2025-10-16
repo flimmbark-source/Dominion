@@ -1275,26 +1275,12 @@ function drawVillageTrapMarkers(){
     const intensity = clamp(base + patience * 0.55 + proximity * 0.45, 0, 1);
 
     if (!trap.completed){
-      drawTrapAmbientCue(trap, intensity, cycle);
-      ctx.globalAlpha = 0.35 + 0.35 * intensity;
-      ctx.strokeStyle = '#e5b76c';
-      ctx.lineWidth = 1.8;
-      ctx.beginPath();
-      ctx.arc(trap.x, trap.y, 12 + intensity * 2.5, 0, TAU);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(trap.x - 7, trap.y);
-      ctx.lineTo(trap.x + 7, trap.y);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(trap.x, trap.y - 7);
-      ctx.lineTo(trap.x, trap.y + 7);
-      ctx.stroke();
-      ctx.globalAlpha = 0.55 + 0.35 * intensity;
+      drawTrapIcon(trap, intensity, cycle);
+      ctx.globalAlpha = 0.7;
       ctx.font = '10px "Trebuchet MS", system-ui';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      ctx.fillStyle = 'rgba(247, 214, 156, 0.85)';
+      ctx.fillStyle = 'rgba(186, 197, 214, 0.85)';
       ctx.fillText(trap.label, trap.x, trap.y + 16);
     } else {
       const fade = clamp(1 - (state.time - trap.completedAt) / 4, 0, 1);
@@ -1316,42 +1302,106 @@ function drawVillageTrapMarkers(){
   }
 }
 
-function drawTrapAmbientCue(trap, intensity, cycle){
-  const radius = 26 + intensity * 18;
-  const alpha = 0.16 + intensity * 0.32;
-  drawRadialGlow(trap.x, trap.y, radius, '#f4c67b', alpha);
-  const orbitRadius = radius * (0.65 + intensity * 0.15);
-  drawOrbitingDots({ x: trap.x, y: trap.y - 6 }, {
-    count: Math.round(6 + intensity * 8),
-    orbitRadius,
-    color: 'rgba(255, 214, 160, 0.75)',
-    drift: 10 + intensity * 8,
-    size: 2.8
-  }, cycle * 0.9);
-  drawTrapTripwireGleam(trap, intensity, cycle);
-  if (intensity > 0.6){
-    const loudness = clamp((intensity - 0.6) / 0.4, 0, 1);
-    drawRipples({ x: trap.x, y: trap.y }, radius * (1.2 + loudness * 0.4), cycle * 0.6, `rgba(255, 200, 150, ${0.08 + loudness * 0.18})`);
-  }
-}
-
-function drawTrapTripwireGleam(trap, intensity, cycle){
-  if (!cueWithinView(trap.x, trap.y, 80)) return;
+function drawTrapIcon(trap, intensity, cycle){
+  if (!cueWithinView(trap.x, trap.y, 120)) return;
   ctx.save();
-  ctx.translate(trap.x, trap.y - 4);
-  ctx.rotate(Math.sin(cycle * 0.8 + trap.x * 0.012 + trap.y * 0.008) * 0.22);
-  ctx.globalAlpha = 0.25 + intensity * 0.4;
-  ctx.strokeStyle = 'rgba(255, 226, 170, 0.9)';
-  ctx.lineWidth = 1.2 + intensity;
-  const span = 20 + intensity * 14;
+  ctx.translate(trap.x, trap.y);
+  const baseAlpha = 0.4 + intensity * 0.25;
+  const rimAlpha = 0.55 + intensity * 0.3;
+  const accentAlpha = 0.5 + intensity * 0.35;
+  const sheen = 0.2 + intensity * 0.4;
+
+  // subtle focus ring to replace the old glow
+  ctx.globalAlpha = 0.25 + intensity * 0.25;
+  ctx.strokeStyle = 'rgba(126, 140, 164, 0.8)';
+  ctx.lineWidth = 2.2;
   ctx.beginPath();
-  ctx.moveTo(-span, 0);
-  ctx.lineTo(span, 0);
+  ctx.arc(0, 0, 14 + intensity * 1.5, 0, TAU);
+  ctx.stroke();
+
+  ctx.globalAlpha = 1;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+
+  // lower jaw
+  ctx.fillStyle = `rgba(96, 106, 124, ${baseAlpha})`;
+  ctx.strokeStyle = `rgba(64, 72, 86, ${rimAlpha})`;
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.moveTo(-14, 4);
+  for (let i = 0; i < 6; i++){
+    const step = i * 4;
+    ctx.lineTo(-14 + step + 2, 8);
+    ctx.lineTo(-14 + step + 4, 4);
+  }
+  ctx.lineTo(14, 4);
+  ctx.lineTo(14, 6);
+  ctx.lineTo(-14, 6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // upper jaw
+  ctx.beginPath();
+  ctx.moveTo(-14, -4);
+  for (let i = 0; i < 6; i++){
+    const step = i * 4;
+    ctx.lineTo(-14 + step + 2, -8);
+    ctx.lineTo(-14 + step + 4, -4);
+  }
+  ctx.lineTo(14, -4);
+  ctx.lineTo(14, -6);
+  ctx.lineTo(-14, -6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // hinge plate
+  ctx.fillStyle = `rgba(72, 82, 98, ${accentAlpha})`;
+  ctx.strokeStyle = `rgba(46, 54, 66, ${rimAlpha})`;
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(-4, -2);
+  ctx.lineTo(4, -2);
+  ctx.lineTo(4, 2);
+  ctx.lineTo(-4, 2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // tension spring arms
+  ctx.strokeStyle = `rgba(150, 162, 182, ${rimAlpha})`;
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(-14, -5.5);
+  ctx.lineTo(-19, -10);
+  ctx.lineTo(-19, 10);
+  ctx.lineTo(-14, 5.5);
+  ctx.moveTo(14, -5.5);
+  ctx.lineTo(19, -10);
+  ctx.lineTo(19, 10);
+  ctx.lineTo(14, 5.5);
+  ctx.stroke();
+
+  // highlight glint
+  ctx.globalAlpha = sheen;
+  ctx.strokeStyle = 'rgba(224, 232, 245, 0.9)';
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  ctx.arc(0, -5, 10, Math.PI * 0.1, Math.PI * 0.4);
   ctx.stroke();
   ctx.beginPath();
-  ctx.moveTo(-span * 0.65, -3 - intensity * 2);
-  ctx.lineTo(span * 0.65, 3 + intensity * 2);
+  ctx.arc(0, 5, 10, -Math.PI * 0.4, -Math.PI * 0.1);
   ctx.stroke();
+
+  // subtle mechanical jitter for life
+  const offset = Math.sin(cycle * 1.2 + trap.id * 0.37) * 0.8 * intensity;
+  ctx.globalAlpha = 0.6 * intensity;
+  ctx.fillStyle = 'rgba(255, 216, 120, 0.6)';
+  ctx.beginPath();
+  ctx.ellipse(0, offset, 6, 2, 0, 0, TAU);
+  ctx.fill();
+
   ctx.restore();
 }
 
