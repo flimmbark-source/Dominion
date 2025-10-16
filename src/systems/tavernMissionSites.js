@@ -570,6 +570,10 @@ const HEIST_STEPS = [
       mission.data.escaped = true;
       mission.data.lastExposure = computeHeistExposure(mission);
       mission.data.escapeTime = state.time;
+    }
+  }
+];
+
 const POISON_WELL_STEPS = [
   {
     id: 'survey-plaza',
@@ -1096,6 +1100,39 @@ const missionSpecs = {
       if (mission.data.heistLocation){
         mission.location = { ...mission.data.heistLocation };
       }
+    },
+    onReady(mission){
+      if (mission.rewardApplied) return;
+      mission.rewardApplied = true;
+      mission.data = mission.data || {};
+      mission.data.finishedAt = state.time;
+      mission.data.lastExposure = computeHeistExposure(mission);
+      cachedHeistTarget = null;
+      toast('Gold secured. Return to the barkeep before suspicion spikes.', 2.6);
+    },
+    progress(mission){
+      const data = mission.data || {};
+      if (data.unavailable){
+        return 'No stocked houses tonight—give the lanes time to fatten up again.';
+      }
+      const total = HEIST_STEPS.length;
+      const completed = mission.stepsState.filter(step => step.completed).length;
+      const exposure = computeHeistExposure(mission);
+      if (mission.completed){
+        return `Heist wrapped. Exposure Index ${exposure}.`;
+      }
+      if (mission.ready){
+        return `Spoils bagged—report back. Exposure Index ${exposure}.`;
+      }
+      const step = HEIST_STEPS[mission.stageIndex];
+      if (!step){
+        return `${completed}/${total} steps complete · Exposure ${exposure}`;
+      }
+      const next = step.label;
+      const suffix = data.houseLabel ? ` @ ${data.houseLabel}` : '';
+      return `${completed}/${total} steps complete · Exposure ${exposure} · Next: ${next}${suffix}`;
+    }
+  },
   'mission_poison_well': {
     id: 'mission_poison_well',
     label: 'Brackenreach Well Plaza',
@@ -1136,33 +1173,6 @@ const missionSpecs = {
     onReady(mission){
       if (mission.rewardApplied) return;
       mission.rewardApplied = true;
-      mission.data = mission.data || {};
-      mission.data.finishedAt = state.time;
-      mission.data.lastExposure = computeHeistExposure(mission);
-      cachedHeistTarget = null;
-      toast('Gold secured. Return to the barkeep before suspicion spikes.', 2.6);
-    },
-    progress(mission){
-      const data = mission.data || {};
-      if (data.unavailable){
-        return 'No stocked houses tonight—give the lanes time to fatten up again.';
-      }
-      const total = HEIST_STEPS.length;
-      const completed = mission.stepsState.filter(step => step.completed).length;
-      const exposure = computeHeistExposure(mission);
-      if (mission.completed){
-        return `Heist wrapped. Exposure Index ${exposure}.`;
-      }
-      if (mission.ready){
-        return `Spoils bagged—report back. Exposure Index ${exposure}.`;
-      }
-      const step = HEIST_STEPS[mission.stageIndex];
-      if (!step){
-        return `${completed}/${total} steps complete · Exposure ${exposure}`;
-      }
-      const next = step.label;
-      const suffix = data.houseLabel ? ` @ ${data.houseLabel}` : '';
-      return `${completed}/${total} steps complete · Exposure ${exposure} · Next: ${next}${suffix}`;
       const zone = mission.data?.plazaZone || getWellPlazaAnchor();
       applyWellPoisoningStatus(zone);
       adjustGuardAlertness(-12);
