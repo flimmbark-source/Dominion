@@ -90,9 +90,12 @@ const state = {
   mapVisibility: 0.38,
   darklordReinforcementDelay: 0,
   villagePopulationHealth: 0.9,
+  villageMorale: 42,
+  villagerTrust: 8,
   outpostStates: {},
   rumorFlags: {},
   worldIntel: {}
+  safehouseAccess: {}
 };
 
 export { state, mainVillage };

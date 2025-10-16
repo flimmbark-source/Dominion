@@ -3,6 +3,186 @@ import { VILLAGES, WALL } from '../data/world.js';
 import { clamp } from '../utils/math.js';
 import { toast } from '../ui/toast.js';
 import { addThreat } from './threat.js';
+import {
+  adjustVillageMorale,
+  adjustVillagerTrust,
+  delayDarklordReinforcements,
+  setOutpostState,
+  grantSafehouseAccess,
+  adjustGuardAlertness,
+  adjustPopulationHealth,
+  setRumorFlag
+} from './worldState.js';
+import { getVillageInstance } from '../world/villageTemplates.js';
+
+const DARK_OUTPOST_PRESETS = [
+  { id: 'moonfen-stockade', label: 'Moonfen Stockade Yard', villageIndex: 0, offset: { x: 420, y: 260 }, radius: 220 },
+  { id: 'brackenreach-holding', label: 'Brackenreach Holding Pens', villageIndex: 1, offset: { x: -280, y: 280 }, radius: 210 },
+  { id: 'duskhaven-pens', label: 'Duskhaven Cage Grounds', villageIndex: 2, offset: { x: 320, y: -200 }, radius: 214 }
+];
+
+let lastCaptiveOutpost = null;
+
+function getWellPlazaAnchor(){
+  const instance = getVillageInstance(1);
+  const zone = instance?.safeZones?.find(entry => entry.id === 'well-plaza');
+  if (zone?.center){
+    const rect = zone.rect || {};
+    const baseRadius = Math.max(rect.w ?? 0, rect.h ?? 0, zone.radius ?? 0, 140);
+    const cx = zone.center.x;
+    const cy = zone.center.y;
+    return {
+      x: cx,
+      y: cy,
+      center: { x: cx, y: cy },
+      radius: Math.max(110, baseRadius * 0.6),
+      label: zone.label || 'Well Plaza',
+      rect
+    };
+  }
+  const fallback = VILLAGES[1] || { x: 0, y: 0, w: 260, h: 260 };
+  return {
+    x: fallback.x + fallback.w / 2,
+    y: fallback.y + fallback.h / 2,
+    center: {
+      x: fallback.x + fallback.w / 2,
+      y: fallback.y + fallback.h / 2
+    },
+    radius: Math.max(fallback.w, fallback.h) * 0.28,
+    label: 'Well Plaza',
+    rect: null
+  };
+}
+
+function applyWellPoisoningStatus(zone){
+  if (!zone) return;
+  const effectRadius = (zone.radius ?? 140) + 220;
+  for (const npc of state.npcs){
+    if (!npc) continue;
+    const type = npc.type;
+    const guardLike = type === 'scout' || type === 'militia';
+    const villager = type === 'villager';
+    if (!guardLike && !villager) continue;
+    const dx = (npc.x ?? 0) - zone.x;
+    const dy = (npc.y ?? 0) - zone.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > effectRadius) continue;
+    npc.statusFlags = npc.statusFlags || {};
+    if (npc.statusFlags.wellPoisoned) continue;
+    npc.statusFlags.wellPoisoned = { appliedAt: state.time, zoneId: 'well-plaza' };
+    if (typeof npc.baseSpeed === 'number'){
+      npc.baseSpeed *= guardLike ? 0.84 : 0.88;
+      npc.speed = npc.baseSpeed;
+    }
+    if (guardLike){
+      if (typeof npc.baseFovRange === 'number'){
+        npc.baseFovRange *= 0.88;
+        npc.fovRange = npc.baseFovRange;
+      }
+      if (typeof npc.hearingRadius === 'number'){
+        npc.hearingRadius = Math.max(80, npc.hearingRadius * 0.82);
+      }
+    }
+  }
+}
+
+function resolveOutpostPreset(preset){
+  const village = VILLAGES[preset.villageIndex] || { x: 0, y: 0, w: 0, h: 0 };
+  return {
+    id: preset.id,
+    label: preset.label,
+    x: village.x + (preset.offset?.x ?? 0),
+    y: village.y + (preset.offset?.y ?? 0),
+    radius: preset.radius ?? 200
+  };
+}
+
+function listKnownOutposts(){
+  const outposts = [];
+  if (state.outpostStates && typeof state.outpostStates === 'object'){
+    for (const [id, data] of Object.entries(state.outpostStates)){
+      if (!data) continue;
+      const location = data.location || {};
+      const x = Number.isFinite(data.x) ? data.x : Number.isFinite(location.x) ? location.x : null;
+      const y = Number.isFinite(data.y) ? data.y : Number.isFinite(location.y) ? location.y : null;
+      if (x == null || y == null) continue;
+      outposts.push({
+        id,
+        label: data.label || data.name || 'Dark Outpost',
+        x,
+        y,
+        radius: data.radius ?? location.radius ?? 200,
+        weakened: data.weakened || data.status === 'panic'
+      });
+    }
+  }
+  if (outposts.length === 0){
+    DARK_OUTPOST_PRESETS.forEach(preset => outposts.push(resolveOutpostPreset(preset)));
+  }
+  return outposts;
+}
+
+function selectCaptiveOutpost(){
+  if (lastCaptiveOutpost) return lastCaptiveOutpost;
+  const outposts = listKnownOutposts();
+  if (outposts.length === 0){
+    lastCaptiveOutpost = {
+      id: 'shadow-stockade',
+      label: 'Shadow Stockade',
+      x: 6200,
+      y: 2800,
+      radius: 220
+    };
+    return lastCaptiveOutpost;
+  }
+  const candidates = outposts.filter(outpost => !outpost.weakened);
+  lastCaptiveOutpost = (candidates[0] || outposts[0]);
+  return lastCaptiveOutpost;
+}
+
+function buildCaptiveCages(outpost){
+  const offsets = [
+    { id: 'north-cage', label: 'Northern Cage Row', dx: -84, dy: -62 },
+    { id: 'center-cage', label: 'Center Cage Cluster', dx: 16, dy: 18 },
+    { id: 'south-cage', label: 'Southern Cage Row', dx: 94, dy: 92 }
+  ];
+  return offsets.map((offset, index) => ({
+    id: offset.id,
+    label: offset.label,
+    x: outpost.x + offset.dx,
+    y: outpost.y + offset.dy,
+    radius: Math.max(76, (outpost.radius ?? 200) * 0.34),
+    freed: false,
+    index
+  }));
+}
+
+function getNoiseLevelAtPoint(x, y, radius){
+  let level = state.alarmLevel > 0 ? 0.6 + state.alarmLevel * 0.4 : 0;
+  for (const event of state.noiseEvents){
+    const dist = Math.hypot((event.x ?? 0) - x, (event.y ?? 0) - y);
+    const reach = (event.radius ?? 0) + radius;
+    if (reach <= 0) continue;
+    if (dist > reach) continue;
+    const weight = 1 - Math.min(1, dist / Math.max(reach, 1));
+    level += weight;
+  }
+  return level;
+}
+
+function getOutpostNoiseLevel(outpost){
+  const radius = (outpost?.radius ?? 200) + 120;
+  return getNoiseLevelAtPoint(outpost?.x ?? 0, outpost?.y ?? 0, radius);
+}
+
+function getCaptiveMissionNoiseLevel(mission, anchor, step){
+  const outpost = mission.data?.targetOutpost;
+  if (outpost){
+    return getOutpostNoiseLevel(outpost);
+  }
+  const radius = step?.noiseRadius ?? step?.radius ?? mission.location?.radius ?? 140;
+  return getNoiseLevelAtPoint(anchor?.x ?? 0, anchor?.y ?? 0, radius);
+}
 
 const SIGNAL_STEPS = [
   {
@@ -325,6 +505,212 @@ const HEIST_STEPS = [
       mission.data.escaped = true;
       mission.data.lastExposure = computeHeistExposure(mission);
       mission.data.escapeTime = state.time;
+const POISON_WELL_STEPS = [
+  {
+    id: 'survey-plaza',
+    label: 'Shadow the well plaza',
+    anchor(mission){
+      const zone = mission.data?.plazaZone;
+      if (!zone) return null;
+      return {
+        x: zone.x,
+        y: zone.y - (zone.radius ?? 120) * 0.18,
+        radius: Math.max(100, (zone.radius ?? 120) * 0.8),
+        label: 'Well Plaza Overwatch'
+      };
+    },
+    radius: 118,
+    duration: 2.6,
+    maxDetection: 60,
+    requireLoad: 'light',
+    setLoad: 'heavy',
+    startText: 'You melt into the plaza bustle, counting militia sips at the well.',
+    hintText: 'Press E to map rotations around the well.',
+    cancelText: 'A glance lingers—wait until the crowd shields you.',
+    completeText: 'The patrol pattern is etched in your mind; toxins ready in your pack.',
+    onComplete(mission){
+      mission.data = mission.data || {};
+      mission.data.plazaScouted = true;
+      state.player.detection = clamp((state.player?.detection ?? 0) - 6, 0, 100);
+    }
+  },
+  {
+    id: 'dose-guard-casks',
+    label: 'Spike the guard casks',
+    anchor(mission){
+      const zone = mission.data?.plazaZone;
+      if (!zone) return null;
+      const shiftX = (zone.radius ?? 120) * -0.32;
+      const shiftY = (zone.radius ?? 120) * -0.18;
+      return {
+        x: zone.x + shiftX,
+        y: zone.y + shiftY,
+        radius: Math.max(86, (zone.radius ?? 120) * 0.55),
+        label: 'Militia Water Casks'
+      };
+    },
+    radius: 94,
+    duration: 3.1,
+    maxDetection: 52,
+    requireLoad: 'heavy',
+    setLoad: 'light',
+    startText: 'You heft the toxin satchel, slipping it over the militia casks.',
+    hintText: 'Press E to tip the venom into their reserve.',
+    cancelText: 'Bootsteps grow too close—you ease the satchel back down.',
+    completeText: 'The guard casks froth quietly—first sip will sour their guts.',
+    onComplete(){
+      addThreat(-6);
+    }
+  },
+  {
+    id: 'taint-buckets',
+    label: 'Taint the villagers’ buckets',
+    anchor(mission){
+      const zone = mission.data?.plazaZone;
+      if (!zone) return null;
+      const shiftX = (zone.radius ?? 120) * 0.34;
+      const shiftY = (zone.radius ?? 120) * 0.16;
+      return {
+        x: zone.x + shiftX,
+        y: zone.y + shiftY,
+        radius: Math.max(88, (zone.radius ?? 120) * 0.52),
+        label: 'Bucket Queue'
+      };
+    },
+    radius: 96,
+    duration: 3,
+    maxDetection: 50,
+    requireLoad: 'light',
+    setLoad: 'heavy',
+    startText: 'You trade smiles with villagers while drizzling rot into their pails.',
+    hintText: 'Press E to lace the waiting buckets.',
+    cancelText: 'A child watches too closely—you pause, feigning patience.',
+    completeText: 'A sheen spreads across the water as the toxin blooms.',
+    onComplete(){
+      state.player.detection = clamp((state.player?.detection ?? 0) - 4, 0, 100);
+    }
+  },
+  {
+    id: 'seed-ladle',
+    label: 'Seed the communal ladle',
+    anchor(mission){
+      const zone = mission.data?.plazaZone;
+      if (!zone) return null;
+      return {
+        x: zone.x,
+        y: zone.y,
+        radius: Math.max(82, (zone.radius ?? 120) * 0.48),
+        label: 'Well Rim'
+      };
+    },
+    radius: 90,
+    duration: 3.3,
+    maxDetection: 48,
+    requireLoad: 'heavy',
+    setLoad: 'light',
+    startText: 'You steady the dripping ladle, coating its handle in blackrot.',
+    hintText: 'Press E to finish seeding the ladle.',
+    cancelText: 'A militiaman clears his throat beside you—you hide the vial.',
+    completeText: 'The ladle gleams slick with toxin—the plaza is doomed to drink.',
+    onComplete(mission){
+      mission.data = mission.data || {};
+      mission.data.ladleSeeded = true;
+    }
+  }
+];
+
+const FREE_CAPTIVES_STEPS = [
+  {
+    id: 'survey-yard',
+    label: 'Survey the cage yard',
+    anchor(mission){
+      const outpost = mission.data?.targetOutpost;
+      if (!outpost) return null;
+      return {
+        x: outpost.x - (outpost.radius ?? 200) * 0.38,
+        y: outpost.y - (outpost.radius ?? 200) * 0.22,
+        radius: Math.max(120, (outpost.radius ?? 200) * 0.62),
+        label: 'Cage yard overlook'
+      };
+    },
+    radius: 150,
+    duration: 3.2,
+    maxDetection: 52,
+    maxNoise: 1.4,
+    startText: 'You melt into the shadows above the cage yard, mapping patrol rotations.',
+    hintText: 'Press E to study the yard and mark guard routes.',
+    cancelText: 'A torchlight sweep forces you to duck out of sight.',
+    completeText: 'You memorize guard paths and signal the captives to be ready.',
+    onComplete(mission){
+      mission.data = mission.data || {};
+      mission.data.cagesMarked = true;
+      mission.data.cagesFreed = mission.data.cagesFreed || 0;
+    }
+  },
+  {
+    id: 'unlock-north-cage',
+    label: 'Free the northern cage',
+    anchor(mission){
+      return mission.data?.cages?.[0] || null;
+    },
+    radius: 90,
+    duration: 2.8,
+    maxDetection: 48,
+    maxNoise: 1.1,
+    startText: 'You slide toward the northern cage, tools ready.',
+    hintText: 'Press E to pick the northern cage lock.',
+    cancelText: 'Bootsteps drum nearby—you fade back into the dark.',
+    completeText: 'The northern cage clicks open and the prisoners slip free.',
+    onComplete(mission){
+      mission.data = mission.data || {};
+      mission.data.cages = mission.data.cages || [];
+      if (mission.data.cages[0]) mission.data.cages[0].freed = true;
+      mission.data.cagesFreed = (mission.data.cagesFreed || 0) + 1;
+      state.player.detection = clamp((state.player?.detection ?? 0) - 8, 0, 100);
+    }
+  },
+  {
+    id: 'unlock-center-cage',
+    label: 'Free the center cage',
+    anchor(mission){
+      return mission.data?.cages?.[1] || null;
+    },
+    radius: 92,
+    duration: 3,
+    maxDetection: 46,
+    maxNoise: 1,
+    startText: 'You ghost through the cage row, eyeing the center lock.',
+    hintText: 'Press E to lift the center cage bar.',
+    cancelText: 'A guard lingers too close—you wait out the pass.',
+    completeText: 'The center cage swings ajar and you usher families into the dark.',
+    onComplete(mission){
+      mission.data = mission.data || {};
+      mission.data.cages = mission.data.cages || [];
+      if (mission.data.cages[1]) mission.data.cages[1].freed = true;
+      mission.data.cagesFreed = (mission.data.cagesFreed || 0) + 1;
+      addThreat(-6);
+    }
+  },
+  {
+    id: 'unlock-south-cage',
+    label: 'Free the southern cage',
+    anchor(mission){
+      return mission.data?.cages?.[2] || null;
+    },
+    radius: 94,
+    duration: 3.1,
+    maxDetection: 45,
+    maxNoise: 0.9,
+    startText: 'Only the southern cage remains—guards mutter nearby.',
+    hintText: 'Press E to slip the last lock without a sound.',
+    cancelText: 'Lantern light flares—you flatten against the cage wall.',
+    completeText: 'The last cage opens—captives vanish into the treeline.',
+    onComplete(mission){
+      mission.data = mission.data || {};
+      mission.data.cages = mission.data.cages || [];
+      if (mission.data.cages[2]) mission.data.cages[2].freed = true;
+      mission.data.cagesFreed = (mission.data.cagesFreed || 0) + 1;
+      addThreat(-10);
     }
   }
 ];
@@ -462,6 +848,95 @@ const missionSpecs = {
       return `${completed}/${total} steps complete · Next: ${step.label}`;
     }
   },
+  'mission_free_captives': {
+    id: 'mission_free_captives',
+    label: 'Dark Outpost Pens',
+    getLocation(){
+      const target = selectCaptiveOutpost();
+      return {
+        x: target.x,
+        y: target.y,
+        radius: target.radius ?? 210,
+        label: target.label || 'Dark Outpost Pens'
+      };
+    },
+    createData(){
+      const target = selectCaptiveOutpost();
+      return {
+        targetOutpost: { ...target },
+        cages: buildCaptiveCages(target),
+        cagesFreed: 0,
+        cagesMarked: false,
+        noiseThreshold: 1.4,
+        noiseLevel: 0,
+        noiseCooldownUntil: 0,
+        alerted: false,
+        lastNoiseToast: -Infinity
+      };
+    },
+    steps: FREE_CAPTIVES_STEPS,
+    onActivate(mission){
+      const target = selectCaptiveOutpost();
+      mission.location = {
+        x: target.x,
+        y: target.y,
+        radius: target.radius ?? mission.location?.radius ?? 210,
+        label: target.label || 'Dark Outpost Pens'
+      };
+      mission.data = {
+        targetOutpost: { ...target },
+        cages: buildCaptiveCages(target),
+        cagesFreed: 0,
+        cagesMarked: false,
+        noiseThreshold: 1.4,
+        noiseLevel: 0,
+        noiseCooldownUntil: 0,
+        alerted: false,
+        lastNoiseToast: -Infinity
+      };
+    },
+    onReady(mission){
+      if (mission.rewardApplied) return;
+      mission.rewardApplied = true;
+      const freed = mission.data?.cagesFreed ?? 3;
+      const target = mission.data?.targetOutpost || selectCaptiveOutpost();
+      adjustVillageMorale(6);
+      adjustVillagerTrust(12);
+      delayDarklordReinforcements(28);
+      if (target?.id){
+        setOutpostState(target.id, {
+          id: target.id,
+          label: target.label || 'Dark Outpost',
+          x: target.x,
+          y: target.y,
+          radius: target.radius,
+          status: 'panic',
+          weakened: true,
+          cagesFreed: freed,
+          lastStrikeAt: state.time
+        });
+      }
+      grantSafehouseAccess('moonfen-hideaway', {
+        reason: 'freed-captives',
+        outpostId: target?.id || 'unknown',
+        trustedAt: state.time
+      });
+      toast('Captives freed. Morale surges while reinforcements stumble.', 3.6);
+    },
+    progress(mission){
+      const total = mission.data?.cages?.length || 3;
+      const freed = mission.data?.cagesFreed || 0;
+      if (mission.completed) return 'Captives liberated and reward collected.';
+      if (mission.ready) return `Captives freed (${freed}/${total}). Return to the barkeep.`;
+      if (!mission.active) return `${freed}/${total} cages freed.`;
+      const step = FREE_CAPTIVES_STEPS[mission.stageIndex];
+      if (!step) return `${freed}/${total} cages freed.`;
+      if (step.id !== 'survey-yard' && !mission.data?.cagesMarked){
+        return 'Scout the cage yard before attempting rescues.';
+      }
+      return `${freed}/${total} cages freed · Next: ${step.label}`;
+    }
+  },
   'poison-supply-lines': {
     id: 'poison-supply-lines',
     label: 'Supply Caravan Camp',
@@ -556,6 +1031,42 @@ const missionSpecs = {
       if (mission.data.heistLocation){
         mission.location = { ...mission.data.heistLocation };
       }
+  'mission_poison_well': {
+    id: 'mission_poison_well',
+    label: 'Brackenreach Well Plaza',
+    getLocation(){
+      const zone = getWellPlazaAnchor();
+      return {
+        x: zone.x,
+        y: zone.y,
+        radius: zone.radius,
+        label: zone.label
+      };
+    },
+    createData(){
+      const zone = getWellPlazaAnchor();
+      return {
+        plazaZone: zone,
+        stealthLoad: 'light',
+        plazaScouted: false,
+        ladleSeeded: false
+      };
+    },
+    steps: POISON_WELL_STEPS,
+    onActivate(mission){
+      const zone = getWellPlazaAnchor();
+      mission.location = {
+        x: zone.x,
+        y: zone.y,
+        radius: zone.radius,
+        label: zone.label
+      };
+      mission.data = {
+        plazaZone: zone,
+        stealthLoad: 'light',
+        plazaScouted: false,
+        ladleSeeded: false
+      };
     },
     onReady(mission){
       if (mission.rewardApplied) return;
@@ -587,6 +1098,30 @@ const missionSpecs = {
       const next = step.label;
       const suffix = data.houseLabel ? ` @ ${data.houseLabel}` : '';
       return `${completed}/${total} steps complete · Exposure ${exposure} · Next: ${next}${suffix}`;
+      const zone = mission.data?.plazaZone || getWellPlazaAnchor();
+      applyWellPoisoningStatus(zone);
+      adjustGuardAlertness(-12);
+      adjustPopulationHealth(-0.22);
+      setRumorFlag('plague_origin', {
+        lines: [
+          'Villagers gag that the well tastes of rusted coins and fever.',
+          'Militia cough between rotations—the well water has gone wrong.'
+        ],
+        weight: 1.4,
+        questId: 'mission_poison_well',
+        status: 'completed'
+      });
+      toast('Well fouled. Guards grow sluggish and villagers whisper of plague.', 3.6);
+    },
+    progress(mission){
+      const total = POISON_WELL_STEPS.length;
+      const completed = mission.stepsState.filter(step => step.completed).length;
+      const load = mission.data?.stealthLoad === 'heavy' ? 'hauling toxins' : 'keeping light';
+      if (mission.completed) return 'Well plaza poisoned and gold collected.';
+      if (mission.ready) return 'The plaza drinks poison. Return for your reward.';
+      const step = POISON_WELL_STEPS[mission.stageIndex];
+      if (!step) return `${completed}/${total} steps complete.`;
+      return `${completed}/${total} steps complete · Load: ${load} · Next: ${step.label}`;
     }
   },
   'silence-the-scout': {
@@ -683,6 +1218,9 @@ function activateTavernMissionSite(id){
   const mission = state.tavernMissionSites[id];
   const spec = missionSpecs[id];
   if (!mission || !spec) return false;
+  if (id === 'mission_free_captives'){
+    lastCaptiveOutpost = null;
+  }
   mission.location = typeof spec.getLocation === 'function' ? spec.getLocation() : mission.location;
   resetMissionProgress(mission, spec);
   mission.active = true;
@@ -760,6 +1298,18 @@ function resolveAnchor(spec, mission, step){
 function tryStartStepAction(mission, spec, step){
   if (!step) return false;
   if (mission.activeAction) return true;
+  mission.data = mission.data || {};
+  if (step.requireLoad && mission.data.stealthLoad && step.requireLoad !== mission.data.stealthLoad){
+    const now = state.time;
+    if (now >= (mission.lastFailAt ?? 0) + 2){
+      const message = step.requireLoad === 'heavy'
+        ? 'You need the heavier kit before attempting this.'
+        : 'Shed the heavy kit before you try this move.';
+      toast(message, 2.4);
+      mission.lastFailAt = now;
+    }
+    return true;
+  }
   const anchor = resolveAnchor(spec, mission, step);
   if (!anchor) return false;
   const player = state.player;
@@ -774,6 +1324,31 @@ function tryStartStepAction(mission, spec, step){
       mission.lastFailAt = now;
     }
     return true;
+  }
+  if (mission.data.alerted && state.time < (mission.data.noiseCooldownUntil ?? 0)){
+    if (state.time >= (mission.data.lastNoiseToast ?? 0) + 2.2){
+      toast('The outpost is on edge—wait for the noise to fade.', 2.3);
+      mission.data.lastNoiseToast = state.time;
+    }
+    return true;
+  }
+  if (step.maxNoise != null){
+    const noiseLevel = getCaptiveMissionNoiseLevel(mission, anchor, step);
+    mission.data.noiseLevel = noiseLevel;
+    const threshold = mission.data.noiseThreshold ?? step.maxNoise;
+    if (noiseLevel > step.maxNoise){
+      if (state.time >= (mission.data.lastNoiseToast ?? 0) + 2){
+        toast('Too noisy—the guards twitch at every creak.', 2.2);
+        mission.data.lastNoiseToast = state.time;
+      }
+      mission.data.alerted = true;
+      mission.data.noiseCooldownUntil = Math.max(mission.data.noiseCooldownUntil ?? 0, state.time + 5.5);
+      return true;
+    }
+    if (noiseLevel > threshold && state.time >= (mission.data.lastNoiseToast ?? 0) + 2.6){
+      toast('Noise creeps high—move carefully.', 2.1);
+      mission.data.lastNoiseToast = state.time;
+    }
   }
   mission.activeAction = {
     stepId: step.id,
@@ -792,6 +1367,9 @@ function completeStep(mission, spec, step){
   const index = mission.stepsState.findIndex(entry => entry.id === step.id);
   if (index >= 0){
     mission.stepsState[index].completed = true;
+  }
+  if (mission.data && step.setLoad){
+    mission.data.stealthLoad = step.setLoad;
   }
   if (typeof step.onComplete === 'function'){
     step.onComplete(mission, spec);
@@ -875,6 +1453,34 @@ function updateScoutMovement(mission, dt){
   scout.y += (dy / dist) * step;
 }
 
+function updateFreeCaptivesMission(mission){
+  if (!mission.active || mission.ready || mission.completed) return;
+  mission.data = mission.data || {};
+  const target = mission.data.targetOutpost;
+  if (!target) return;
+  const noiseLevel = getOutpostNoiseLevel(target);
+  mission.data.noiseLevel = noiseLevel;
+  const threshold = mission.data.noiseThreshold ?? 1.4;
+  if (noiseLevel >= threshold){
+    const firstAlert = !mission.data.alerted;
+    mission.data.alerted = true;
+    mission.data.noiseCooldownUntil = Math.max(mission.data.noiseCooldownUntil ?? 0, state.time + 6.5);
+    if (firstAlert){
+      state.player.detection = clamp((state.player?.detection ?? 0) + 6, 0, 100);
+    }
+    if (state.time >= (mission.data.lastNoiseToast ?? 0) + 4){
+      toast('Noise ripples through the pens—guards stiffen and watch.', 2.4);
+      mission.data.lastNoiseToast = state.time;
+    }
+  } else if (mission.data.alerted && state.time >= (mission.data.noiseCooldownUntil ?? 0)){
+    mission.data.alerted = false;
+    if (state.time >= (mission.data.lastNoiseToast ?? 0) + 4){
+      toast('The outpost settles back into uneasy quiet.', 2.2);
+      mission.data.lastNoiseToast = state.time;
+    }
+  }
+}
+
 function updateMissionHints(mission, spec){
   if (!mission.active || mission.ready || mission.activeAction) return;
   const step = spec.steps[mission.stageIndex];
@@ -904,6 +1510,9 @@ function updateTavernMissionSites(dt){
     if (!spec) return;
     if (mission.id === 'silence-the-scout'){
       updateScoutMovement(mission, dt);
+    }
+    if (mission.id === 'mission_free_captives'){
+      updateFreeCaptivesMission(mission);
     }
     if (mission.activeAction){
       handleActiveAction(mission, spec);
@@ -979,6 +1588,31 @@ function gatherTavernIntelLines(){
     }
     if (mission.id === 'poison-supply-lines'){
       lines.push('Caravan guards brew supper soon—spike stew and water before they march.');
+      continue;
+    }
+    if (mission.id === 'mission_poison_well'){
+      const total = POISON_WELL_STEPS.length;
+      const completed = mission.stepsState.filter(step => step.completed).length;
+      const loadHeavy = mission.data?.stealthLoad === 'heavy';
+      if (!mission.data?.plazaScouted){
+        lines.push('Case the well plaza first—track patrol sips before you start pouring.');
+      } else {
+        const loadPrompt = loadHeavy
+          ? 'You’re hauling the toxin—hit the guarded casks next.'
+          : 'Travel light through the crowd before the next pour.';
+        lines.push(`Well plaza poisoning ${completed}/${total}. ${loadPrompt}`);
+      }
+      continue;
+    }
+    if (mission.id === 'mission_free_captives'){
+      const freed = mission.data?.cagesFreed || 0;
+      const total = mission.data?.cages?.length || 3;
+      if (!mission.data?.cagesMarked){
+        lines.push('Watch the cage yard first—mark patrols before working the locks.');
+      } else {
+        const label = mission.data?.targetOutpost?.label || 'outpost pens';
+        lines.push(`Keep quiet at ${label}. ${freed}/${total} cages opened—two shouts and the alarm will blare.`);
+      }
       continue;
     }
     if (mission.id === 'silence-the-scout'){
