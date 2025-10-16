@@ -154,6 +154,8 @@ const state = {
   villagerTrust: 8,
   outpostStates: {},
   rumorFlags: {},
+  safehouseAccess: {},
+  villageEconomy: null
   worldIntel: {},
   safehouseAccess: {},
   developer: {
