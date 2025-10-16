@@ -94,6 +94,7 @@ const state = {
   villagerTrust: 8,
   outpostStates: {},
   rumorFlags: {},
+  worldIntel: {}
   safehouseAccess: {}
 };
 
