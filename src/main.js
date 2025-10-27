@@ -50,6 +50,7 @@ import { toast } from './ui/toast.js';
 import { pressOnce } from './input/pressOnce.js';
 import { circleRectCollideResolve, pointInRect, segBlockedByAnyRect } from './utils/geometry.js';
 import { clamp } from './utils/math.js';
+import { applyGlobalDamageModifier } from './utils/balance.js';
 import { getWeaponSwingConfig, resolveWeaponType } from './utils/weaponSwing.js';
 import { runTests } from './tests/lightweight.js';
 import {
@@ -580,7 +581,8 @@ function update(dt){
     if (dist > attack.range) continue;
     if (state.time < (attack.nextReady ?? 0)) continue;
 
-    const damage = Math.max(0, attack.damage ?? 0);
+    const rawDamage = Math.max(0, attack.damage ?? 0);
+    const damage = applyGlobalDamageModifier(rawDamage);
     if (damage <= 0) continue;
 
     const cooldown = Math.max(attack.cooldown ?? 1.2, 0.2);
@@ -625,7 +627,8 @@ function update(dt){
     if (state.time < p.invisUntil) continue;
     if (state.time < (attack.nextReady ?? 0)) continue;
 
-    const damage = Math.max(0, attack.damage ?? 0);
+    const rawDamage = Math.max(0, attack.damage ?? 0);
+    const damage = applyGlobalDamageModifier(rawDamage);
     if (damage <= 0) continue;
 
     const cooldown = Math.max(attack.cooldown ?? 1.2, 0.2);
