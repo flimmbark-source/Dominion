@@ -117,6 +117,133 @@ const NPC_ARCHETYPES = {
     patrolPauseRange: [0.4, 1.1],
     investigateDuration: 2.4,
     hearingRadius: 200
+  },
+  tank: {
+    speed: 32,
+    fovAngle: Math.PI / 1.8,
+    fovRange: 160,
+    maxHealth: 250,
+    attackable: true,
+    backstabMultiplier: 1.5,
+    rewardGold: 40,
+    attack: {
+      range: 75,
+      damage: 22,
+      cooldown: 2.2,
+      message: 'The armored brute slams you with devastating force!',
+      weaponType: 'smash',
+      aoe: true,
+      aoeRadius: 75
+    },
+    faction: 'darkLord',
+    displayName: 'armored brute',
+    defaultState: NPC_STATE.PATROL,
+    patrolPauseRange: [1.0, 2.0],
+    investigateDuration: 4.5,
+    hearingRadius: 180,
+    relentless: true
+  },
+  priest: {
+    speed: 40,
+    fovAngle: Math.PI / 2.2,
+    fovRange: 200,
+    maxHealth: 70,
+    attackable: true,
+    backstabMultiplier: 2.0,
+    rewardGold: 35,
+    attack: {
+      range: 120,
+      damage: 10,
+      cooldown: 3.0,
+      message: 'The dark priest curses you with shadowy magic!',
+      weaponType: 'magic'
+    },
+    faction: 'darkLord',
+    displayName: 'dark priest',
+    defaultState: NPC_STATE.PATROL,
+    patrolPauseRange: [1.5, 3.0],
+    investigateDuration: 3.0,
+    hearingRadius: 220,
+    healer: true,
+    healCooldown: 8.0,
+    healAmount: 40,
+    healRange: 150,
+    revealRadius: 180,
+    revealCooldown: 12.0
+  },
+  wolf: {
+    speed: 70,
+    fovAngle: Math.PI / 1.5,
+    fovRange: 200,
+    maxHealth: 50,
+    attackable: true,
+    backstabMultiplier: 1.6,
+    rewardGold: 15,
+    attack: {
+      range: 45,
+      damage: 12,
+      cooldown: 1.1,
+      message: 'A wolf lunges and bites you!',
+      weaponType: 'bite'
+    },
+    faction: 'neutral',
+    displayName: 'wolf',
+    defaultState: NPC_STATE.PATROL,
+    patrolPauseRange: [0.5, 1.5],
+    investigateDuration: 1.8,
+    hearingRadius: 250,
+    packBehavior: true,
+    packRadius: 300
+  },
+  spider: {
+    speed: 38,
+    fovAngle: Math.PI * 1.2,
+    fovRange: 140,
+    maxHealth: 35,
+    attackable: true,
+    backstabMultiplier: 1.4,
+    rewardGold: 12,
+    attack: {
+      range: 42,
+      damage: 8,
+      cooldown: 1.3,
+      message: 'A spider strikes with venomous fangs!',
+      weaponType: 'bite'
+    },
+    faction: 'neutral',
+    displayName: 'spider',
+    defaultState: NPC_STATE.PATROL,
+    patrolPauseRange: [2.0, 4.0],
+    investigateDuration: 2.5,
+    hearingRadius: 100,
+    ambush: true,
+    webCooldown: 15.0,
+    webDuration: 3.0
+  },
+  bear: {
+    speed: 48,
+    fovAngle: Math.PI / 2,
+    fovRange: 180,
+    maxHealth: 180,
+    attackable: true,
+    backstabMultiplier: 1.8,
+    rewardGold: 30,
+    attack: {
+      range: 60,
+      damage: 20,
+      cooldown: 1.8,
+      message: 'A massive bear mauls you with savage claws!',
+      weaponType: 'claw'
+    },
+    faction: 'neutral',
+    displayName: 'bear',
+    defaultState: NPC_STATE.PATROL,
+    patrolPauseRange: [1.0, 2.5],
+    investigateDuration: 3.5,
+    hearingRadius: 200,
+    territorial: true,
+    territoryRadius: 250,
+    enrageThreshold: 0.5
   }
 };
 
@@ -155,6 +282,8 @@ function makeNPC(type, x, y, waypoints=null, options = {}){
         cooldown: Math.max(config.attack.cooldown ?? 1.2, 0.2),
         message: config.attack.message || null,
         weaponType: config.attack.weaponType || 'slash',
+        aoe: config.attack.aoe ?? false,
+        aoeRadius: config.attack.aoeRadius ?? 0,
         nextReady: 0,
         nextMessage: 0
       }
@@ -186,7 +315,28 @@ function makeNPC(type, x, y, waypoints=null, options = {}){
     chasingTarget: null,
     activeTargetIsChase: false,
     activeTargetBeforeChase: null,
-    attackSwing: null
+    attackSwing: null,
+    // Special behavior flags
+    relentless: config.relentless ?? false,
+    healer: config.healer ?? false,
+    healCooldown: config.healCooldown ?? 0,
+    healAmount: config.healAmount ?? 0,
+    healRange: config.healRange ?? 0,
+    nextHealReady: 0,
+    revealRadius: config.revealRadius ?? 0,
+    revealCooldown: config.revealCooldown ?? 0,
+    nextRevealReady: 0,
+    packBehavior: config.packBehavior ?? false,
+    packRadius: config.packRadius ?? 0,
+    ambush: config.ambush ?? false,
+    webCooldown: config.webCooldown ?? 0,
+    webDuration: config.webDuration ?? 0,
+    nextWebReady: 0,
+    territorial: config.territorial ?? false,
+    territoryRadius: config.territoryRadius ?? 0,
+    territoryCenter: { x, y },
+    enrageThreshold: config.enrageThreshold ?? 0,
+    enraged: false
   };
 
   if (typeof options.initialPause === 'number' && options.initialPause > 0){
@@ -810,5 +960,6 @@ export {
   removeNPC,
   updateNPCBehaviors,
   queueNoiseEvent,
-  notifyNPCPlayerSpotted
+  notifyNPCPlayerSpotted,
+  setNPCState
 };

@@ -25,6 +25,7 @@ import {
   removeNPC,
   NPC_STATE
 } from './npc/npcManager.js';
+import { updateSpecialBehaviors } from './npc/specialBehaviors.js';
 import {
   useInventorySlot,
   openShop,
@@ -467,6 +468,7 @@ function update(dt){
 
   updateWar(dt);
   updateNPCBehaviors(dt);
+  updateSpecialBehaviors(dt);
   for (const npc of state.npcs){
     if (npc.pauseTimer > 0) continue;
     const chaseTarget = npc.chasingTarget && state.npcs.includes(npc.chasingTarget) ? npc.chasingTarget : null;
@@ -602,6 +604,31 @@ function update(dt){
       facing: Math.atan2(dy, dx),
       weaponType
     };
+
+    // AOE damage (for Tank enemy type)
+    if (attack.aoe && attack.aoeRadius > 0) {
+      for (const otherNpc of state.npcs) {
+        if (otherNpc === npc) continue;
+        if (otherNpc.faction === npc.faction) continue;
+        const aoeDx = otherNpc.x - npc.x;
+        const aoeDy = otherNpc.y - npc.y;
+        const aoeDist = Math.hypot(aoeDx, aoeDy);
+        if (aoeDist <= attack.aoeRadius) {
+          const aoeDamage = Math.floor(damage * 0.7);
+          otherNpc.health = Math.max(0, otherNpc.health - aoeDamage);
+          addDamageNumber({
+            x: otherNpc.x,
+            y: otherNpc.y,
+            amount: aoeDamage,
+            color: '#f9d776'
+          });
+          if (otherNpc.health <= 0) {
+            battleCasualties.push(otherNpc);
+          }
+        }
+      }
+      addScreenShake({ intensity: 10, duration: 0.3 });
+    }
   }
 
   if (!barkeepDialogueActive && attackPressed){
