@@ -73,28 +73,38 @@ export function initMerchants() {
 }
 
 /**
- * Spawn a merchant in each village
+ * Spawn a merchant in each village near the store building
  */
 function spawnTownMerchants() {
-  VILLAGES.forEach((village, index) => {
-    // Position merchant near center of village
-    const merchantX = village.w * 0.5 + (Math.random() - 0.5) * 100;
-    const merchantY = village.h * 0.6 + (Math.random() - 0.5) * 80;
+  const { forEachVillageInstance } = require('../world/villageTemplates.js');
 
-    const merchant = addVillageNPC('villager', index, merchantX, merchantY, null, {
+  forEachVillageInstance((instance, villageIndex) => {
+    // Find the store building
+    const storeHouse = instance.localHouses.find(h => h.id === 'store');
+    if (!storeHouse) {
+      console.warn(`No store found in village ${villageIndex}`);
+      return;
+    }
+
+    // Position merchant near the store door
+    const merchantX = storeHouse.localDoorX;
+    const merchantY = storeHouse.localDoorY;
+    const stationaryRoute = [{ x: merchantX, y: merchantY }];
+
+    const merchant = addVillageNPC('merchant', villageIndex, merchantX, merchantY, stationaryRoute, {
       displayName: 'merchant',
-      faction: 'neutral',
       role: 'merchant',
       merchantType: MERCHANT_TYPE.TOWN,
-      villageIndex: index,
+      villageIndex: villageIndex,
       holdPosition: true
     });
 
-    merchant.isMerchant = true;
-    merchant.merchantType = MERCHANT_TYPE.TOWN;
-    merchant.villageIndex = index;
-
-    state.merchants.townMerchants.push(merchant);
+    if (merchant) {
+      merchant.isMerchant = true;
+      merchant.merchantType = MERCHANT_TYPE.TOWN;
+      merchant.villageIndex = villageIndex;
+      state.merchants.townMerchants.push(merchant);
+    }
   });
 }
 

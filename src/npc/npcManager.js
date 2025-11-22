@@ -29,6 +29,20 @@ const NPC_ARCHETYPES = {
     investigateDuration: 2.4,
     hearingRadius: 110
   },
+  merchant: {
+    speed: 0,
+    fovAngle: Math.PI,
+    fovRange: 100,
+    maxHealth: 50,
+    attackable: false,
+    faction: 'village',
+    displayName: 'merchant',
+    defaultState: NPC_STATE.PATROL,
+    patrolPauseRange: [999, 999], // Never moves
+    investigateDuration: 0,
+    hearingRadius: 0,
+    stationary: true
+  },
   scout: {
     speed: 62,
     fovAngle: Math.PI / 3,

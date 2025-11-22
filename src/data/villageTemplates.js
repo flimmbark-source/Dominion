@@ -10,7 +10,8 @@ const fortifiedOutpost = {
     { id: 'tower', x: 520, y: 130, w: 150, h: 120, side: 'north', doorOffset: 0.37, jitter: { x: 24, y: 20, door: 0.1 } },
     { id: 'mess', x: 160, y: 340, w: 150, h: 110, side: 'south', doorOffset: 0.44, jitter: { x: 32, y: 20, door: 0.14 } },
     { id: 'bunks', x: 380, y: 360, w: 160, h: 110, side: 'south', doorOffset: 0.63, jitter: { x: 34, y: 20, door: 0.12 } },
-    { id: 'stables', x: 620, y: 330, w: 170, h: 120, side: 'south', doorOffset: 0.5, jitter: { x: 30, y: 22, door: 0.16 } }
+    { id: 'stables', x: 620, y: 330, w: 170, h: 120, side: 'south', doorOffset: 0.5, jitter: { x: 30, y: 22, door: 0.16 } },
+    { id: 'store', x: 720, y: 240, w: 140, h: 100, side: 'east', doorOffset: 0.5, jitter: { x: 28, y: 18, door: 0.12 } }
   ],
   roads: [
     {
@@ -286,7 +287,8 @@ const crossroadsMarket = {
     { id: 'barracks', x: 740, y: 118, w: 150, h: 120, side: 'north', doorOffset: 0.48, jitter: { x: 36, y: 20, door: 0.12 } },
     { id: 'baker', x: 140, y: 320, w: 150, h: 110, side: 'south', doorOffset: 0.42, jitter: { x: 38, y: 26, door: 0.14 } },
     { id: 'apothecary', x: 360, y: 340, w: 160, h: 110, side: 'south', doorOffset: 0.5, jitter: { x: 36, y: 24, door: 0.16 } },
-    { id: 'fletcher', x: 600, y: 330, w: 170, h: 120, side: 'south', doorOffset: 0.58, jitter: { x: 36, y: 22, door: 0.14 } }
+    { id: 'fletcher', x: 600, y: 330, w: 170, h: 120, side: 'south', doorOffset: 0.58, jitter: { x: 36, y: 22, door: 0.14 } },
+    { id: 'store', x: 220, y: 240, w: 140, h: 100, side: 'west', doorOffset: 0.5, jitter: { x: 28, y: 18, door: 0.12 } }
   ],
   roads: [
     {
@@ -588,7 +590,8 @@ const riversideSanctum = {
     { id: 'barracks', x: 740, y: 126, w: 150, h: 118, side: 'north', doorOffset: 0.5, jitter: { x: 32, y: 20, door: 0.12 } },
     { id: 'boat-house', x: 160, y: 340, w: 150, h: 110, side: 'south', doorOffset: 0.36, jitter: { x: 32, y: 24, door: 0.14 } },
     { id: 'pilgrim-dorm', x: 380, y: 360, w: 160, h: 110, side: 'south', doorOffset: 0.52, jitter: { x: 34, y: 24, door: 0.16 } },
-    { id: 'fisher-row', x: 620, y: 340, w: 170, h: 120, side: 'south', doorOffset: 0.58, jitter: { x: 34, y: 22, door: 0.16 } }
+    { id: 'fisher-row', x: 620, y: 340, w: 170, h: 120, side: 'south', doorOffset: 0.58, jitter: { x: 34, y: 22, door: 0.16 } },
+    { id: 'store', x: 460, y: 220, w: 140, h: 100, side: 'north', doorOffset: 0.5, jitter: { x: 28, y: 18, door: 0.12 } }
   ],
   roads: [
     {
