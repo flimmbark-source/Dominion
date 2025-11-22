@@ -45,14 +45,16 @@ function drawShop(){
   ctx.fillStyle = '#ffd700';
   ctx.fillText(`💰 ${state.player.gold} gold`, px + pw - 180, py + 44);
 
-  // Item list area
-  const listStartY = py + 90;
-  const listPadding = 20;
-  const listWidth = pw - listPadding * 2;
-  const itemCardHeight = 50; // Compact card height
-  const itemGap = 6;
-  const maxVisibleItems = 8;
-  const listHeight = ph - 90 - 55; // Space for header and footer
+  // Item grid area (3-column layout)
+  const gridStartY = py + 90;
+  const gridPadding = 20;
+  const gridWidth = pw - gridPadding * 2;
+  const itemCardWidth = 250; // 1/3 of original width
+  const itemCardHeight = 85; // Vertical layout needs more height
+  const columnGap = 15;
+  const rowGap = 10;
+  const columns = 3;
+  const gridHeight = ph - 90 - 55; // Space for header and footer
 
   const newHitRegions = [];
   const usedSlots = state.player.inventory.filter(Boolean).length;
@@ -95,17 +97,21 @@ function drawShop(){
     return cursorY;
   };
 
-  // Draw each item card
+  // Draw each item card in a grid layout
   shopItems.forEach((item, idx) => {
-    const cardY = listStartY + idx * (itemCardHeight + itemGap);
+    const col = idx % columns;
+    const row = Math.floor(idx / columns);
 
-    // Skip if outside visible area (simple scrolling could be added here)
-    if (cardY + itemCardHeight > listStartY + listHeight) return;
+    const cardX = px + gridPadding + col * (itemCardWidth + columnGap);
+    const cardY = gridStartY + row * (itemCardHeight + rowGap);
+
+    // Skip if outside visible area
+    if (cardY + itemCardHeight > gridStartY + gridHeight) return;
 
     const rect = {
-      x: px + listPadding,
+      x: cardX,
       y: cardY,
-      w: listWidth,
+      w: itemCardWidth,
       h: itemCardHeight
     };
 
@@ -114,34 +120,25 @@ function drawShop(){
     const owned = item.canBuy ? !item.canBuy(state.player) : false;
     const quantity = state.player.inventory.filter(it => it && it.id === item.id).length;
 
-    // Card background with rarity glow
+    // Card background
     ctx.fillStyle = hovered ? 'rgba(60,45,28,0.9)' : 'rgba(28,20,14,0.85)';
     ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
 
-    // Rarity border (thicker, more prominent)
+    // Rarity border
     const rarityColor = RARITY_COLORS[item.rarity] || '#8a6d3a';
     ctx.strokeStyle = hovered ? '#f4d76a' : rarityColor;
     ctx.lineWidth = hovered ? 3 : 2;
     ctx.strokeRect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2);
     ctx.lineWidth = 1;
 
-    // Left section: Icon
-    const iconSize = 32;
-    const iconX = rect.x + 10;
-    const iconY = rect.y + itemCardHeight / 2;
+    // Vertical stacked layout
+    const contentPadding = 8;
+    const contentWidth = rect.w - contentPadding * 2;
+    let cursorY = rect.y + contentPadding + 10;
 
-    if (item.icon) {
-      drawItemIcon(ctx, item.icon, iconX + iconSize/2, iconY, iconSize);
-    }
-
-    // Middle section: Item info
-    const contentX = iconX + iconSize + 12;
-    const contentWidth = rect.w - (contentX - rect.x) - 110; // Reserve space for price
-    const contentY = rect.y + 13;
-
-    // Item name with truncation if too long
+    // Item name with truncation
     ctx.fillStyle = '#f6e9c8';
-    ctx.font = 'bold 13px ui-sans-serif';
+    ctx.font = 'bold 12px ui-sans-serif';
     let displayName = item.name;
     if (ctx.measureText(displayName).width > contentWidth) {
       while (ctx.measureText(displayName + '...').width > contentWidth && displayName.length > 0) {
@@ -149,18 +146,20 @@ function drawShop(){
       }
       displayName += '...';
     }
-    ctx.fillText(displayName, contentX, contentY);
+    ctx.fillText(displayName, rect.x + contentPadding, cursorY);
+    cursorY += 13;
 
     // Hotkey
     if (item.key) {
       ctx.fillStyle = '#a08860';
-      ctx.font = '10px ui-sans-serif';
-      ctx.fillText(`[${item.key.toUpperCase()}]`, contentX, contentY + 12);
+      ctx.font = '9px ui-sans-serif';
+      ctx.fillText(`[${item.key.toUpperCase()}]`, rect.x + contentPadding, cursorY);
+      cursorY += 11;
     }
 
-    // Description (stats) - single line only
+    // Description (single line)
     ctx.fillStyle = '#d4c4a0';
-    ctx.font = '11px ui-sans-serif';
+    ctx.font = '10px ui-sans-serif';
     let desc = item.desc;
     if (ctx.measureText(desc).width > contentWidth) {
       while (ctx.measureText(desc + '...').width > contentWidth && desc.length > 0) {
@@ -168,54 +167,34 @@ function drawShop(){
       }
       desc += '...';
     }
-    ctx.fillText(desc, contentX, contentY + 28);
-
-    // Right section: Price and status
-    const priceX = rect.x + rect.w - 100;
-    const priceY = rect.y + 15;
+    ctx.fillText(desc, rect.x + contentPadding, cursorY);
+    cursorY += 14;
 
     // Price
-    ctx.textAlign = 'right';
     ctx.fillStyle = affordable ? '#ffd700' : '#8a6040';
-    ctx.font = 'bold 15px ui-sans-serif';
-    ctx.fillText(`${item.price}g`, priceX + 90, priceY);
-    ctx.textAlign = 'left';
+    ctx.font = 'bold 13px ui-sans-serif';
+    ctx.fillText(`${item.price}g`, rect.x + contentPadding, cursorY);
+    cursorY += 12;
 
-    // Status indicators (compact)
-    ctx.font = '9px ui-sans-serif';
-    let statusY = priceY + 14;
-
+    // Status indicators (single line, icons)
+    ctx.font = '8px ui-sans-serif';
     if (owned) {
       ctx.fillStyle = '#7a9fb8';
-      ctx.textAlign = 'right';
-      ctx.fillText('✓ Owned', priceX + 90, statusY);
-      ctx.textAlign = 'left';
-      statusY += 11;
+      ctx.fillText('✓ Owned', rect.x + contentPadding, cursorY);
     } else if (quantity > 0) {
       ctx.fillStyle = '#9ab8c8';
-      ctx.textAlign = 'right';
-      ctx.fillText(`${quantity} in bag`, priceX + 90, statusY);
-      ctx.textAlign = 'left';
-      statusY += 11;
-    }
-
-    if (!affordable) {
+      ctx.fillText(`${quantity}x`, rect.x + contentPadding, cursorY);
+    } else if (!affordable) {
       ctx.fillStyle = '#c85a48';
-      ctx.textAlign = 'right';
-      ctx.fillText('Not enough gold', priceX + 90, statusY);
-      ctx.textAlign = 'left';
+      ctx.fillText('No gold', rect.x + contentPadding, cursorY);
     } else if (!owned && usedSlots >= state.player.inventory.length) {
       ctx.fillStyle = '#d8923c';
-      ctx.textAlign = 'right';
-      ctx.fillText('Inventory full', priceX + 90, statusY);
-      ctx.textAlign = 'left';
+      ctx.fillText('Bag full', rect.x + contentPadding, cursorY);
     }
 
     if (item.type === 'passive' && state.shopOwned.has(item.id)) {
       ctx.fillStyle = '#68a88c';
-      ctx.textAlign = 'right';
-      ctx.fillText('★ Active', priceX + 90, statusY);
-      ctx.textAlign = 'left';
+      ctx.fillText('★', rect.x + rect.w - contentPadding - 10, cursorY);
     }
 
     newHitRegions.push({ type: 'item', item, rect });
