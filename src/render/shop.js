@@ -45,15 +45,15 @@ function drawShop(){
   ctx.fillStyle = '#ffd700';
   ctx.fillText(`💰 ${state.player.gold} gold`, px + pw - 180, py + 44);
 
-  // Item grid area (3-column layout)
+  // Item grid area (2-column layout for comfortable viewing)
   const gridStartY = py + 90;
-  const gridPadding = 20;
+  const gridPadding = 24;
   const gridWidth = pw - gridPadding * 2;
-  const itemCardWidth = 250; // 1/3 of original width
-  const itemCardHeight = 85; // Vertical layout needs more height
-  const columnGap = 15;
-  const rowGap = 10;
-  const columns = 3;
+  const itemCardWidth = 378; // Comfortable card width for readability
+  const itemCardHeight = 150; // Enough space for icon and text
+  const columnGap = 16;
+  const rowGap = 14;
+  const columns = 2; // 2 columns = larger cards, better readability
   const gridHeight = ph - 90 - 55; // Space for header and footer
 
   const newHitRegions = [];
@@ -131,106 +131,138 @@ function drawShop(){
     ctx.strokeRect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2);
     ctx.lineWidth = 1;
 
-    // Vertical stacked layout
-    const contentPadding = 8;
-    const contentWidth = rect.w - contentPadding * 2;
-    let cursorY = rect.y + contentPadding + 10;
+    // Proper gaming UI layout with icon
+    const contentPadding = 16;
+    const iconSize = 64;
 
-    // Item name with truncation
+    // Icon on the left
+    const iconX = rect.x + contentPadding;
+    const iconY = rect.y + rect.h / 2;
+
+    if (item.icon) {
+      drawItemIcon(ctx, item.icon, iconX + iconSize/2, iconY, iconSize);
+    }
+
+    // Text area to the right of icon
+    const textStartX = iconX + iconSize + 14;
+    const textAreaWidth = rect.w - iconSize - contentPadding * 2 - 14;
+
+    // Item name (full, no truncation unless absolutely necessary)
     ctx.fillStyle = '#f6e9c8';
-    ctx.font = 'bold 12px ui-sans-serif';
+    ctx.font = 'bold 18px ui-sans-serif';
     let displayName = item.name;
-    if (ctx.measureText(displayName).width > contentWidth) {
-      while (ctx.measureText(displayName + '...').width > contentWidth && displayName.length > 0) {
+    if (ctx.measureText(displayName).width > textAreaWidth) {
+      // Only truncate if name is exceptionally long
+      while (ctx.measureText(displayName + '...').width > textAreaWidth && displayName.length > 0) {
         displayName = displayName.slice(0, -1);
       }
       displayName += '...';
     }
-    ctx.fillText(displayName, rect.x + contentPadding, cursorY);
-    cursorY += 13;
+    ctx.fillText(displayName, textStartX, rect.y + contentPadding + 18);
 
-    // Hotkey
-    if (item.key) {
-      ctx.fillStyle = '#a08860';
-      ctx.font = '9px ui-sans-serif';
-      ctx.fillText(`[${item.key.toUpperCase()}]`, rect.x + contentPadding, cursorY);
-      cursorY += 11;
-    }
-
-    // Description (single line)
-    ctx.fillStyle = '#d4c4a0';
-    ctx.font = '10px ui-sans-serif';
-    let desc = item.desc;
-    if (ctx.measureText(desc).width > contentWidth) {
-      while (ctx.measureText(desc + '...').width > contentWidth && desc.length > 0) {
-        desc = desc.slice(0, -1);
-      }
-      desc += '...';
-    }
-    ctx.fillText(desc, rect.x + contentPadding, cursorY);
-    cursorY += 14;
-
-    // Price
+    // Price (aligned to right)
+    const priceX = rect.x + rect.w - contentPadding;
+    ctx.textAlign = 'right';
     ctx.fillStyle = affordable ? '#ffd700' : '#8a6040';
-    ctx.font = 'bold 13px ui-sans-serif';
-    ctx.fillText(`${item.price}g`, rect.x + contentPadding, cursorY);
-    cursorY += 12;
+    ctx.font = 'bold 17px ui-sans-serif';
+    ctx.fillText(`${item.price}g`, priceX, rect.y + contentPadding + 18);
+    ctx.textAlign = 'left';
 
-    // Status indicators (single line, icons)
-    ctx.font = '8px ui-sans-serif';
+    // Rarity and Hotkey
+    ctx.fillStyle = rarityColor;
+    ctx.font = '13px ui-sans-serif';
+    let rarityText = item.rarity ? item.rarity.charAt(0).toUpperCase() + item.rarity.slice(1) : 'Common';
+    if (item.key) {
+      rarityText += ` [${item.key.toUpperCase()}]`;
+    }
+    ctx.fillText(rarityText, textStartX, rect.y + contentPadding + 40);
+
+    // Status indicators at bottom left
+    ctx.font = '13px ui-sans-serif';
+    const statusY = rect.y + rect.h - contentPadding - 12;
+
     if (owned) {
       ctx.fillStyle = '#7a9fb8';
-      ctx.fillText('✓ Owned', rect.x + contentPadding, cursorY);
+      ctx.fillText('✓ Owned', textStartX, statusY);
     } else if (quantity > 0) {
       ctx.fillStyle = '#9ab8c8';
-      ctx.fillText(`${quantity}x`, rect.x + contentPadding, cursorY);
+      ctx.fillText(`${quantity}x in bag`, textStartX, statusY);
     } else if (!affordable) {
       ctx.fillStyle = '#c85a48';
-      ctx.fillText('No gold', rect.x + contentPadding, cursorY);
+      ctx.fillText('Not enough gold', textStartX, statusY);
     } else if (!owned && usedSlots >= state.player.inventory.length) {
       ctx.fillStyle = '#d8923c';
-      ctx.fillText('Bag full', rect.x + contentPadding, cursorY);
+      ctx.fillText('Inventory full', textStartX, statusY);
     }
 
+    // Active indicator
     if (item.type === 'passive' && state.shopOwned.has(item.id)) {
       ctx.fillStyle = '#68a88c';
-      ctx.fillText('★', rect.x + rect.w - contentPadding - 10, cursorY);
+      ctx.textAlign = 'right';
+      ctx.fillText('★ Active', priceX, statusY);
+      ctx.textAlign = 'left';
     }
+
+    // "Hover for details" hint at bottom
+    ctx.fillStyle = 'rgba(169, 143, 107, 0.7)';
+    ctx.font = '12px ui-sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText('Hover for details', priceX, rect.y + rect.h - contentPadding - 30);
+    ctx.textAlign = 'left';
 
     newHitRegions.push({ type: 'item', item, rect });
   });
 
-  // Hover tooltip for flavor text
+  // Hover tooltip for item details
   const hoveredItem = shopItems.find(item => getShopHover() === item.id);
-  if (hoveredItem && hoveredItem.flavor) {
+  if (hoveredItem) {
     const tooltip = {
-      text: hoveredItem.flavor,
-      maxWidth: 320,
-      padding: 12
+      maxWidth: 360,
+      padding: 16
     };
 
-    // Measure text to calculate tooltip size
-    ctx.font = 'italic 13px ui-sans-serif';
-    const words = tooltip.text.split(' ');
-    let lines = [];
-    let currentLine = '';
+    // Build tooltip content sections
+    const sections = [];
 
-    for (const word of words) {
-      const testLine = currentLine ? `${currentLine} ${word}` : word;
-      const metrics = ctx.measureText(testLine);
-
-      if (metrics.width > tooltip.maxWidth - tooltip.padding * 2) {
-        if (currentLine) lines.push(currentLine);
-        currentLine = word;
-      } else {
-        currentLine = testLine;
-      }
+    // Description section (stats/effects)
+    if (hoveredItem.desc) {
+      sections.push({ text: hoveredItem.desc, font: '15px ui-sans-serif', color: '#e8d4b8' });
     }
-    if (currentLine) lines.push(currentLine);
 
-    const lineHeight = 16;
+    // Flavor text section
+    if (hoveredItem.flavor) {
+      sections.push({ text: hoveredItem.flavor, font: 'italic 14px ui-sans-serif', color: '#b89968' });
+    }
+
+    // Calculate all lines for all sections
+    let allLines = [];
+    sections.forEach((section, sectionIdx) => {
+      ctx.font = section.font;
+      const words = section.text.split(' ');
+      let currentLine = '';
+
+      for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        const metrics = ctx.measureText(testLine);
+
+        if (metrics.width > tooltip.maxWidth - tooltip.padding * 2) {
+          if (currentLine) allLines.push({ text: currentLine, font: section.font, color: section.color });
+          currentLine = word;
+        } else {
+          currentLine = testLine;
+        }
+      }
+      if (currentLine) allLines.push({ text: currentLine, font: section.font, color: section.color });
+
+      // Add spacing between sections
+      if (sectionIdx < sections.length - 1) {
+        allLines.push({ text: '', font: section.font, color: section.color });
+      }
+    });
+
+    const lineHeight = 18;
     const tooltipWidth = tooltip.maxWidth;
-    const tooltipHeight = tooltip.padding * 2 + lines.length * lineHeight;
+    const tooltipHeight = tooltip.padding * 2 + allLines.length * lineHeight;
 
     // Position tooltip to the right of the panel, centered vertically
     const tooltipX = px + pw + 20;
@@ -240,17 +272,20 @@ function drawShop(){
     ctx.fillStyle = 'rgba(20,15,10,0.95)';
     ctx.fillRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
 
-    // Tooltip border
-    ctx.strokeStyle = '#8a7355';
+    // Tooltip border with rarity color
+    const rarityColor = RARITY_COLORS[hoveredItem.rarity] || '#8a6d3a';
+    ctx.strokeStyle = rarityColor;
     ctx.lineWidth = 2;
     ctx.strokeRect(tooltipX + 1, tooltipY + 1, tooltipWidth - 2, tooltipHeight - 2);
     ctx.lineWidth = 1;
 
-    // Render flavor text
-    ctx.fillStyle = '#d4c4a0';
-    ctx.font = 'italic 13px ui-sans-serif';
-    lines.forEach((line, idx) => {
-      ctx.fillText(line, tooltipX + tooltip.padding, tooltipY + tooltip.padding + 12 + idx * lineHeight);
+    // Render all lines
+    allLines.forEach((line, idx) => {
+      if (line.text) {
+        ctx.fillStyle = line.color;
+        ctx.font = line.font;
+        ctx.fillText(line.text, tooltipX + tooltip.padding, tooltipY + tooltip.padding + 14 + idx * lineHeight);
+      }
     });
   }
 
