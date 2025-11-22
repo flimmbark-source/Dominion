@@ -5,6 +5,7 @@ import { clamp } from '../utils/math.js';
 import { toast } from '../ui/toast.js';
 import { resetPressOnce } from '../input/pressOnce.js';
 import { getPlayerStats, markPlayerStatsDirty, addTemporaryStatEffect } from '../state/playerStats.js';
+import { applyHasteEffect, applyStrengthEffect } from './statusEffects.js';
 
 const shopState = {
   hitRegions: [],
@@ -35,27 +36,69 @@ function useInventorySlot(slotIdx){
   const it = state.player.inventory[slotIdx];
   if (!it) return;
   if (it.type === 'passive'){ toast('Already equipped.'); return; }
-  if (it.id === 'invis'){
-    const now = state.time;
-    if (now < state.player.invisUntil) return;
-    state.player.invisUntil = now + 6;
-    addTemporaryStatEffect(state.player, {
-      id: 'invisibility-potion',
-      mult: { stealthFactor: 0 },
-      duration: 6
-    }, now);
-    state.player.inventory[slotIdx] = null;
-    markPlayerStatsDirty(state.player);
-    getPlayerStats(state.player, state.time);
-    toast('You fade from sight...');
-  } else if (it.id === 'moonleaf'){
-    const stats = getPlayerStats(state.player, state.time);
-    state.player.health = clamp(state.player.health + 30, 0, stats.maxHealth);
-    state.player.inventory[slotIdx] = null;
-    markPlayerStatsDirty(state.player);
-    getPlayerStats(state.player, state.time);
-    toast('You feel restored (+30 HP).');
+
+  const now = state.time;
+  const stats = getPlayerStats(state.player, now);
+
+  // Handle each consumable type
+  switch (it.id) {
+    case 'invis':
+      if (now < state.player.invisUntil) return;
+      state.player.invisUntil = now + 6;
+      addTemporaryStatEffect(state.player, {
+        id: 'invisibility-potion',
+        mult: { stealthFactor: 0 },
+        duration: 6
+      }, now);
+      toast('You fade from sight...');
+      break;
+
+    case 'moonleaf':
+      state.player.health = clamp(state.player.health + 30, 0, stats.maxHealth);
+      toast('You feel restored (+30 HP).');
+      break;
+
+    case 'greaterHealing':
+      state.player.health = clamp(state.player.health + 60, 0, stats.maxHealth);
+      toast('Life flows back into your veins (+60 HP).');
+      break;
+
+    case 'shadowEssence':
+      if (now < state.player.invisUntil) return;
+      state.player.invisUntil = now + 10;
+      addTemporaryStatEffect(state.player, {
+        id: 'shadow-essence',
+        mult: { stealthFactor: 0 },
+        duration: 10
+      }, now);
+      toast('You become one with darkness...');
+      break;
+
+    case 'wrathPotion':
+      applyStrengthEffect(state.player, 15, 1);
+      toast('Rage courses through you! (+50% Damage, 15s)');
+      break;
+
+    case 'hastePotion':
+      applyHasteEffect(state.player, 8, 2);
+      toast('You move like the wind! (+100% Speed, 8s)');
+      break;
+
+    case 'phoenixTear':
+      state.player.health = stats.maxHealth;
+      state.player.invulnerableUntil = now + 3;
+      toast("The Phoenix's gift! (Full HP + Invulnerable 3s)");
+      break;
+
+    default:
+      toast('Nothing happens.');
+      return; // Don't consume if unknown
   }
+
+  // Consume the item
+  state.player.inventory[slotIdx] = null;
+  markPlayerStatsDirty(state.player);
+  getPlayerStats(state.player, state.time);
 }
 
 function attemptPurchase(item){

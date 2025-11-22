@@ -1,6 +1,6 @@
 import { ctx, W, H } from '../game/canvas.js';
 import { state } from '../state/gameState.js';
-import { ITEMS } from '../data/items.js';
+import { ITEMS, RARITY_COLORS } from '../data/items.js';
 import { setShopHitRegions, getShopHover } from '../systems/shop.js';
 import { drawItemIcon } from './itemIcons.js';
 
@@ -85,8 +85,13 @@ function drawShop(){
 
     ctx.fillStyle = hovered ? 'rgba(112,85,52,0.55)' : 'rgba(32,24,18,0.74)';
     ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-    ctx.strokeStyle = hovered ? '#d6b36a' : '#8a6d3a';
+
+    // Rarity border
+    const rarityColor = RARITY_COLORS[item.rarity] || '#8a6d3a';
+    ctx.strokeStyle = hovered ? '#d6b36a' : rarityColor;
+    ctx.lineWidth = hovered ? 2 : 1.5;
     ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
+    ctx.lineWidth = 1;
 
     const hasIcon = Boolean(item.icon);
     const titleX = hasIcon ? rect.x + 64 : rect.x + 14;
@@ -114,6 +119,14 @@ function drawShop(){
     ctx.fillStyle = '#d7c69a';
     ctx.font = '14px ui-sans-serif';
     const descEndY = wrapText(item.desc, bodyX, descStartY, bodyWidth, 18);
+
+    // Flavor text
+    let flavorEndY = descEndY;
+    if (item.flavor) {
+      ctx.fillStyle = '#9a8064';
+      ctx.font = 'italic 12px ui-sans-serif';
+      flavorEndY = wrapText(item.flavor, bodyX, descEndY + 20, bodyWidth, 16);
+    }
 
     ctx.fillStyle = '#b18f58';
     ctx.font = '13px ui-sans-serif';
