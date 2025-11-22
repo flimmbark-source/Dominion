@@ -67,6 +67,7 @@ import {
   handleBarkeepDialogueInput,
   updateBarkeepMissions
 } from './systems/barkeepMissions.js';
+import { initMerchants, updateTravelingMerchant, tryInteractWithMerchant } from './systems/merchants.js';
 
 setupInput();
 prepareVillageInstances();
@@ -77,6 +78,7 @@ initWarState();
 initVillageInteractions();
 initPointsOfInterest();
 initBarkeepMissions();
+initMerchants();
 initAbilities(state.player);
 initStatusEffects(state.player);
 
@@ -435,9 +437,12 @@ function update(dt){
 
   if (!inTavernInterior && !state.interior && !barkeepDialogueActive){
     if (interactPressed){
-      const spoke = tryTalkToVillager();
-      if (!spoke){
-        tryDisarmNearbyTrap();
+      const openedShop = tryInteractWithMerchant();
+      if (!openedShop) {
+        const spoke = tryTalkToVillager();
+        if (!spoke){
+          tryDisarmNearbyTrap();
+        }
       }
     }
     if (pickpocketPressed){
@@ -469,6 +474,7 @@ function update(dt){
   updateWar(dt);
   updateNPCBehaviors(dt);
   updateSpecialBehaviors(dt);
+  updateTravelingMerchant(dt);
   for (const npc of state.npcs){
     if (npc.pauseTimer > 0) continue;
     const chaseTarget = npc.chasingTarget && state.npcs.includes(npc.chasingTarget) ? npc.chasingTarget : null;

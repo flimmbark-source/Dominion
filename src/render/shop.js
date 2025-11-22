@@ -1,8 +1,9 @@
 import { ctx, W, H } from '../game/canvas.js';
 import { state } from '../state/gameState.js';
-import { ITEMS, RARITY_COLORS } from '../data/items.js';
-import { setShopHitRegions, getShopHover } from '../systems/shop.js';
+import { RARITY_COLORS } from '../data/items.js';
+import { setShopHitRegions, getShopHover, getCurrentShopItems } from '../systems/shop.js';
 import { drawItemIcon } from './itemIcons.js';
+import { getMerchantName } from '../systems/merchants.js';
 
 function drawShop(){
   ctx.save();
@@ -22,25 +23,26 @@ function drawShop(){
   ctx.strokeRect(px + 1.5, py + 1.5, pw - 3, ph - 3);
   ctx.lineWidth = 1;
 
+  const shopItems = getCurrentShopItems();
+
   ctx.fillStyle = '#f6e9c8';
   ctx.font = '26px "Trebuchet MS", ui-sans-serif';
-  ctx.fillText('Hidden Goblin Tavern', px + 32, py + 44);
+  ctx.fillText('Merchant Shop', px + 32, py + 44);
   ctx.fillStyle = '#d7c69a';
   ctx.font = '16px ui-sans-serif';
-  ctx.fillText('Goblin Merchant: "What are ya buyin\'?"', px + 32, py + 72);
-  ctx.fillText('Left click or press 1-5 to purchase · 0/Esc to slip back outside.', px + 32, py + 100);
+  ctx.fillText('Left click or press key to purchase · 0/Esc to leave.', px + 32, py + 72);
 
   ctx.font = '16px ui-sans-serif';
   ctx.fillStyle = '#ffde7b';
-  ctx.fillText(`Purse: ${state.player.gold} gold`, px + 32, py + 126);
+  ctx.fillText(`Purse: ${state.player.gold} gold`, px + 32, py + 100);
 
-  const columns = ITEMS.length > 3 ? 2 : 1;
+  const columns = shopItems.length > 3 ? 2 : 1;
   const colGap = columns > 1 ? 24 : 0;
-  const headerHeight = 152;
+  const headerHeight = 128;
   const footerReserve = 78;
   const availableHeight = ph - headerHeight - footerReserve;
   const rowGap = 14;
-  const rows = Math.max(1, Math.ceil(ITEMS.length / columns));
+  const rows = Math.max(1, Math.ceil(shopItems.length / columns));
   const cardH = Math.floor((availableHeight - (rows - 1) * rowGap) / rows);
   const listStartY = py + headerHeight;
   const availableWidth = pw - 48 - (columns - 1) * colGap;
@@ -69,7 +71,7 @@ function drawShop(){
     return cursorY;
   };
 
-  ITEMS.forEach((item, idx)=>{
+  shopItems.forEach((item, idx)=>{
     const col = idx % columns;
     const row = Math.floor(idx / columns);
     const rect = {

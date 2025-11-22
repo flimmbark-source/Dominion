@@ -6,10 +6,13 @@ import { toast } from '../ui/toast.js';
 import { resetPressOnce } from '../input/pressOnce.js';
 import { getPlayerStats, markPlayerStatsDirty, addTemporaryStatEffect } from '../state/playerStats.js';
 import { applyHasteEffect, applyStrengthEffect } from './statusEffects.js';
+import { getMerchantInventory, getMerchantName, MERCHANT_TYPE } from './merchants.js';
 
 const shopState = {
   hitRegions: [],
-  hover: null
+  hover: null,
+  currentMerchant: null,
+  currentVillageIndex: null
 };
 
 function inventoryAdd(item){
@@ -116,12 +119,22 @@ function attemptPurchase(item){
   toast(`Purchased ${item.name}.`);
 }
 
-function openShop(){
+function openShop(merchantType = MERCHANT_TYPE.GOBLIN_TAVERN, villageIndex = null){
   state.pausedForShop = true;
   shopState.hover = null;
   shopState.hitRegions = [];
+  shopState.currentMerchant = merchantType;
+  shopState.currentVillageIndex = villageIndex;
   canvas.style.cursor = 'default';
-  toast("Goblin Merchant: What are ya buyin'?", 2.2);
+
+  const merchantName = getMerchantName(merchantType, villageIndex);
+  const greeting = merchantType === MERCHANT_TYPE.GOBLIN_TAVERN
+    ? "What are ya buyin'?"
+    : merchantType === MERCHANT_TYPE.TRAVELING
+    ? "Rare treasures from distant lands!"
+    : "Welcome! See anything you like?";
+
+  toast(`${merchantName}: ${greeting}`, 2.2);
 }
 
 function closeShop(){
@@ -132,11 +145,18 @@ function closeShop(){
   resetPressOnce();
 }
 
+function getCurrentShopItems() {
+  if (!shopState.currentMerchant) return [];
+  return getMerchantInventory(shopState.currentMerchant, shopState.currentVillageIndex);
+}
+
 function handleShopKeyDown(e){
   if (!state.pausedForShop) return;
   const k = e.key.toLowerCase();
   if (k === '0' || k === 'escape'){ closeShop(); return; }
-  const item = ITEMS.find(it => it.key === k);
+
+  const shopItems = getCurrentShopItems();
+  const item = shopItems.find(it => it.key === k);
   if (!item) return;
   attemptPurchase(item);
 }
@@ -212,5 +232,6 @@ export {
   clearShopHitRegions,
   getShopHitRegions,
   getShopHover,
-  setShopHover
+  setShopHover,
+  getCurrentShopItems
 };
