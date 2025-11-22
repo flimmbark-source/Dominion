@@ -2,7 +2,9 @@ const BASE_PLAYER_STATS = Object.freeze({
   maxHealth: 100,
   movementSpeed: 120,
   attackDamage: 10,
-  stealthFactor: 1
+  stealthFactor: 1,
+  critChance: 0.15,      // 15% base crit chance
+  critDamage: 1.75       // 175% damage on crit (75% bonus)
 });
 
 function createPlayerStats(){
@@ -25,6 +27,8 @@ function applyAdditive(totals, add){
   if (typeof add.movementSpeed === 'number') totals.movementSpeed += add.movementSpeed;
   if (typeof add.attackDamage === 'number') totals.attackDamage += add.attackDamage;
   if (typeof add.stealthFactor === 'number') totals.stealthFactor += add.stealthFactor;
+  if (typeof add.critChance === 'number') totals.critChance += add.critChance;
+  if (typeof add.critDamage === 'number') totals.critDamage += add.critDamage;
 }
 
 function applyMultiplicative(multipliers, mult){
@@ -37,7 +41,9 @@ function computeTotals(stats, inventory){
     maxHealth: stats.base.maxHealth,
     movementSpeed: stats.base.movementSpeed,
     attackDamage: stats.base.attackDamage,
-    stealthFactor: stats.base.stealthFactor
+    stealthFactor: stats.base.stealthFactor,
+    critChance: stats.base.critChance,
+    critDamage: stats.base.critDamage
   };
   const multipliers = { stealthFactor: 1 };
 

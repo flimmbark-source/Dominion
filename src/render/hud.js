@@ -132,8 +132,57 @@ function drawPanel(x, y, w, h){
   ctx.strokeRect(x+4, y+4, w-8, h-8);
 }
 
+function drawComboCounter(){
+  const p = state.player;
+  if (!p.combo || p.combo.count < 2) return;  // Only show combo at 2+ hits
+
+  const timeSinceHit = state.time - p.combo.lastHitTime;
+  const comboTimeout = 2.0;  // Should match COMBO_TIMEOUT in combat.js
+  if (timeSinceHit > comboTimeout) return;  // Combo expired
+
+  // Calculate fade out near end of combo timeout
+  const fadeStart = comboTimeout * 0.7;
+  let alpha = 1.0;
+  if (timeSinceHit > fadeStart) {
+    alpha = 1.0 - ((timeSinceHit - fadeStart) / (comboTimeout - fadeStart));
+  }
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  // Position at top center of screen
+  const centerX = W / 2;
+  const y = 120;
+
+  // Draw combo text
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Combo count - larger and flashier
+  ctx.font = 'bold 48px "Trebuchet MS", system-ui';
+  ctx.fillStyle = '#ff9f1c';
+  ctx.shadowColor = 'rgba(255, 159, 28, 0.8)';
+  ctx.shadowBlur = 16;
+  ctx.fillText(`${p.combo.count}x`, centerX, y);
+  ctx.shadowBlur = 0;
+
+  // "COMBO" text below
+  ctx.font = 'bold 20px "Trebuchet MS", system-ui';
+  ctx.fillStyle = '#ffe0a0';
+  ctx.fillText('COMBO', centerX, y + 35);
+
+  // Damage bonus text
+  const damageBonus = Math.round(p.combo.count * 10);
+  ctx.font = 'bold 14px "Trebuchet MS", system-ui';
+  ctx.fillStyle = '#ffd25a';
+  ctx.fillText(`+${damageBonus}% Damage`, centerX, y + 55);
+
+  ctx.restore();
+}
+
 function drawHUD(){
   drawThreatIndicator();
+  drawComboCounter();
   const panelHeight = 128;
   const baseY = H - panelHeight - 12;
   ctx.save();

@@ -3,11 +3,14 @@ import { npcSeesPlayer, removeNPC } from '../npc/npcManager.js';
 import { addThreat } from './threat.js';
 import { getWeaponSwingConfig, resolveWeaponType } from '../utils/weaponSwing.js';
 import { addDamageNumber } from './damageNumbers.js';
+import { addScreenShake, addHitStop } from './cameraEffects.js';
 
 const BASE_PLAYER_ATTACK_RANGE = 52;
 const MELEE_RANGE_BONUS = 8;
 const MIN_PLAYER_COOLDOWN = 0.3;
 const BACKSTAB_ALIGNMENT_THRESHOLD = -0.25;
+const COMBO_TIMEOUT = 2.0;  // Seconds before combo resets
+const COMBO_DAMAGE_BONUS = 0.1;  // 10% damage bonus per combo hit
 
 function findAttackTarget(player, attackRange = BASE_PLAYER_ATTACK_RANGE + MELEE_RANGE_BONUS){
   let best = null;
@@ -72,7 +75,31 @@ function attemptAttack(player, playerStats, weaponType){
   const seesPlayer = npcSeesPlayer(npc, player);
   const alignment = computeFacingAlignment(npc, player);
   let wasBackstab = false;
+  let wasCrit = false;
   let damage = playerStats.attackDamage;
+
+  // Initialize combo system if needed
+  if (!player.combo) {
+    player.combo = { count: 0, lastHitTime: 0 };
+  }
+
+  // Check if combo expired
+  if (state.time - player.combo.lastHitTime > COMBO_TIMEOUT) {
+    player.combo.count = 0;
+  }
+
+  // Apply combo damage bonus
+  if (player.combo.count > 0) {
+    const comboBonus = 1 + (player.combo.count * COMBO_DAMAGE_BONUS);
+    damage *= comboBonus;
+  }
+
+  // Check for critical hit
+  const critChance = playerStats.critChance || 0;
+  if (Math.random() < critChance) {
+    wasCrit = true;
+    damage *= playerStats.critDamage || 1.75;
+  }
 
   if (npc.backstabOnly){
     if (seesPlayer || alignment > BACKSTAB_ALIGNMENT_THRESHOLD){
@@ -86,14 +113,57 @@ function attemptAttack(player, playerStats, weaponType){
   }
 
   npc.health = Math.max(0, npc.health - damage);
+
+  // Update combo counter
+  player.combo.count++;
+  player.combo.lastHitTime = state.time;
+
+  // Determine damage number appearance based on hit type
+  let damageColor = '#f9d776';  // Normal hit
+  let isCritDisplay = false;
+  let lifetime = undefined;
+
+  if (wasBackstab && wasCrit) {
+    // Both backstab and crit - ultimate hit
+    damageColor = '#ff6b35';
+    isCritDisplay = true;
+    lifetime = 1.5;
+  } else if (wasBackstab) {
+    // Backstab only
+    damageColor = '#ffe18a';
+    isCritDisplay = true;
+    lifetime = 1.35;
+  } else if (wasCrit) {
+    // Crit only
+    damageColor = '#ff9f1c';
+    isCritDisplay = true;
+    lifetime = 1.3;
+  }
+
   addDamageNumber({
     x: npc.x,
     y: npc.y,
     amount: damage,
-    color: wasBackstab ? '#ffe18a' : '#f9d776',
-    crit: wasBackstab,
-    lifetime: wasBackstab ? 1.35 : undefined
+    color: damageColor,
+    crit: isCritDisplay,
+    lifetime
   });
+
+  // Add screen shake and hit stop for combat feedback
+  if (wasBackstab && wasCrit) {
+    // Extra strong feedback for double bonus
+    addScreenShake({ intensity: 16, duration: 0.3 });
+    addHitStop(0.1);
+  } else if (wasBackstab || wasCrit) {
+    // Strong feedback for either bonus
+    addScreenShake({ intensity: 10, duration: 0.22 });
+    addHitStop(0.06);
+  } else {
+    // Normal feedback
+    addScreenShake({ intensity: 6, duration: 0.15 });
+    addHitStop(0.04);
+  }
+
   if (npc.health <= 0){
     handleNpcDefeated(npc, wasBackstab);
   }

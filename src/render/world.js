@@ -13,6 +13,7 @@ import {
   VILLAGER_PICKPOCKET_DISTANCE
 } from '../systems/villageInteractions.js';
 import { getActiveDamageNumbers } from '../systems/damageNumbers.js';
+import { getCameraOffset } from '../systems/cameraEffects.js';
 
 function lerp(a, b, t){
   return a + (b - a) * t;
@@ -541,8 +542,11 @@ function drawWorldScene(){
   const treeBehindPlayer = tree => playerGroundY >= treeBaseY(tree);
   const treeInFrontOfPlayer = tree => playerGroundY < treeBaseY(tree);
 
+  // Apply camera shake offset
+  const cameraShake = getCameraOffset();
+
   ctx.save();
-  ctx.translate(-state.camera.x, -state.camera.y);
+  ctx.translate(-state.camera.x + cameraShake.x, -state.camera.y + cameraShake.y);
 
   drawTerrain({ includeTrees: false });
   drawTerrain({ treeFilter: treeBehindPlayer });

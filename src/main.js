@@ -42,6 +42,7 @@ import { addThreat } from './systems/threat.js';
 import { attemptAttack } from './systems/combat.js';
 import { addDamageNumber, updateDamageNumbers } from './systems/damageNumbers.js';
 import { initPointsOfInterest, handlePointOfInterestInteraction } from './systems/pointsOfInterest.js';
+import { updateCameraEffects } from './systems/cameraEffects.js';
 import { toast } from './ui/toast.js';
 import { pressOnce } from './input/pressOnce.js';
 import { circleRectCollideResolve, pointInRect, segBlockedByAnyRect } from './utils/geometry.js';
@@ -249,6 +250,9 @@ function update(dt){
     state.mapMode = 'minimal';
   }
   if (state.mapMode === 'large') return;
+
+  // Update camera effects and apply hit stop
+  dt = updateCameraEffects(dt);
 
   state.time += dt;
   updateDamageNumbers();
