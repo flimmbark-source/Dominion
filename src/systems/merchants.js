@@ -4,6 +4,7 @@ import { VILLAGES, WORLD } from '../data/world.js';
 import { makeNPC, addVillageNPC } from '../npc/npcManager.js';
 import { toast } from '../ui/toast.js';
 import { openShop } from './shop.js';
+import { forEachVillageInstance } from '../world/villageTemplates.js';
 
 /**
  * Merchant System
@@ -76,8 +77,6 @@ export function initMerchants() {
  * Spawn a merchant in each village near the store building
  */
 function spawnTownMerchants() {
-  const { forEachVillageInstance } = require('../world/villageTemplates.js');
-
   forEachVillageInstance((instance, villageIndex) => {
     // Find the store building
     const storeHouse = instance.localHouses.find(h => h.id === 'store');
