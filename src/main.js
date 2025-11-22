@@ -43,6 +43,7 @@ import { attemptAttack } from './systems/combat.js';
 import { addDamageNumber, updateDamageNumbers } from './systems/damageNumbers.js';
 import { initPointsOfInterest, handlePointOfInterestInteraction } from './systems/pointsOfInterest.js';
 import { updateCameraEffects } from './systems/cameraEffects.js';
+import { initAbilities, updateAbilities, useAbility, updateDashMovement } from './systems/abilities.js';
 import { toast } from './ui/toast.js';
 import { pressOnce } from './input/pressOnce.js';
 import { circleRectCollideResolve, pointInRect, segBlockedByAnyRect } from './utils/geometry.js';
@@ -74,6 +75,7 @@ initWarState();
 initVillageInteractions();
 initPointsOfInterest();
 initBarkeepMissions();
+initAbilities(state.player);
 
 window.addEventListener('keydown', handleShopKeyDown);
 canvas.addEventListener('mousemove', handleCanvasMouseMove);
@@ -257,6 +259,8 @@ function update(dt){
   state.time += dt;
   updateDamageNumbers();
   updateBarkeepMissions();
+  updateAbilities(state.player, state.time);
+  updateDashMovement(state.player, dt);
 
   if (state.player.health <= 0 && !state.deathSequence){
     startDeathSequence();
@@ -719,6 +723,12 @@ function update(dt){
     for (let i=0;i<6;i++){
       if (pressOnce(String(i+1))) useInventorySlot(i);
     }
+
+    // Ability keys
+    if (pressOnce('z')) useAbility(p, 'dash');
+    if (pressOnce('x')) useAbility(p, 'shadowStrike');
+    if (pressOnce('c')) useAbility(p, 'whirlwind');
+    if (pressOnce('v')) useAbility(p, 'smokeBomb');
   }
 
   if (pressOnce('f')) state.debugCones = !state.debugCones;

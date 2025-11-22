@@ -10,6 +10,7 @@ import {
 } from '../systems/inventoryHover.js';
 import { drawItemIcon } from './itemIcons.js';
 import { getThreatFraction, getThreatStage } from '../systems/threat.js';
+import { getAbilities, getAbilityCooldown } from '../systems/abilities.js';
 
 function bar(x,y,w,h, frac, fg, bg, border='#1a2636'){
   ctx.fillStyle = bg;
@@ -180,9 +181,68 @@ function drawComboCounter(){
   ctx.restore();
 }
 
+function drawAbilityBar(){
+  const p = state.player;
+  const abilities = getAbilities(p);
+  if (!abilities || abilities.length === 0) return;
+
+  const slotSize = 56;
+  const slotSpacing = 8;
+  const totalWidth = abilities.length * slotSize + (abilities.length - 1) * slotSpacing;
+  const startX = (W / 2) - (totalWidth / 2);
+  const y = H - 200;
+
+  ctx.save();
+
+  for (let i = 0; i < abilities.length; i++) {
+    const ability = abilities[i];
+    const x = startX + i * (slotSize + slotSpacing);
+    const cooldown = getAbilityCooldown(p, ability.id);
+
+    // Draw slot background
+    ctx.fillStyle = ability.isReady ? 'rgba(20, 30, 48, 0.92)' : 'rgba(12, 18, 28, 0.92)';
+    ctx.fillRect(x, y, slotSize, slotSize);
+
+    // Draw border
+    ctx.strokeStyle = ability.isReady ? '#4a7ba7' : '#2a3a52';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 1, y + 1, slotSize - 2, slotSize - 2);
+
+    // Draw cooldown overlay
+    if (!ability.isReady && cooldown.fraction > 0) {
+      const overlayHeight = slotSize * cooldown.fraction;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(x, y, slotSize, overlayHeight);
+
+      // Cooldown text
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 16px "Trebuchet MS", system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(Math.ceil(cooldown.remaining), x + slotSize / 2, y + slotSize / 2);
+    }
+
+    // Draw keybind
+    ctx.fillStyle = ability.isReady ? '#ffffff' : '#6a7a92';
+    ctx.font = 'bold 12px "Trebuchet MS", system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(ability.keybind.toUpperCase(), x + slotSize / 2, y + 6);
+
+    // Draw ability name below
+    ctx.fillStyle = ability.isReady ? '#d0e0ff' : '#6a7a92';
+    ctx.font = '10px "Trebuchet MS", system-ui';
+    ctx.textBaseline = 'top';
+    ctx.fillText(ability.name.split(' ')[0], x + slotSize / 2, y + slotSize + 4);
+  }
+
+  ctx.restore();
+}
+
 function drawHUD(){
   drawThreatIndicator();
   drawComboCounter();
+  drawAbilityBar();
   const panelHeight = 128;
   const baseY = H - panelHeight - 12;
   ctx.save();
