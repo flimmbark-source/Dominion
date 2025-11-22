@@ -553,6 +553,8 @@ function drawWorldScene(){
   drawCastle();
 
   for (const h of state.houses){
+    // Stores have distinct colors to stand out
+    const isStore = h.id === 'store';
     drawExtrudedRect({
       x: h.x,
       y: h.y,
@@ -560,8 +562,8 @@ function drawWorldScene(){
       depth: h.h,
       height: 18,
       skew: 9,
-      baseColor: '#1b2638',
-      roofColor: '#2f3f5b',
+      baseColor: isStore ? '#3d2a1f' : '#1b2638',
+      roofColor: isStore ? '#8b4513' : '#2f3f5b',
       shadowStrength: 0.3
     });
   }

@@ -12,10 +12,10 @@ import { TAVERN_SOLIDS } from '../state/tavern.js';
 import { ctx } from '../game/canvas.js';
 import { getVillageInstance } from './villageTemplates.js';
 
-function addHouseWithDoor(x, y, w, h, side, doorOffset=0.5, doorW=22, villageId=0){
+function addHouseWithDoor(x, y, w, h, side, doorOffset=0.5, doorW=22, villageId=0, id=null){
   const doorX = x + Math.round((w - doorW) * clamp(doorOffset, 0.05, 0.95));
   const doorY = side === 'north' ? (y + h - WALL) : y;
-  const house = { x, y, w, h, side, villageId, door: { x: doorX, y: doorY, w: doorW, h: WALL }, hasUpstairs: false };
+  const house = { x, y, w, h, side, villageId, door: { x: doorX, y: doorY, w: doorW, h: WALL }, hasUpstairs: false, id };
   state.houses.push(house);
 }
 
@@ -271,7 +271,8 @@ function initHouses(){
           spec.side,
           placement.doorOffset,
           22,
-          vIndex
+          vIndex,
+          spec.id
         );
         placed.push({ spec, placement });
       });

@@ -3,6 +3,7 @@ import { clamp } from '../utils/math.js';
 import { toast } from '../ui/toast.js';
 import { addThreat } from './threat.js';
 import { BASE_WHISPERS, HIGH_THREAT_WHISPERS, TASK_HINT_WHISPERS } from '../data/villagerDialog.js';
+import { setNPCState, NPC_STATE } from '../npc/npcManager.js';
 
 const VILLAGER_TALK_DISTANCE = 72;
 const VILLAGER_PICKPOCKET_DISTANCE = 58;
@@ -127,12 +128,9 @@ function tryPickpocketVillager(){
     addThreat(18);
 
     // Make the villager chase the player for catching them stealing
-    const { setNPCState, NPC_STATE } = require('../npc/npcManager.js');
-    if (setNPCState && NPC_STATE) {
-      setNPCState(npc, NPC_STATE.ALERT, { reason: 'caught_stealing' });
-      npc.caughtStealing = true;
-      npc.caughtStealingAt = state.time;
-    }
+    setNPCState(npc, NPC_STATE.ALERT, { reason: 'caught_stealing' });
+    npc.caughtStealing = true;
+    npc.caughtStealingAt = state.time;
   }
 
   return true;
