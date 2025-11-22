@@ -136,13 +136,20 @@ function drawShop(){
 
     // Middle section: Item info
     const contentX = iconX + iconSize + 18;
-    const contentWidth = rect.w - (contentX - rect.x) - 130; // Reserve space for price
+    const contentWidth = rect.w - (contentX - rect.x) - 125; // Reserve space for price
     const contentY = rect.y + 18;
 
-    // Item name
+    // Item name with truncation if too long
     ctx.fillStyle = '#f6e9c8';
     ctx.font = 'bold 16px ui-sans-serif';
-    ctx.fillText(item.name, contentX, contentY);
+    let displayName = item.name;
+    if (ctx.measureText(displayName).width > contentWidth) {
+      while (ctx.measureText(displayName + '...').width > contentWidth && displayName.length > 0) {
+        displayName = displayName.slice(0, -1);
+      }
+      displayName += '...';
+    }
+    ctx.fillText(displayName, contentX, contentY);
 
     // Hotkey
     if (item.key) {
