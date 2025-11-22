@@ -78,16 +78,29 @@ export function initMerchants() {
  */
 function spawnTownMerchants() {
   forEachVillageInstance((instance, villageIndex) => {
-    // Find the store building
-    const storeHouse = instance.localHouses.find(h => h.id === 'store');
-    if (!storeHouse) {
+    // Find the store building spec
+    const storeSpec = instance.houses?.find(h => h.id === 'store');
+    if (!storeSpec) {
       console.warn(`No store found in village ${villageIndex}`);
       return;
     }
 
-    // Position merchant near the store door
-    const merchantX = storeHouse.localDoorX;
-    const merchantY = storeHouse.localDoorY;
+    // Find the placed house data for the store
+    const storeData = instance.placedHouses?.find(ph => ph.spec.id === 'store');
+    if (!storeData) {
+      console.warn(`Store not placed yet in village ${villageIndex}`);
+      return;
+    }
+
+    // Calculate door position (same logic as in houses.js addHouseWithDoor)
+    const { placement, spec } = storeData;
+    const doorW = 22;
+    const doorX = placement.x + Math.round((spec.w - doorW) * Math.max(0.05, Math.min(0.95, placement.doorOffset)));
+    const doorY = spec.side === 'north' ? (placement.y + spec.h - 8) : placement.y; // WALL = 8
+
+    // Position merchant at the door
+    const merchantX = doorX + doorW / 2;
+    const merchantY = doorY;
     const stationaryRoute = [{ x: merchantX, y: merchantY }];
 
     const merchant = addVillageNPC('merchant', villageIndex, merchantX, merchantY, stationaryRoute, {
