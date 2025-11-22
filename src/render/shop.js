@@ -46,13 +46,13 @@ function drawShop(){
   ctx.fillText(`💰 ${state.player.gold} gold`, px + pw - 180, py + 44);
 
   // Item list area
-  const listStartY = py + 96;
-  const listPadding = 24;
+  const listStartY = py + 90;
+  const listPadding = 20;
   const listWidth = pw - listPadding * 2;
-  const itemCardHeight = 110; // Fixed height per item card
-  const itemGap = 12;
-  const maxVisibleItems = 4;
-  const listHeight = ph - 96 - 60; // Space for header and footer
+  const itemCardHeight = 75; // Fixed height per item card
+  const itemGap = 8;
+  const maxVisibleItems = 6;
+  const listHeight = ph - 90 - 55; // Space for header and footer
 
   const newHitRegions = [];
   const usedSlots = state.player.inventory.filter(Boolean).length;
@@ -126,8 +126,8 @@ function drawShop(){
     ctx.lineWidth = 1;
 
     // Left section: Icon
-    const iconSize = 64;
-    const iconX = rect.x + 20;
+    const iconSize = 48;
+    const iconX = rect.x + 14;
     const iconY = rect.y + itemCardHeight / 2;
 
     if (item.icon) {
@@ -135,80 +135,79 @@ function drawShop(){
     }
 
     // Middle section: Item info
-    const contentX = iconX + iconSize + 24;
-    const contentWidth = rect.w - (contentX - rect.x) - 140; // Reserve space for price
-    const contentY = rect.y + 24;
+    const contentX = iconX + iconSize + 18;
+    const contentWidth = rect.w - (contentX - rect.x) - 130; // Reserve space for price
+    const contentY = rect.y + 18;
 
     // Item name
     ctx.fillStyle = '#f6e9c8';
-    ctx.font = 'bold 18px ui-sans-serif';
+    ctx.font = 'bold 16px ui-sans-serif';
     ctx.fillText(item.name, contentX, contentY);
 
     // Hotkey
     if (item.key) {
       ctx.fillStyle = '#a08860';
-      ctx.font = '13px ui-sans-serif';
-      ctx.fillText(`[${item.key.toUpperCase()}]`, contentX, contentY + 18);
+      ctx.font = '12px ui-sans-serif';
+      ctx.fillText(`[${item.key.toUpperCase()}]`, contentX, contentY + 15);
     }
 
     // Description (stats)
     ctx.fillStyle = '#d4c4a0';
-    ctx.font = '14px ui-sans-serif';
-    wrapTextConstrained(item.desc, contentX, contentY + 38, contentWidth, 17, 2);
+    ctx.font = '13px ui-sans-serif';
+    wrapTextConstrained(item.desc, contentX, contentY + 32, contentWidth, 15, 2);
 
-    // Flavor text (max 2 lines, smaller, italicized)
+    // Flavor text (max 1 line, smaller, italicized)
     if (item.flavor) {
       ctx.fillStyle = '#8a7355';
-      ctx.font = 'italic 12px ui-sans-serif';
-      wrapTextConstrained(item.flavor, contentX, contentY + 74, contentWidth, 15, 2);
+      ctx.font = 'italic 11px ui-sans-serif';
+      wrapTextConstrained(item.flavor, contentX, contentY + 63, contentWidth, 13, 1);
     }
 
     // Right section: Price and status
-    const priceX = rect.x + rect.w - 120;
-    const priceY = rect.y + 28;
+    const priceX = rect.x + rect.w - 115;
+    const priceY = rect.y + 20;
 
     // Price
     ctx.textAlign = 'right';
     ctx.fillStyle = affordable ? '#ffd700' : '#8a6040';
-    ctx.font = 'bold 20px ui-sans-serif';
-    ctx.fillText(`${item.price}g`, priceX + 110, priceY);
+    ctx.font = 'bold 18px ui-sans-serif';
+    ctx.fillText(`${item.price}g`, priceX + 105, priceY);
     ctx.textAlign = 'left';
 
-    // Status indicators
-    ctx.font = '12px ui-sans-serif';
-    let statusY = priceY + 24;
+    // Status indicators (compact)
+    ctx.font = '11px ui-sans-serif';
+    let statusY = priceY + 18;
 
     if (owned) {
       ctx.fillStyle = '#7a9fb8';
       ctx.textAlign = 'right';
-      ctx.fillText('✓ Owned', priceX + 110, statusY);
+      ctx.fillText('✓ Owned', priceX + 105, statusY);
       ctx.textAlign = 'left';
-      statusY += 16;
+      statusY += 13;
     } else if (quantity > 0) {
       ctx.fillStyle = '#9ab8c8';
       ctx.textAlign = 'right';
-      ctx.fillText(`${quantity} in bag`, priceX + 110, statusY);
+      ctx.fillText(`${quantity} in bag`, priceX + 105, statusY);
       ctx.textAlign = 'left';
-      statusY += 16;
+      statusY += 13;
     }
 
     if (!affordable) {
       ctx.fillStyle = '#c85a48';
       ctx.textAlign = 'right';
-      ctx.fillText('Not enough gold', priceX + 110, statusY);
+      ctx.fillText('Not enough gold', priceX + 105, statusY);
       ctx.textAlign = 'left';
-      statusY += 16;
     } else if (!owned && usedSlots >= state.player.inventory.length) {
       ctx.fillStyle = '#d8923c';
       ctx.textAlign = 'right';
-      ctx.fillText('Inventory full', priceX + 110, statusY);
+      ctx.fillText('Inventory full', priceX + 105, statusY);
       ctx.textAlign = 'left';
     }
 
     if (item.type === 'passive' && state.shopOwned.has(item.id)) {
       ctx.fillStyle = '#68a88c';
       ctx.textAlign = 'right';
-      ctx.fillText('★ Active', priceX + 110, statusY);
+      ctx.fillText('★ Active', priceX + 105, statusY);
       ctx.textAlign = 'left';
     }
 
@@ -216,7 +215,7 @@ function drawShop(){
   });
 
   // Footer with exit button
-  const exitRect = { x: px + pw - 160, y: py + ph - 50, w: 130, h: 36 };
+  const exitRect = { x: px + pw - 145, y: py + ph - 45, w: 120, h: 32 };
   ctx.fillStyle = getShopHover() === 'exit' ? 'rgba(140,90,50,0.8)' : 'rgba(52,38,24,0.9)';
   ctx.fillRect(exitRect.x, exitRect.y, exitRect.w, exitRect.h);
   ctx.strokeStyle = '#b98a52';
@@ -224,8 +223,8 @@ function drawShop(){
   ctx.strokeRect(exitRect.x + 0.5, exitRect.y + 0.5, exitRect.w - 1, exitRect.h - 1);
   ctx.lineWidth = 1;
   ctx.fillStyle = '#f4e2c0';
-  ctx.font = 'bold 16px ui-sans-serif';
-  ctx.fillText('Leave [ESC]', exitRect.x + 18, exitRect.y + 24);
+  ctx.font = 'bold 15px ui-sans-serif';
+  ctx.fillText('Leave [ESC]', exitRect.x + 16, exitRect.y + 21);
   newHitRegions.push({ type: 'exit', rect: exitRect });
 
   setShopHitRegions(newHitRegions);
