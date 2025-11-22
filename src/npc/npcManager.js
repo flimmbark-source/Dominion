@@ -458,6 +458,13 @@ function buildSearchRoute(anchor, radius = 140, steps = 3){
 }
 
 function setNPCState(npc, newState, options = {}){
+  // Villagers and merchants should never enter ALERT state unless catching player stealing
+  if ((npc.type === 'villager' || npc.type === 'merchant') && newState === NPC_STATE.ALERT){
+    if (options.reason !== 'caught_stealing'){
+      return false; // Block ALERT state for peaceful NPCs
+    }
+  }
+
   const previous = npc.behaviorState;
   const forced = !!options.force;
   const changed = forced || previous !== newState;

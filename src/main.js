@@ -645,8 +645,8 @@ function update(dt){
   for (const npc of state.npcs){
     if (npc.faction === 'monster' || npc.faction === 'darkLord') continue;
     // Only guards (scouts/militia) should alert when seeing the player
-    // Villagers should only react if they catch the player stealing
-    if (npc.type === 'villager') continue;
+    // Villagers and merchants should only react if they catch the player stealing
+    if (npc.type === 'villager' || npc.type === 'merchant') continue;
     if (npcSeesPlayer(npc, p)){
       seenBy++;
       notifyNPCPlayerSpotted(npc, p);
