@@ -5,6 +5,7 @@ import { removeNPC } from '../npc/npcManager.js';
 import { addThreat } from './threat.js';
 import { addTemporaryStatEffect, getPlayerStats } from '../state/playerStats.js';
 import { toast } from '../ui/toast.js';
+import { applyStunEffect, applyHasteEffect, applyStrengthEffect } from './statusEffects.js';
 
 /**
  * Ability System - Manages player abilities with cooldowns and effects
@@ -214,9 +215,8 @@ function executeShadowStrike(player, ability) {
     lifetime: 1.2
   });
 
-  // Stun target
-  target.stunnedUntil = state.time + stunDuration;
-  target.pauseTimer = Math.max(target.pauseTimer || 0, stunDuration);
+  // Stun target using status effect system
+  applyStunEffect(target, stunDuration, 1);
 
   // Visual feedback
   addScreenShake({ intensity: 8, duration: 0.2 });
@@ -294,17 +294,15 @@ function executeWhirlwind(player, ability) {
  */
 function executeSmokeBomb(player, ability) {
   const invisDuration = 4.0;
-  const speedBonus = 60;
 
   // Grant invisibility
   player.invisUntil = Math.max(player.invisUntil || 0, state.time + invisDuration);
 
-  // Temporarily increase movement speed
-  addTemporaryStatEffect(player, {
-    id: 'smoke-bomb-speed',
-    add: { movementSpeed: speedBonus },
-    duration: invisDuration
-  }, state.time);
+  // Apply haste buff for increased movement speed
+  applyHasteEffect(player, invisDuration, 1);
+
+  // Apply strength buff for bonus damage
+  applyStrengthEffect(player, invisDuration, 0.5);
 
   // Reset detection
   player.detection = Math.max(0, player.detection - 30);

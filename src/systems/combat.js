@@ -4,6 +4,7 @@ import { addThreat } from './threat.js';
 import { getWeaponSwingConfig, resolveWeaponType } from '../utils/weaponSwing.js';
 import { addDamageNumber } from './damageNumbers.js';
 import { addScreenShake, addHitStop } from './cameraEffects.js';
+import { getDamageMultiplier } from './statusEffects.js';
 
 const BASE_PLAYER_ATTACK_RANGE = 52;
 const MELEE_RANGE_BONUS = 8;
@@ -111,6 +112,10 @@ function attemptAttack(player, playerStats, weaponType){
     wasBackstab = true;
     damage *= npc.backstabMultiplier;
   }
+
+  // Apply damage multipliers from status effects
+  const statusDamageMultiplier = getDamageMultiplier(player);
+  damage *= statusDamageMultiplier;
 
   npc.health = Math.max(0, npc.health - damage);
 

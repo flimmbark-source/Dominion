@@ -44,6 +44,7 @@ import { addDamageNumber, updateDamageNumbers } from './systems/damageNumbers.js
 import { initPointsOfInterest, handlePointOfInterestInteraction } from './systems/pointsOfInterest.js';
 import { updateCameraEffects } from './systems/cameraEffects.js';
 import { initAbilities, updateAbilities, useAbility, updateDashMovement } from './systems/abilities.js';
+import { initStatusEffects, updateStatusEffects, getSpeedMultiplier } from './systems/statusEffects.js';
 import { toast } from './ui/toast.js';
 import { pressOnce } from './input/pressOnce.js';
 import { circleRectCollideResolve, pointInRect, segBlockedByAnyRect } from './utils/geometry.js';
@@ -76,6 +77,7 @@ initVillageInteractions();
 initPointsOfInterest();
 initBarkeepMissions();
 initAbilities(state.player);
+initStatusEffects(state.player);
 
 window.addEventListener('keydown', handleShopKeyDown);
 canvas.addEventListener('mousemove', handleCanvasMouseMove);
@@ -261,6 +263,7 @@ function update(dt){
   updateBarkeepMissions();
   updateAbilities(state.player, state.time);
   updateDashMovement(state.player, dt);
+  updateStatusEffects(state.player, dt);
 
   if (state.player.health <= 0 && !state.deathSequence){
     startDeathSequence();
@@ -318,7 +321,8 @@ function update(dt){
     if (keys.has('d')) ix += 1;
   }
   const m = Math.hypot(ix,iy) || 1;
-  const wantSpeed = playerStats.movementSpeed * (keys.has('shift') ? 1.7 : 1.0);
+  const speedMultiplier = getSpeedMultiplier(p);
+  const wantSpeed = playerStats.movementSpeed * (keys.has('shift') ? 1.7 : 1.0) * speedMultiplier;
   p.sprinting = !barkeepDialogueActive && keys.has('shift') && (ix||iy);
   p.vx = barkeepDialogueActive ? 0 : (ix/m) * wantSpeed;
   p.vy = barkeepDialogueActive ? 0 : (iy/m) * wantSpeed;

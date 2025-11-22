@@ -11,6 +11,7 @@ import {
 import { drawItemIcon } from './itemIcons.js';
 import { getThreatFraction, getThreatStage } from '../systems/threat.js';
 import { getAbilities, getAbilityCooldown } from '../systems/abilities.js';
+import { getActiveStatusEffects } from '../systems/statusEffects.js';
 
 function bar(x,y,w,h, frac, fg, bg, border='#1a2636'){
   ctx.fillStyle = bg;
@@ -181,6 +182,58 @@ function drawComboCounter(){
   ctx.restore();
 }
 
+function drawStatusEffects(){
+  const p = state.player;
+  const effects = getActiveStatusEffects(p);
+  if (!effects || effects.length === 0) return;
+
+  const iconSize = 32;
+  const iconSpacing = 6;
+  const startX = 100;
+  const y = 20;
+
+  ctx.save();
+
+  for (let i = 0; i < effects.length; i++) {
+    const effect = effects[i];
+    const x = startX + i * (iconSize + iconSpacing);
+
+    // Draw background
+    ctx.fillStyle = 'rgba(12, 18, 28, 0.85)';
+    ctx.fillRect(x, y, iconSize, iconSize);
+
+    // Draw border with effect color
+    ctx.strokeStyle = effect.visual.color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 1, y + 1, iconSize - 2, iconSize - 2);
+
+    // Draw icon/text
+    ctx.fillStyle = effect.visual.color;
+    ctx.font = '18px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(effect.visual.icon, x + iconSize / 2, y + iconSize / 2);
+
+    // Draw timer
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 10px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(Math.ceil(effect.remaining), x + iconSize / 2, y + iconSize - 2);
+
+    // Draw stacks if applicable
+    if (effect.strength > 1) {
+      ctx.fillStyle = '#ffd54f';
+      ctx.font = 'bold 10px system-ui';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'top';
+      ctx.fillText(`x${Math.floor(effect.strength)}`, x + iconSize - 3, y + 3);
+    }
+  }
+
+  ctx.restore();
+}
+
 function drawAbilityBar(){
   const p = state.player;
   const abilities = getAbilities(p);
@@ -242,6 +295,7 @@ function drawAbilityBar(){
 function drawHUD(){
   drawThreatIndicator();
   drawComboCounter();
+  drawStatusEffects();
   drawAbilityBar();
   const panelHeight = 128;
   const baseY = H - panelHeight - 12;
