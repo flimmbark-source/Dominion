@@ -177,6 +177,12 @@ function drawShop(){
     }
     ctx.fillText(rarityText, textStartX, rect.y + contentPadding + 40);
 
+    // Item description (effects/stats) - 2 lines max
+    ctx.fillStyle = '#d4c4a0';
+    ctx.font = '12px ui-sans-serif';
+    const descY = rect.y + contentPadding + 58;
+    wrapTextConstrained(item.desc, textStartX, descY, textAreaWidth, 14, 2);
+
     // Status indicators at bottom left
     ctx.font = '13px ui-sans-serif';
     const statusY = rect.y + rect.h - contentPadding - 12;
@@ -203,19 +209,21 @@ function drawShop(){
       ctx.textAlign = 'left';
     }
 
-    // "Hover for details" hint at bottom
-    ctx.fillStyle = 'rgba(169, 143, 107, 0.7)';
-    ctx.font = '12px ui-sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText('Hover for details', priceX, rect.y + rect.h - contentPadding - 30);
-    ctx.textAlign = 'left';
+    // "Hover for lore" hint at bottom (only if item has flavor text)
+    if (item.flavor) {
+      ctx.fillStyle = 'rgba(169, 143, 107, 0.7)';
+      ctx.font = '11px ui-sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText('Hover for lore', priceX, rect.y + rect.h - contentPadding - 30);
+      ctx.textAlign = 'left';
+    }
 
     newHitRegions.push({ type: 'item', item, rect });
   });
 
-  // Hover tooltip for item details
+  // Hover tooltip for flavor text only
   const hoveredItem = shopItems.find(item => getShopHover() === item.id);
-  if (hoveredItem) {
+  if (hoveredItem && hoveredItem.flavor) {
     const tooltip = {
       maxWidth: 360,
       padding: 16
@@ -224,15 +232,8 @@ function drawShop(){
     // Build tooltip content sections
     const sections = [];
 
-    // Description section (stats/effects)
-    if (hoveredItem.desc) {
-      sections.push({ text: hoveredItem.desc, font: '15px ui-sans-serif', color: '#e8d4b8' });
-    }
-
     // Flavor text section
-    if (hoveredItem.flavor) {
-      sections.push({ text: hoveredItem.flavor, font: 'italic 14px ui-sans-serif', color: '#b89968' });
-    }
+    sections.push({ text: hoveredItem.flavor, font: 'italic 14px ui-sans-serif', color: '#b89968' });
 
     // Calculate all lines for all sections
     let allLines = [];
