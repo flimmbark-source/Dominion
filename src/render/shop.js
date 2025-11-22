@@ -1,7 +1,7 @@
 import { ctx, W, H } from '../game/canvas.js';
 import { state } from '../state/gameState.js';
 import { RARITY_COLORS } from '../data/items.js';
-import { setShopHitRegions, getShopHover, getCurrentShopItems } from '../systems/shop.js';
+import { setShopHitRegions, getShopHover, getShopMousePos, getCurrentShopItems } from '../systems/shop.js';
 import { drawItemIcon } from './itemIcons.js';
 import { getMerchantName, MERCHANT_TYPE } from '../systems/merchants.js';
 
@@ -264,9 +264,26 @@ function drawShop(){
     const tooltipWidth = tooltip.maxWidth;
     const tooltipHeight = tooltip.padding * 2 + allLines.length * lineHeight;
 
-    // Position tooltip to the right of the panel, centered vertically
-    const tooltipX = px + pw + 20;
-    const tooltipY = py + ph / 2 - tooltipHeight / 2;
+    // Position tooltip at cursor with offset
+    const mousePos = getShopMousePos();
+    const offsetX = 15; // Offset from cursor
+    const offsetY = 15;
+    let tooltipX = mousePos.x + offsetX;
+    let tooltipY = mousePos.y + offsetY;
+
+    // Prevent tooltip from going off screen edges
+    if (tooltipX + tooltipWidth > W) {
+      tooltipX = mousePos.x - tooltipWidth - offsetX; // Position to left of cursor
+    }
+    if (tooltipY + tooltipHeight > H) {
+      tooltipY = H - tooltipHeight - 10; // Clamp to bottom with margin
+    }
+    if (tooltipX < 0) {
+      tooltipX = 10; // Minimum left margin
+    }
+    if (tooltipY < 0) {
+      tooltipY = 10; // Minimum top margin
+    }
 
     // Tooltip background
     ctx.fillStyle = 'rgba(20,15,10,0.95)';

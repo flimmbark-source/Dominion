@@ -12,7 +12,9 @@ const shopState = {
   hitRegions: [],
   hover: null,
   currentMerchant: null,
-  currentVillageIndex: null
+  currentVillageIndex: null,
+  mouseX: 0,
+  mouseY: 0
 };
 
 function inventoryAdd(item){
@@ -164,6 +166,8 @@ function handleShopKeyDown(e){
 function handleShopMouseMove(evt){
   if (!state.pausedForShop) return;
   const pt = canvasPointFromEvent(evt);
+  shopState.mouseX = pt.x;
+  shopState.mouseY = pt.y;
   let hovered = null;
   for (const hit of shopState.hitRegions){
     if (pt.x >= hit.rect.x && pt.x <= hit.rect.x + hit.rect.w && pt.y >= hit.rect.y && pt.y <= hit.rect.y + hit.rect.h){
@@ -217,6 +221,10 @@ function setShopHover(value){
   shopState.hover = value;
 }
 
+function getShopMousePos(){
+  return { x: shopState.mouseX, y: shopState.mouseY };
+}
+
 export {
   inventoryAdd,
   useInventorySlot,
@@ -233,5 +241,6 @@ export {
   getShopHitRegions,
   getShopHover,
   setShopHover,
+  getShopMousePos,
   getCurrentShopItems
 };
