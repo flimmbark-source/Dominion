@@ -509,9 +509,14 @@ function drawNpc3D(npc){
   ctx.translate(npc.x, npc.y);
 
   const factionBase = FACTION_BODY_COLORS[npc.faction] || '#9aa5b1';
-  const bodyColor = npc.type === 'scout'
-    ? adjustHexColor(factionBase, 0.2)
-    : factionBase;
+  let bodyColor;
+  if (npc.type === 'scout') {
+    bodyColor = adjustHexColor(factionBase, 0.2);
+  } else if (npc.type === 'merchant') {
+    bodyColor = '#8b7355'; // Brown/tan color for merchants
+  } else {
+    bodyColor = factionBase;
+  }
   const highlight = adjustHexColor(bodyColor, 0.35);
   const shadow = adjustHexColor(bodyColor, -0.4);
 
