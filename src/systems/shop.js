@@ -122,7 +122,7 @@ function attemptPurchase(item){
 }
 
 function openShop(merchantType = MERCHANT_TYPE.GOBLIN_TAVERN, villageIndex = null){
-  state.pausedForShop = true;
+  state.pausedForShop = true; // Still set this flag to show the shop UI
   shopState.hover = null;
   shopState.hitRegions = [];
   shopState.currentMerchant = merchantType;

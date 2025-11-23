@@ -6,98 +6,79 @@ import { drawItemIcon } from './itemIcons.js';
 import { getMerchantName, MERCHANT_TYPE } from '../systems/merchants.js';
 
 function drawShop(){
-  ctx.save();
-  ctx.fillStyle = 'rgba(6,8,12,0.85)';
-  ctx.fillRect(0,0,W,H);
+  const shopItems = getCurrentShopItems();
 
-  // Larger shop panel for better readability
-  const pw = 820, ph = 560;
-  const px = (W - pw) / 2;
-  const py = (H - ph) / 2;
-  const panelGrad = ctx.createLinearGradient(px, py, px, py + ph);
+  // Find the merchant NPC we're interacting with
+  let merchantNPC = null;
+  for (const npc of state.npcs) {
+    if (npc.isMerchant) {
+      merchantNPC = npc;
+      break; // For now, just use the first merchant found
+    }
+  }
+
+  if (!merchantNPC) return; // No merchant found
+
+  // Calculate shop position relative to merchant (in world space)
+  const shopWidth = 420;
+  const shopHeight = 480;
+
+  // Position to the right of the merchant
+  const shopWorldX = merchantNPC.x + 80;
+  const shopWorldY = merchantNPC.y - shopHeight / 2;
+
+  // Apply camera offset to convert to screen space
+  const shopScreenX = shopWorldX - state.camera.x;
+  const shopScreenY = shopWorldY - state.camera.y;
+
+  // Clamp to screen bounds
+  const px = Math.max(10, Math.min(W - shopWidth - 10, shopScreenX));
+  const py = Math.max(10, Math.min(H - shopHeight - 10, shopScreenY));
+
+  ctx.save();
+
+  // Shop panel background
+  const panelGrad = ctx.createLinearGradient(px, py, px, py + shopHeight);
   panelGrad.addColorStop(0, '#2a1f15');
   panelGrad.addColorStop(1, '#1f1610');
   ctx.fillStyle = panelGrad;
-  ctx.fillRect(px, py, pw, ph);
+  ctx.fillRect(px, py, shopWidth, shopHeight);
+
+  // Border
   ctx.strokeStyle = '#8a6d3a';
   ctx.lineWidth = 3;
-  ctx.strokeRect(px + 1.5, py + 1.5, pw - 3, ph - 3);
+  ctx.strokeRect(px + 1.5, py + 1.5, shopWidth - 3, shopHeight - 3);
   ctx.lineWidth = 1;
-
-  const shopItems = getCurrentShopItems();
 
   // Header section
   ctx.fillStyle = '#f6e9c8';
-  ctx.font = 'bold 28px "Trebuchet MS", ui-sans-serif';
+  ctx.font = 'bold 20px "Trebuchet MS", ui-sans-serif';
   const merchantName = getMerchantName(
     state.pausedForShop && shopItems.length > 0 ?
       (state.merchants?.travelingMerchant ? MERCHANT_TYPE.TRAVELING : MERCHANT_TYPE.GOBLIN_TAVERN) :
       'Merchant'
   );
-  ctx.fillText(merchantName, px + 32, py + 44);
-
-  ctx.fillStyle = '#c9a876';
-  ctx.font = '15px ui-sans-serif';
-  ctx.fillText('Click or press hotkey to purchase', px + 32, py + 74);
+  ctx.fillText(merchantName, px + 20, py + 32);
 
   // Gold display
-  ctx.font = 'bold 18px ui-sans-serif';
+  ctx.font = 'bold 16px ui-sans-serif';
   ctx.fillStyle = '#ffd700';
-  ctx.fillText(`💰 ${state.player.gold} gold`, px + pw - 180, py + 44);
+  ctx.fillText(`💰 ${state.player.gold}g`, px + shopWidth - 100, py + 32);
 
-  // Item grid area (2-column layout for comfortable viewing)
-  const gridStartY = py + 90;
-  const gridPadding = 24;
-  const gridWidth = pw - gridPadding * 2;
-  const itemCardWidth = 378; // Comfortable card width for readability
-  const itemCardHeight = 150; // Enough space for icon and text
-  const columnGap = 16;
-  const rowGap = 14;
-  const columns = 2; // 2 columns = larger cards, better readability
-  const gridHeight = ph - 90 - 55; // Space for header and footer
+  // Item grid area - single column, compact layout
+  const gridStartY = py + 50;
+  const gridPadding = 16;
+  const gridWidth = shopWidth - gridPadding * 2;
+  const itemCardWidth = gridWidth; // Full width for single column
+  const itemCardHeight = 70; // Compact height
+  const rowGap = 8;
+  const columns = 1; // Single column for compact design
+  const gridHeight = shopHeight - 50 - 20; // Space for header and close button
 
   const newHitRegions = [];
   const usedSlots = state.player.inventory.filter(Boolean).length;
 
-  // Helper function for constrained text wrapping
-  const wrapTextConstrained = (text, x, y, maxWidth, lineHeight, maxLines) => {
-    const words = text.split(' ');
-    let line = '';
-    let cursorY = y;
-    let lineCount = 0;
-
-    for (const word of words) {
-      if (lineCount >= maxLines) break;
-
-      const testLine = line ? `${line} ${word}` : word;
-      const metrics = ctx.measureText(testLine);
-
-      if (metrics.width > maxWidth && line) {
-        ctx.fillText(line, x, cursorY);
-        line = word;
-        cursorY += lineHeight;
-        lineCount++;
-      } else {
-        line = testLine;
-      }
-    }
-
-    if (line && lineCount < maxLines) {
-      // Truncate if last line is too long
-      if (ctx.measureText(line).width > maxWidth) {
-        while (ctx.measureText(line + '...').width > maxWidth && line.length > 0) {
-          line = line.slice(0, -1);
-        }
-        line += '...';
-      }
-      ctx.fillText(line, x, cursorY);
-      cursorY += lineHeight;
-    }
-
-    return cursorY;
-  };
-
-  // Draw each item card in a grid layout
+  // Draw each item card in a single column layout
   shopItems.forEach((item, idx) => {
     const col = idx % columns;
     const row = Math.floor(idx / columns);
@@ -127,13 +108,13 @@ function drawShop(){
     // Rarity border
     const rarityColor = RARITY_COLORS[item.rarity] || '#8a6d3a';
     ctx.strokeStyle = hovered ? '#f4d76a' : rarityColor;
-    ctx.lineWidth = hovered ? 3 : 2;
+    ctx.lineWidth = hovered ? 2 : 1.5;
     ctx.strokeRect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2);
     ctx.lineWidth = 1;
 
-    // Proper gaming UI layout with icon
-    const contentPadding = 16;
-    const iconSize = 64;
+    // Compact layout with small icon
+    const contentPadding = 10;
+    const iconSize = 48;
 
     // Icon on the left
     const iconX = rect.x + contentPadding;
@@ -144,77 +125,69 @@ function drawShop(){
     }
 
     // Text area to the right of icon
-    const textStartX = iconX + iconSize + 14;
-    const textAreaWidth = rect.w - iconSize - contentPadding * 2 - 14;
+    const textStartX = iconX + iconSize + 10;
+    const textAreaWidth = rect.w - iconSize - contentPadding * 2 - 10;
 
-    // Item name (full, no truncation unless absolutely necessary)
+    // Item name
     ctx.fillStyle = '#f6e9c8';
-    ctx.font = 'bold 18px ui-sans-serif';
+    ctx.font = 'bold 14px ui-sans-serif';
     let displayName = item.name;
-    if (ctx.measureText(displayName).width > textAreaWidth) {
-      // Only truncate if name is exceptionally long
-      while (ctx.measureText(displayName + '...').width > textAreaWidth && displayName.length > 0) {
+    if (ctx.measureText(displayName).width > textAreaWidth - 80) {
+      while (ctx.measureText(displayName + '...').width > textAreaWidth - 80 && displayName.length > 0) {
         displayName = displayName.slice(0, -1);
       }
       displayName += '...';
     }
-    ctx.fillText(displayName, textStartX, rect.y + contentPadding + 18);
+    ctx.fillText(displayName, textStartX, rect.y + 20);
 
     // Price (aligned to right)
     const priceX = rect.x + rect.w - contentPadding;
     ctx.textAlign = 'right';
     ctx.fillStyle = affordable ? '#ffd700' : '#8a6040';
-    ctx.font = 'bold 17px ui-sans-serif';
-    ctx.fillText(`${item.price}g`, priceX, rect.y + contentPadding + 18);
+    ctx.font = 'bold 14px ui-sans-serif';
+    ctx.fillText(`${item.price}g`, priceX, rect.y + 20);
     ctx.textAlign = 'left';
 
-    // Rarity and Hotkey
-    ctx.fillStyle = rarityColor;
-    ctx.font = '13px ui-sans-serif';
-    let rarityText = item.rarity ? item.rarity.charAt(0).toUpperCase() + item.rarity.slice(1) : 'Common';
-    if (item.key) {
-      rarityText += ` [${item.key.toUpperCase()}]`;
-    }
-    ctx.fillText(rarityText, textStartX, rect.y + contentPadding + 40);
-
-    // Item description (effects/stats) - 2 lines max
+    // Description/stats in one line
     ctx.fillStyle = '#d4c4a0';
-    ctx.font = '12px ui-sans-serif';
-    const descY = rect.y + contentPadding + 58;
-    wrapTextConstrained(item.desc, textStartX, descY, textAreaWidth, 14, 2);
+    ctx.font = '11px ui-sans-serif';
+    let shortDesc = item.desc;
+    if (ctx.measureText(shortDesc).width > textAreaWidth) {
+      while (ctx.measureText(shortDesc + '...').width > textAreaWidth && shortDesc.length > 0) {
+        shortDesc = shortDesc.slice(0, -1);
+      }
+      shortDesc += '...';
+    }
+    ctx.fillText(shortDesc, textStartX, rect.y + 38);
 
-    // Status indicators at bottom left
-    ctx.font = '13px ui-sans-serif';
-    const statusY = rect.y + rect.h - contentPadding - 12;
+    // Hotkey indicator
+    if (item.key) {
+      ctx.fillStyle = rarityColor;
+      ctx.font = 'bold 11px ui-sans-serif';
+      ctx.fillText(`[${item.key.toUpperCase()}]`, textStartX, rect.y + 54);
+    }
 
+    // Status indicator (right side)
+    ctx.font = '11px ui-sans-serif';
+    ctx.textAlign = 'right';
     if (owned) {
       ctx.fillStyle = '#7a9fb8';
-      ctx.fillText('✓ Owned', textStartX, statusY);
+      ctx.fillText('✓ Owned', priceX, rect.y + 54);
     } else if (quantity > 0) {
       ctx.fillStyle = '#9ab8c8';
-      ctx.fillText(`${quantity}x in bag`, textStartX, statusY);
+      ctx.fillText(`${quantity}x`, priceX, rect.y + 54);
     } else if (!affordable) {
       ctx.fillStyle = '#c85a48';
-      ctx.fillText('Not enough gold', textStartX, statusY);
-    } else if (!owned && usedSlots >= state.player.inventory.length) {
-      ctx.fillStyle = '#d8923c';
-      ctx.fillText('Inventory full', textStartX, statusY);
+      ctx.fillText('Not enough gold', priceX, rect.y + 54);
     }
+    ctx.textAlign = 'left';
 
-    // Active indicator
-    if (item.type === 'passive' && state.shopOwned.has(item.id)) {
-      ctx.fillStyle = '#68a88c';
-      ctx.textAlign = 'right';
-      ctx.fillText('★ Active', priceX, statusY);
-      ctx.textAlign = 'left';
-    }
-
-    // "Hover for lore" hint at bottom (only if item has flavor text)
-    if (item.flavor) {
+    // "Hover for lore" hint (only if item has flavor text)
+    if (item.flavor && hovered) {
       ctx.fillStyle = 'rgba(169, 143, 107, 0.7)';
-      ctx.font = '11px ui-sans-serif';
+      ctx.font = '10px ui-sans-serif';
       ctx.textAlign = 'right';
-      ctx.fillText('Hover for lore', priceX, rect.y + rect.h - contentPadding - 30);
+      ctx.fillText('Hover for lore', priceX, rect.y + rect.h - 6);
       ctx.textAlign = 'left';
     }
 
@@ -308,7 +281,7 @@ function drawShop(){
   }
 
   // Footer with exit button
-  const exitRect = { x: px + pw - 145, y: py + ph - 45, w: 120, h: 32 };
+  const exitRect = { x: px + shopWidth - 125, y: py + shopHeight - 35, w: 110, h: 26 };
   ctx.fillStyle = getShopHover() === 'exit' ? 'rgba(140,90,50,0.8)' : 'rgba(52,38,24,0.9)';
   ctx.fillRect(exitRect.x, exitRect.y, exitRect.w, exitRect.h);
   ctx.strokeStyle = '#b98a52';
@@ -316,8 +289,8 @@ function drawShop(){
   ctx.strokeRect(exitRect.x + 0.5, exitRect.y + 0.5, exitRect.w - 1, exitRect.h - 1);
   ctx.lineWidth = 1;
   ctx.fillStyle = '#f4e2c0';
-  ctx.font = 'bold 15px ui-sans-serif';
-  ctx.fillText('Leave [ESC]', exitRect.x + 16, exitRect.y + 21);
+  ctx.font = 'bold 12px ui-sans-serif';
+  ctx.fillText('Leave [ESC]', exitRect.x + 14, exitRect.y + 17);
   newHitRegions.push({ type: 'exit', rect: exitRect });
 
   setShopHitRegions(newHitRegions);

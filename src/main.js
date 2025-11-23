@@ -242,7 +242,8 @@ function loop(nowMs){
     lastKnownPixelRatio = currentPixelRatio;
   }
 
-  if (!state.pausedForShop) update(dt);
+  // Always update the game, even when shopping (for contextual shop UI)
+  update(dt);
   draw();
   requestAnimationFrame(loop);
 }
