@@ -813,6 +813,9 @@ function updateNPCBehaviors(dt){
     if (npc.noiseResponseCooldown > 0) npc.noiseResponseCooldown = Math.max(0, npc.noiseResponseCooldown - dt);
 
     if (npc.attack){
+      // Never add villagers or merchants to combat groups - they are peaceful
+      if (npc.type === 'villager' || npc.type === 'merchant') continue;
+
       if (npc.faction === 'village'){
         villageFighters.push(npc);
       } else if (npc.faction === 'darkLord' || npc.faction === 'monster'){
@@ -892,12 +895,21 @@ function updateNPCBehaviors(dt){
       }
     } else {
       // Non-scout NPCs (villagers, merchants, etc.) just follow their patrol routes
-      // Force any villagers/merchants stuck in ALERT state back to PATROL
-      if ((npc.type === 'villager' || npc.type === 'merchant') && npc.behaviorState === NPC_STATE.ALERT) {
-        npc.behaviorState = NPC_STATE.PATROL;
-        npc.stateSince = now;
+      // FORCE villagers/merchants to NEVER chase the player - nuclear option
+      if (npc.type === 'villager' || npc.type === 'merchant') {
+        // Force state to PATROL if not already
+        if (npc.behaviorState !== NPC_STATE.PATROL) {
+          npc.behaviorState = NPC_STATE.PATROL;
+          npc.stateSince = now;
+        }
+        // Force target to waypoint, never to player
+        npc.activeTarget = npc.waypoints[npc.wpIndex];
+        // Clear any chase-related flags
+        npc.chasingTarget = null;
+        npc.activeTargetIsChase = false;
+      } else {
+        npc.activeTarget = npc.waypoints[npc.wpIndex];
       }
-      npc.activeTarget = npc.waypoints[npc.wpIndex];
     }
   }
 
