@@ -5,8 +5,43 @@ import { TAU, clamp } from '../utils/math.js';
 import { gatherForestSolidsAround } from '../world/terrain.js';
 import { toast } from '../ui/toast.js';
 import { forEachVillageInstance, prepareVillageInstances, getVillageInstance } from '../world/villageTemplates.js';
+import { AttackItem } from '../systems/attackItems.js';
 
 const MELEE_RANGE_BONUS = 8;
+
+/**
+ * Convert NPC attack config to AttackItem
+ */
+function createNPCAttackItem(attackConfig, npcType) {
+  if (!attackConfig) return null;
+
+  // Convert NPC attack to attack item format
+  const attackItemData = {
+    id: `${npcType}_attack`,
+    name: `${npcType} Attack`,
+    description: `Standard attack for ${npcType}`,
+    icon: 'attack',
+
+    damage: attackConfig.damage || 0,
+    fireRate: attackConfig.cooldown || 1.2,
+    range: (attackConfig.range || 48) / 16, // Convert pixels to tiles
+    projectileSpeed: 20, // Fixed speed for NPC projectiles
+    projectileSize: 0.4,
+
+    damageType: 'physical',
+    pierce: 0,
+    targetingMode: 'nearest',
+    projectileBehavior: 'straight',
+
+    visualEffect: attackConfig.weaponType || 'attack',
+    soundEffect: 'npc_attack',
+    hitSound: 'hit',
+
+    rarity: 'common'
+  };
+
+  return new AttackItem(attackItemData);
+}
 
 const NPC_STATE = Object.freeze({
   PATROL: 'PATROL',
@@ -302,6 +337,7 @@ function makeNPC(type, x, y, waypoints=null, options = {}){
         nextMessage: 0
       }
       : null,
+    attackItem: config.attack ? createNPCAttackItem(config.attack, type) : null,
     faction: options.faction || config.faction || 'village',
     displayName: options.displayName || config.displayName || type,
     behaviorState: options.behaviorState || defaultState,

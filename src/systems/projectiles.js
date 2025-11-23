@@ -110,25 +110,57 @@ class Projectile {
   }
 
   checkCollisions() {
-    for (let enemy of state.npcs) {
-      if (!enemy.attackable || enemy.hp <= 0) continue;
-      if (this.hitEnemies.has(enemy.id)) continue; // Already hit with pierce
+    // If projectile is from an NPC, check if it hits the player
+    if (this.owner !== state.player) {
+      const player = state.player;
+      if (!player.dead) {
+        const distance = Math.hypot(player.x - this.x, player.y - this.y);
+        const collisionRadius = (this.attackData.projectileSize || 0.5) * 16 + (player.r || 10);
 
-      const distance = Math.hypot(enemy.x - this.x, enemy.y - this.y);
-      const collisionRadius = (this.attackData.projectileSize || 0.5) * 16 + (enemy.r || 16);
-
-      if (distance < collisionRadius) {
-        this.onHit(enemy);
-        this.hitEnemies.add(enemy.id);
-        this.pierceCount++;
-
-        // Check if we should destroy
-        if (this.pierceCount > this.maxPierce) {
+        if (distance < collisionRadius) {
+          this.onHitPlayer(player);
           this.destroy();
           return;
         }
       }
     }
+
+    // If projectile is from player, check if it hits NPCs
+    if (this.owner === state.player) {
+      for (let enemy of state.npcs) {
+        if (!enemy.attackable || enemy.hp <= 0) continue;
+        if (this.hitEnemies.has(enemy.id)) continue; // Already hit with pierce
+
+        const distance = Math.hypot(enemy.x - this.x, enemy.y - this.y);
+        const collisionRadius = (this.attackData.projectileSize || 0.5) * 16 + (enemy.r || 16);
+
+        if (distance < collisionRadius) {
+          this.onHit(enemy);
+          this.hitEnemies.add(enemy.id);
+          this.pierceCount++;
+
+          // Check if we should destroy
+          if (this.pierceCount > this.maxPierce) {
+            this.destroy();
+            return;
+          }
+        }
+      }
+    }
+  }
+
+  onHitPlayer(player) {
+    // Deal damage to player
+    const damage = this.attackData.damage || 0;
+
+    // Apply damage
+    player.health -= damage;
+    addDamageNumber(player.x, player.y - 20, Math.floor(damage));
+
+    // Camera effects
+    addScreenShake(4);
+
+    // TODO: Visual/audio feedback for player hit
   }
 
   onHit(enemy) {

@@ -520,6 +520,19 @@ function update(dt){
     npc.facing = Math.atan2(vy, vx);
   }
 
+  // Update NPC attack items (new auto-attack system)
+  for (const npc of state.npcs){
+    if (!npc.attackItem) continue;
+
+    // Only engaged NPCs should auto-attack
+    const engaged = npc.faction === 'monster' || npc.faction === 'darkLord' || npc.behaviorState === NPC_STATE.ALERT;
+    if (!engaged) continue;
+
+    // NPC attacks target the player
+    const enemies = [state.player];
+    npc.attackItem.update(dt, npc, enemies);
+  }
+
   const battleCasualties = [];
   const defeated = new Set();
   for (const npc of state.npcs){
