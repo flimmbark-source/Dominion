@@ -362,27 +362,29 @@ function drawHUD(){
   const abilitiesY = baseY + 20;
   drawAbilityBar(centerX, abilitiesY);
 
-  // Draw stats below abilities
-  const statsY = baseY + 96; // Moved down from 86
+  // Draw stats below abilities - evenly spaced and centered
+  const statsY = baseY + 96;
   ctx.fillStyle = '#cfe1ff';
   ctx.font = '11px "Trebuchet MS", system-ui';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  const statSpacing = 85; // Increased from 68 for more spacing
-  const statsStartX = centerX - statSpacing;
+  const statSpacing = 90; // Space between each stat
+  const speedX = centerX - statSpacing;
+  const attackX = centerX;
+  const stealthX = centerX + statSpacing;
 
-  // Speed
-  drawBootIcon(statsStartX - 10, statsY);
-  ctx.fillText(`${Math.round(stats.movementSpeed)}`, statsStartX + 14, statsY + 8);
+  // Speed (left)
+  drawBootIcon(speedX - 10, statsY);
+  ctx.fillText(`${Math.round(stats.movementSpeed)}`, speedX + 14, statsY + 8);
 
-  // Attack
-  drawSwordIcon(centerX - 10, statsY);
-  ctx.fillText(`${Math.round(stats.attackDamage)}`, centerX + 14, statsY + 8);
+  // Attack (center)
+  drawSwordIcon(attackX - 10, statsY);
+  ctx.fillText(`${Math.round(stats.attackDamage)}`, attackX + 14, statsY + 8);
 
-  // Stealth
-  drawCloakIcon(statsStartX + statSpacing - 10, statsY);
-  ctx.fillText(`x${stats.stealthFactor.toFixed(2)}`, statsStartX + statSpacing + 14, statsY + 8);
+  // Stealth (right)
+  drawCloakIcon(stealthX - 10, statsY);
+  ctx.fillText(`x${stats.stealthFactor.toFixed(2)}`, stealthX + 14, statsY + 8);
 
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
