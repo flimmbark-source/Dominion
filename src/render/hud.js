@@ -234,16 +234,19 @@ function drawStatusEffects(){
   ctx.restore();
 }
 
-function drawAbilityBar(){
+function drawAbilityBar(panelX, panelY, panelWidth, panelHeight){
   const p = state.player;
   const abilities = getAbilities(p);
   if (!abilities || abilities.length === 0) return;
 
-  const slotSize = 56;
-  const slotSpacing = 8;
+  // Draw panel background
+  drawPanel(panelX, panelY, panelWidth, panelHeight);
+
+  const slotSize = 52;
+  const slotSpacing = 6;
   const totalWidth = abilities.length * slotSize + (abilities.length - 1) * slotSpacing;
-  const startX = (W / 2) - (totalWidth / 2);
-  const y = H - 200;
+  const startX = panelX + (panelWidth - totalWidth) / 2;
+  const y = panelY + (panelHeight - slotSize) / 2;
 
   ctx.save();
 
@@ -282,7 +285,7 @@ function drawAbilityBar(){
     ctx.textBaseline = 'top';
     ctx.fillText(ability.keybind.toUpperCase(), x + slotSize / 2, y + 6);
 
-    // Draw ability name below
+    // Draw ability name below slot
     ctx.fillStyle = ability.isReady ? '#d0e0ff' : '#6a7a92';
     ctx.font = '10px "Trebuchet MS", system-ui';
     ctx.textBaseline = 'top';
@@ -296,7 +299,7 @@ function drawHUD(){
   drawThreatIndicator();
   drawComboCounter();
   drawStatusEffects();
-  drawAbilityBar();
+
   const panelHeight = 128;
   const baseY = H - panelHeight - 12;
   ctx.save();
@@ -311,9 +314,9 @@ function drawHUD(){
   const barPanelWidth = 304;
   drawPanel(barPanelX, baseY, barPanelWidth, panelHeight);
 
-  const statsPanelWidth = 168;
-  const statsPanelX = barPanelX + barPanelWidth + 12;
-  drawPanel(statsPanelX, baseY, statsPanelWidth, panelHeight);
+  // Abilities panel (where stats used to be)
+  const abilitiesPanelWidth = 168;
+  const abilitiesPanelX = barPanelX + barPanelWidth + 12;
 
   const p = state.player;
   const stats = getPlayerStats(p);
@@ -338,42 +341,39 @@ function drawHUD(){
   ctx.font = '12px "Trebuchet MS", system-ui';
   ctx.fillText(`${Math.max(0, 100 - Math.round(p.detection))}% hidden`, 140, baseY + 96);
 
-  const goldIconX = barPanelX + barPanelWidth - 78;
+  // Gold and stats in same panel
+  const goldIconX = 32;
+  const goldY = baseY + 102;
   ctx.fillStyle = '#ffd25a';
   ctx.font = '15px "Trebuchet MS", system-ui';
-  drawCoinIcon(goldIconX, baseY + 102);
+  drawCoinIcon(goldIconX, goldY);
   ctx.textAlign = 'left';
-  ctx.fillText(`${p.gold}`, goldIconX + 28, baseY + 116);
+  ctx.fillText(`${p.gold}`, goldIconX + 28, goldY + 14);
 
-  const statTextY = baseY + 34;
-  const statTextX = statsPanelX + 52;
+  // Stats next to gold
+  const statsStartX = 120;
+  const statsY = baseY + 96;
   ctx.fillStyle = '#cfe1ff';
-  ctx.font = '12px "Trebuchet MS", system-ui';
-  const previousBaseline = ctx.textBaseline;
+  ctx.font = '11px "Trebuchet MS", system-ui';
+  ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
 
-  const statRows = [
-    {
-      label: `${Math.round(stats.movementSpeed)}`,
-      icon: drawBootIcon
-    },
-    {
-      label: `${Math.round(stats.attackDamage)}`,
-      icon: drawSwordIcon
-    },
-    {
-      label: `x${stats.stealthFactor.toFixed(2)}`,
-      icon: drawCloakIcon
-    }
-  ];
+  // Speed
+  drawBootIcon(statsStartX, statsY);
+  ctx.fillText(`${Math.round(stats.movementSpeed)}`, statsStartX + 24, statsY + 8);
 
-  statRows.forEach((row, i) => {
-    const lineY = statTextY + i * 30;
-    row.icon(statsPanelX + 18, lineY - 20);
-    ctx.fillText(row.label, statTextX, lineY - 10);
-  });
+  // Attack
+  drawSwordIcon(statsStartX + 68, statsY);
+  ctx.fillText(`${Math.round(stats.attackDamage)}`, statsStartX + 92, statsY + 8);
 
-  ctx.textBaseline = previousBaseline;
+  // Stealth
+  drawCloakIcon(statsStartX + 136, statsY);
+  ctx.fillText(`x${stats.stealthFactor.toFixed(2)}`, statsStartX + 160, statsY + 8);
+
+  ctx.textBaseline = 'alphabetic';
+
+  // Draw abilities panel
+  drawAbilityBar(abilitiesPanelX, baseY, abilitiesPanelWidth, panelHeight);
 
   const slotSize = 52;
   const slotCount = 6;
