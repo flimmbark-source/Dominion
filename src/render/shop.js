@@ -80,10 +80,9 @@ function drawShop(){
 
   // Draw each item card in a single column layout
   shopItems.forEach((item, idx) => {
-    const col = idx % columns;
-    const row = Math.floor(idx / columns);
+    const row = idx; // Single column, so row = index
 
-    const cardX = px + gridPadding + col * (itemCardWidth + columnGap);
+    const cardX = px + gridPadding;
     const cardY = gridStartY + row * (itemCardHeight + rowGap);
 
     // Skip if outside visible area
