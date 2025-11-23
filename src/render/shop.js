@@ -30,17 +30,12 @@ function drawShop(){
   const verticalPadding = 20;
   const shopHeight = headerHeight + (shopItems.length * (itemCardHeight + rowGap)) + footerHeight + verticalPadding;
 
-  // Position to the LEFT of the merchant (other side)
-  const shopWorldX = merchantNPC.x - shopWidth - 80;
-  const shopWorldY = merchantNPC.y - shopHeight / 2;
+  // Position shop on the LEFT side of the screen
+  const px = 10; // Left edge with small margin
 
-  // Apply camera offset to convert to screen space
-  const shopScreenX = shopWorldX - state.camera.x;
-  const shopScreenY = shopWorldY - state.camera.y;
-
-  // Clamp to screen bounds
-  const px = Math.max(10, Math.min(W - shopWidth - 10, shopScreenX));
-  const py = Math.max(10, Math.min(H - shopHeight - 10, shopScreenY));
+  // Vertically center on merchant position
+  const merchantScreenY = merchantNPC.y - state.camera.y;
+  const py = Math.max(10, Math.min(H - shopHeight - 10, merchantScreenY - shopHeight / 2));
 
   ctx.save();
 

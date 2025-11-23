@@ -105,6 +105,28 @@ function drawMiniMap(){
     ctx.globalAlpha = 1;
   }
 
+  // Draw traveling merchant if active
+  if (state.merchants?.travelingMerchant){
+    const merchant = state.merchants.travelingMerchant;
+    const dx = merchant.x - player.x;
+    const dy = merchant.y - player.y;
+    const distSq = dx * dx + dy * dy;
+    if (distSq <= VIEW_RADIUS * VIEW_RADIUS * 1.44){
+      const merchantX = minimapX + MINIMAP_SIZE / 2 + dx * scale;
+      const merchantY = minimapY + MINIMAP_SIZE / 2 + dy * scale;
+      // Draw with wandering-merchant color (light blue)
+      ctx.fillStyle = MINIMAP_POI_COLORS['wandering-merchant'];
+      ctx.beginPath();
+      ctx.arc(merchantX, merchantY, Math.max(4, 10 * scale), 0, TAU);
+      ctx.fill();
+      // Add a white border to make it stand out
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.lineWidth = 1;
+    }
+  }
+
   const nearbyNpcs = state.npcs.filter((npc) => {
     const dx = npc.x - player.x;
     const dy = npc.y - player.y;
