@@ -40,7 +40,6 @@ import {
 } from './systems/inventoryHover.js';
 import { enterTavernInterior, leaveTavernInterior } from './systems/tavern.js';
 import { addThreat } from './systems/threat.js';
-import { attemptAttack } from './systems/combat.js';
 import { addDamageNumber, updateDamageNumbers } from './systems/damageNumbers.js';
 import { initPointsOfInterest, handlePointOfInterestInteraction } from './systems/pointsOfInterest.js';
 import { updateCameraEffects } from './systems/cameraEffects.js';
@@ -220,20 +219,6 @@ function advanceDeathSequence(dt){
   return false;
 }
 
-function getEquippedWeaponType(player){
-  if (!player || !Array.isArray(player.inventory)){
-    return resolveWeaponType('dagger');
-  }
-
-  for (const item of player.inventory){
-    if (!item) continue;
-    if (item.weaponType) return resolveWeaponType(item.weaponType);
-    if (item.id === 'dagger') return resolveWeaponType('dagger');
-  }
-
-  return resolveWeaponType('dagger');
-}
-
 function loop(nowMs){
   const now = nowMs/1000;
   const dt = Math.min(0.033, now - lastT/1000);
@@ -285,7 +270,6 @@ function update(dt){
 
   let interactPressed = pressOnce('e');
   let pickpocketPressed = pressOnce('r');
-  let attackPressed = pressOnce('space');
   let throwPressed = pressOnce('q');
   const interactForDialogue = interactPressed;
   let barkeepDialogueActive = isBarkeepDialogueActive();
@@ -297,7 +281,6 @@ function update(dt){
     barkeepDialogueActive = isBarkeepDialogueActive();
     interactPressed = false;
     pickpocketPressed = false;
-    attackPressed = false;
     throwPressed = false;
   }
   let interactAvailable = interactPressed;
@@ -387,7 +370,6 @@ function update(dt){
           startBarkeepConversation();
           barkeepDialogueActive = true;
           pickpocketPressed = false;
-          attackPressed = false;
           throwPressed = false;
         }
         interactPressed = false;
@@ -644,9 +626,7 @@ function update(dt){
     }
   }
 
-  if (!barkeepDialogueActive && attackPressed){
-    attemptAttack(p, playerStats, getEquippedWeaponType(p));
-  }
+  // Old space bar combat removed - now using auto-attack system
 
   let seenBy = 0;
   for (const npc of state.npcs){

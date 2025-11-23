@@ -630,7 +630,8 @@ function spawnReinforcement(options = {}){
     ];
   }
 
-  const npc = makeNPC('scout', entry.x, entry.y, patrol);
+  // Castle spawns should be Dark Lord faction, not village
+  const npc = makeNPC('scout', entry.x, entry.y, patrol, { faction: 'darkLord' });
   if (mode === 'aggressive'){
     npc.baseSpeed += 16;
     npc.baseFovRange += 60;
