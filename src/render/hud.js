@@ -234,19 +234,15 @@ function drawStatusEffects(){
   ctx.restore();
 }
 
-function drawAbilityBar(panelX, panelY, panelWidth, panelHeight){
+function drawAbilityBar(centerX, y){
   const p = state.player;
   const abilities = getAbilities(p);
   if (!abilities || abilities.length === 0) return;
 
-  // Draw panel background
-  drawPanel(panelX, panelY, panelWidth, panelHeight);
-
   const slotSize = 52;
   const slotSpacing = 6;
   const totalWidth = abilities.length * slotSize + (abilities.length - 1) * slotSpacing;
-  const startX = panelX + (panelWidth - totalWidth) / 2;
-  const y = panelY + (panelHeight - slotSize) / 2;
+  const startX = centerX - totalWidth / 2;
 
   ctx.save();
 
@@ -337,7 +333,7 @@ function drawHUD(){
   ctx.font = '12px "Trebuchet MS", system-ui';
   ctx.fillText(`${Math.max(0, 100 - Math.round(p.detection))}% hidden`, 140, baseY + 96);
 
-  // Gold and stats in same panel
+  // Gold in HP panel
   const goldIconX = 32;
   const goldY = baseY + 102;
   ctx.fillStyle = '#ffd25a';
@@ -346,29 +342,7 @@ function drawHUD(){
   ctx.textAlign = 'left';
   ctx.fillText(`${p.gold}`, goldIconX + 28, goldY + 14);
 
-  // Stats next to gold - moved down for better spacing
-  const statsStartX = 120;
-  const statsY = baseY + 106; // Increased from 96 for more padding
-  ctx.fillStyle = '#cfe1ff';
-  ctx.font = '11px "Trebuchet MS", system-ui';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-
-  // Speed
-  drawBootIcon(statsStartX, statsY);
-  ctx.fillText(`${Math.round(stats.movementSpeed)}`, statsStartX + 24, statsY + 8);
-
-  // Attack
-  drawSwordIcon(statsStartX + 68, statsY);
-  ctx.fillText(`${Math.round(stats.attackDamage)}`, statsStartX + 92, statsY + 8);
-
-  // Stealth
-  drawCloakIcon(statsStartX + 136, statsY);
-  ctx.fillText(`x${stats.stealthFactor.toFixed(2)}`, statsStartX + 160, statsY + 8);
-
-  ctx.textBaseline = 'alphabetic';
-
-  // Calculate inventory panel position first
+  // Calculate inventory panel position
   const slotSize = 52;
   const slotCount = 6;
   const slotsWidth = slotCount * slotSize;
@@ -379,12 +353,39 @@ function drawHUD(){
   const inventoryPanelX = W - inventoryPanelWidth - 16;
   const inventoryPanelY = baseY + (panelHeight - inventoryPanelHeight) / 2;
 
-  // Position abilities panel between HP panel and inventory
-  const abilitiesPanelWidth = 168;
-  const abilitiesPanelX = inventoryPanelX - abilitiesPanelWidth - 12;
+  // Calculate center position between HP panel edge and inventory panel edge
+  const hpPanelRightEdge = barPanelX + barPanelWidth;
+  const inventoryPanelLeftEdge = inventoryPanelX;
+  const centerX = (hpPanelRightEdge + inventoryPanelLeftEdge) / 2;
 
-  // Draw abilities panel
-  drawAbilityBar(abilitiesPanelX, baseY, abilitiesPanelWidth, panelHeight);
+  // Draw abilities centered between panels
+  const abilitiesY = baseY + 20;
+  drawAbilityBar(centerX, abilitiesY);
+
+  // Draw stats below abilities
+  const statsY = baseY + 86;
+  ctx.fillStyle = '#cfe1ff';
+  ctx.font = '11px "Trebuchet MS", system-ui';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  const statSpacing = 68;
+  const statsStartX = centerX - statSpacing;
+
+  // Speed
+  drawBootIcon(statsStartX - 10, statsY);
+  ctx.fillText(`${Math.round(stats.movementSpeed)}`, statsStartX + 14, statsY + 8);
+
+  // Attack
+  drawSwordIcon(centerX - 10, statsY);
+  ctx.fillText(`${Math.round(stats.attackDamage)}`, centerX + 14, statsY + 8);
+
+  // Stealth
+  drawCloakIcon(statsStartX + statSpacing - 10, statsY);
+  ctx.fillText(`x${stats.stealthFactor.toFixed(2)}`, statsStartX + statSpacing + 14, statsY + 8);
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
 
   // Draw inventory panel
   drawPanel(inventoryPanelX, inventoryPanelY, inventoryPanelWidth, inventoryPanelHeight);
