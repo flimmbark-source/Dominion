@@ -128,7 +128,7 @@ class Projectile {
     // If projectile is from player, check if it hits NPCs
     if (this.owner === state.player) {
       for (let enemy of state.npcs) {
-        if (!enemy.attackable || enemy.hp <= 0) continue;
+        if (!enemy.attackable || (enemy.health || enemy.hp) <= 0) continue;
         if (this.hitEnemies.has(enemy.id)) continue; // Already hit with pierce
 
         const distance = Math.hypot(enemy.x - this.x, enemy.y - this.y);
@@ -172,8 +172,12 @@ class Projectile {
       damage *= (this.attackData.bonusVsUndead || 1.5);
     }
 
-    // Apply damage
-    enemy.hp -= damage;
+    // Apply damage (NPCs use .health, not .hp)
+    if (enemy.health !== undefined) {
+      enemy.health -= damage;
+    } else if (enemy.hp !== undefined) {
+      enemy.hp -= damage;
+    }
     addDamageNumber(enemy.x, enemy.y, Math.floor(damage));
 
     // Camera effects
@@ -201,7 +205,8 @@ class Projectile {
     }
 
     // Check if enemy defeated
-    if (enemy.hp <= 0) {
+    const currentHealth = enemy.health !== undefined ? enemy.health : enemy.hp;
+    if (currentHealth <= 0) {
       if (enemy.rewardGold) {
         state.player.gold += enemy.rewardGold;
       }
@@ -226,14 +231,21 @@ class Projectile {
     const aoeDamage = this.attackData.damage * (this.attackData.aoeDamage || 0.5);
 
     for (let enemy of state.npcs) {
-      if (!enemy.attackable || enemy.hp <= 0) continue;
+      if (!enemy.attackable || (enemy.health || enemy.hp) <= 0) continue;
       const distance = Math.hypot(enemy.x - epicenter.x, enemy.y - epicenter.y);
 
       if (distance <= this.attackData.aoeRadius * 16) {
-        enemy.hp -= aoeDamage;
+        // Apply damage
+        if (enemy.health !== undefined) {
+          enemy.health -= aoeDamage;
+        } else if (enemy.hp !== undefined) {
+          enemy.hp -= aoeDamage;
+        }
         addDamageNumber(enemy.x, enemy.y, Math.floor(aoeDamage));
 
-        if (enemy.hp <= 0) {
+        // Check if defeated
+        const currentHealth = enemy.health !== undefined ? enemy.health : enemy.hp;
+        if (currentHealth <= 0) {
           if (enemy.rewardGold) {
             state.player.gold += enemy.rewardGold;
           }
@@ -249,7 +261,7 @@ class Projectile {
     let nearestDist = Infinity;
 
     for (let enemy of state.npcs) {
-      if (!enemy.attackable || enemy.hp <= 0) continue;
+      if (!enemy.attackable || (enemy.health || enemy.hp) <= 0) continue;
       if (enemy === hitEnemy) continue;
       if (this.hitEnemies.has(enemy.id)) continue;
 

@@ -46,7 +46,7 @@ export class AttackItem {
     const rangeInPixels = this.range * 16;
     const enemiesInRange = enemies.filter(enemy => {
       const distance = this.getDistance(player, enemy);
-      return distance <= rangeInPixels && enemy.hp > 0 && enemy.attackable;
+      return distance <= rangeInPixels && (enemy.health || enemy.hp) > 0 && enemy.attackable;
     });
 
     if (enemiesInRange.length === 0) return null;
