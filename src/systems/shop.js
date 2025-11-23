@@ -152,6 +152,14 @@ function getCurrentShopItems() {
   return getMerchantInventory(shopState.currentMerchant, shopState.currentVillageIndex);
 }
 
+function getCurrentMerchantType() {
+  return shopState.currentMerchant;
+}
+
+function getCurrentVillageIndex() {
+  return shopState.currentVillageIndex;
+}
+
 function handleShopKeyDown(e){
   if (!state.pausedForShop) return;
   const k = e.key.toLowerCase();
@@ -242,5 +250,7 @@ export {
   getShopHover,
   setShopHover,
   getShopMousePos,
-  getCurrentShopItems
+  getCurrentShopItems,
+  getCurrentMerchantType,
+  getCurrentVillageIndex
 };

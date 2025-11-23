@@ -1,7 +1,7 @@
 import { ctx, W, H } from '../game/canvas.js';
 import { state } from '../state/gameState.js';
 import { RARITY_COLORS } from '../data/items.js';
-import { setShopHitRegions, getShopHover, getShopMousePos, getCurrentShopItems } from '../systems/shop.js';
+import { setShopHitRegions, getShopHover, getShopMousePos, getCurrentShopItems, getCurrentMerchantType, getCurrentVillageIndex } from '../systems/shop.js';
 import { drawItemIcon } from './itemIcons.js';
 import { getMerchantName, MERCHANT_TYPE } from '../systems/merchants.js';
 
@@ -53,11 +53,7 @@ function drawShop(){
   // Header section
   ctx.fillStyle = '#f6e9c8';
   ctx.font = 'bold 20px "Trebuchet MS", ui-sans-serif';
-  const merchantName = getMerchantName(
-    state.pausedForShop && shopItems.length > 0 ?
-      (state.merchants?.travelingMerchant ? MERCHANT_TYPE.TRAVELING : MERCHANT_TYPE.GOBLIN_TAVERN) :
-      'Merchant'
-  );
+  const merchantName = getMerchantName(getCurrentMerchantType(), getCurrentVillageIndex());
   ctx.fillText(merchantName, px + 20, py + 32);
 
   // Gold display
