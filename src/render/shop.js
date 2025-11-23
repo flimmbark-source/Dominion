@@ -21,10 +21,17 @@ function drawShop(){
 
   // Calculate shop position relative to merchant (in world space)
   const shopWidth = 420;
-  const shopHeight = 480;
 
-  // Position to the right of the merchant
-  const shopWorldX = merchantNPC.x + 80;
+  // Calculate dynamic height based on number of items
+  const itemCardHeight = 70;
+  const rowGap = 8;
+  const headerHeight = 50;
+  const footerHeight = 45;
+  const verticalPadding = 20;
+  const shopHeight = headerHeight + (shopItems.length * (itemCardHeight + rowGap)) + footerHeight + verticalPadding;
+
+  // Position to the LEFT of the merchant (other side)
+  const shopWorldX = merchantNPC.x - shopWidth - 80;
   const shopWorldY = merchantNPC.y - shopHeight / 2;
 
   // Apply camera offset to convert to screen space
@@ -62,14 +69,12 @@ function drawShop(){
   ctx.fillText(`💰 ${state.player.gold}g`, px + shopWidth - 100, py + 32);
 
   // Item grid area - single column, compact layout
-  const gridStartY = py + 50;
+  const gridStartY = py + headerHeight;
   const gridPadding = 16;
   const gridWidth = shopWidth - gridPadding * 2;
   const itemCardWidth = gridWidth; // Full width for single column
-  const itemCardHeight = 70; // Compact height
-  const rowGap = 8;
   const columns = 1; // Single column for compact design
-  const gridHeight = shopHeight - 50 - 20; // Space for header and close button
+  const gridHeight = shopHeight - headerHeight - footerHeight; // Space for header and footer
 
   const newHitRegions = [];
   const usedSlots = state.player.inventory.filter(Boolean).length;
