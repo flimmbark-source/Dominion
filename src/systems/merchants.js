@@ -78,14 +78,9 @@ export function initMerchants() {
  */
 function spawnTownMerchants() {
   console.log('[Merchants] Spawning town merchants...');
-  forEachVillageInstance((instance, villageIndex) => {
-    console.log(`[Merchants] Checking village ${villageIndex}`, {
-      hasHouses: !!instance.houses,
-      housesCount: instance.houses?.length,
-      hasPlacedHouses: !!instance.placedHouses,
-      placedHousesCount: instance.placedHouses?.length
-    });
+  console.log('[Merchants] NPC count before spawning:', state.npcs.length);
 
+  forEachVillageInstance((instance, villageIndex) => {
     // Find the store building spec
     const storeSpec = instance.houses?.find(h => h.id === 'store');
     if (!storeSpec) {
@@ -106,12 +101,10 @@ function spawnTownMerchants() {
     const doorX = placement.x + Math.round((spec.w - doorW) * Math.max(0.05, Math.min(0.95, placement.doorOffset)));
     const doorY = spec.side === 'north' ? (placement.y + spec.h - 8) : placement.y; // WALL = 8
 
-    // Position merchant at the door
+    // Position merchant at the door (LOCAL coordinates)
     const merchantX = doorX + doorW / 2;
     const merchantY = doorY;
     const stationaryRoute = [{ x: merchantX, y: merchantY }];
-
-    console.log(`[Merchants] Creating merchant at village ${villageIndex}, position:`, { x: merchantX, y: merchantY });
 
     const merchant = addVillageNPC('merchant', villageIndex, merchantX, merchantY, stationaryRoute, {
       displayName: 'merchant',
@@ -126,11 +119,33 @@ function spawnTownMerchants() {
       merchant.merchantType = MERCHANT_TYPE.TOWN;
       merchant.villageIndex = villageIndex;
       state.merchants.townMerchants.push(merchant);
-      console.log(`[Merchants] ✓ Merchant created successfully in village ${villageIndex}`);
+      console.log(`[Merchants] ✓ Merchant ${villageIndex} created:`, {
+        type: merchant.type,
+        worldPos: { x: Math.round(merchant.x), y: Math.round(merchant.y) },
+        localPos: { x: Math.round(merchantX), y: Math.round(merchantY) },
+        isMerchant: merchant.isMerchant,
+        speed: merchant.speed
+      });
     } else {
       console.error(`[Merchants] ✗ Failed to create merchant in village ${villageIndex}`);
     }
   });
+
+  console.log('[Merchants] NPC count after spawning:', state.npcs.length);
+  console.log('[Merchants] Total merchants in state.merchants.townMerchants:', state.merchants.townMerchants.length);
+
+  // Check merchants after 2 seconds to see if they persist
+  setTimeout(() => {
+    const merchants = state.npcs.filter(n => n.type === 'merchant');
+    console.log('[Merchants] Merchants still in state.npcs after 2s:', merchants.length);
+    merchants.forEach((m, i) => {
+      console.log(`  Merchant ${i}:`, {
+        pos: { x: Math.round(m.x), y: Math.round(m.y) },
+        type: m.type,
+        isMerchant: m.isMerchant
+      });
+    });
+  }, 2000);
 }
 
 /**
