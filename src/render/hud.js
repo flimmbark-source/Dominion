@@ -314,10 +314,6 @@ function drawHUD(){
   const barPanelWidth = 304;
   drawPanel(barPanelX, baseY, barPanelWidth, panelHeight);
 
-  // Abilities panel (where stats used to be)
-  const abilitiesPanelWidth = 168;
-  const abilitiesPanelX = barPanelX + barPanelWidth + 12;
-
   const p = state.player;
   const stats = getPlayerStats(p);
   const maxHealth = stats.maxHealth || 1;
@@ -350,9 +346,9 @@ function drawHUD(){
   ctx.textAlign = 'left';
   ctx.fillText(`${p.gold}`, goldIconX + 28, goldY + 14);
 
-  // Stats next to gold
+  // Stats next to gold - moved down for better spacing
   const statsStartX = 120;
-  const statsY = baseY + 96;
+  const statsY = baseY + 106; // Increased from 96 for more padding
   ctx.fillStyle = '#cfe1ff';
   ctx.font = '11px "Trebuchet MS", system-ui';
   ctx.textAlign = 'left';
@@ -372,9 +368,7 @@ function drawHUD(){
 
   ctx.textBaseline = 'alphabetic';
 
-  // Draw abilities panel
-  drawAbilityBar(abilitiesPanelX, baseY, abilitiesPanelWidth, panelHeight);
-
+  // Calculate inventory panel position first
   const slotSize = 52;
   const slotCount = 6;
   const slotsWidth = slotCount * slotSize;
@@ -384,6 +378,15 @@ function drawHUD(){
   const inventoryPanelHeight = slotSize + inventoryPaddingY * 2;
   const inventoryPanelX = W - inventoryPanelWidth - 16;
   const inventoryPanelY = baseY + (panelHeight - inventoryPanelHeight) / 2;
+
+  // Position abilities panel between HP panel and inventory
+  const abilitiesPanelWidth = 168;
+  const abilitiesPanelX = inventoryPanelX - abilitiesPanelWidth - 12;
+
+  // Draw abilities panel
+  drawAbilityBar(abilitiesPanelX, baseY, abilitiesPanelWidth, panelHeight);
+
+  // Draw inventory panel
   drawPanel(inventoryPanelX, inventoryPanelY, inventoryPanelWidth, inventoryPanelHeight);
 
   const slotsX = inventoryPanelX + inventoryPaddingX;
