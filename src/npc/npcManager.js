@@ -458,11 +458,9 @@ function buildSearchRoute(anchor, radius = 140, steps = 3){
 }
 
 function setNPCState(npc, newState, options = {}){
-  // Villagers and merchants should never enter ALERT state unless catching player stealing
+  // Villagers and merchants should NEVER enter ALERT state - they are peaceful NPCs
   if ((npc.type === 'villager' || npc.type === 'merchant') && newState === NPC_STATE.ALERT){
-    if (options.reason !== 'caught_stealing'){
-      return false; // Block ALERT state for peaceful NPCs
-    }
+    return false; // Block ALL ALERT state transitions for villagers/merchants
   }
 
   const previous = npc.behaviorState;
@@ -893,14 +891,11 @@ function updateNPCBehaviors(dt){
           break;
       }
     } else {
-      // Handle villagers and merchants who caught the player stealing
-      if ((npc.type === 'villager' || npc.type === 'merchant') && npc.behaviorState === NPC_STATE.ALERT && npc.caughtStealing) {
-        const timeSinceCaught = now - (npc.caughtStealingAt || 0);
-        // Return to patrol after 8 seconds
-        if (timeSinceCaught > 8) {
-          setNPCState(npc, NPC_STATE.PATROL, { reason: 'calm_down' });
-          npc.caughtStealing = false;
-        }
+      // Non-scout NPCs (villagers, merchants, etc.) just follow their patrol routes
+      // Force any villagers/merchants stuck in ALERT state back to PATROL
+      if ((npc.type === 'villager' || npc.type === 'merchant') && npc.behaviorState === NPC_STATE.ALERT) {
+        npc.behaviorState = NPC_STATE.PATROL;
+        npc.stateSince = now;
       }
       npc.activeTarget = npc.waypoints[npc.wpIndex];
     }

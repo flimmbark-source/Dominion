@@ -126,11 +126,7 @@ function tryPickpocketVillager(){
     npc.dialogCooldown = state.time + 8;
     toast('The villager snaps around. "Thief!"', 2.6);
     addThreat(18);
-
-    // Make the villager chase the player for catching them stealing
-    setNPCState(npc, NPC_STATE.ALERT, { reason: 'caught_stealing' });
-    npc.caughtStealing = true;
-    npc.caughtStealingAt = state.time;
+    // Villagers don't chase - they just yell and remember you
   }
 
   return true;
