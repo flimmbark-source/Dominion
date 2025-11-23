@@ -68,6 +68,8 @@ import {
   updateBarkeepMissions
 } from './systems/barkeepMissions.js';
 import { initMerchants, updateTravelingMerchant, tryInteractWithMerchant } from './systems/merchants.js';
+import { projectileManager } from './systems/projectiles.js';
+import { initializePlayerAttackInventory, updateAttackInventory } from './systems/attackInventory.js';
 
 setupInput();
 prepareVillageInstances();
@@ -81,6 +83,7 @@ initBarkeepMissions();
 initMerchants();
 initAbilities(state.player);
 initStatusEffects(state.player);
+initializePlayerAttackInventory('goblin'); // TODO: Support different hero types
 
 window.addEventListener('keydown', handleShopKeyDown);
 canvas.addEventListener('mousemove', handleCanvasMouseMove);
@@ -268,6 +271,8 @@ function update(dt){
   updateAbilities(state.player, state.time);
   updateDashMovement(state.player, dt);
   updateStatusEffects(state.player, dt);
+  updateAttackInventory(dt); // Update auto-attack items
+  projectileManager.update(dt); // Update projectiles
 
   if (state.player.health <= 0 && !state.deathSequence){
     startDeathSequence();

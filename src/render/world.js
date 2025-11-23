@@ -15,6 +15,7 @@ import {
 import { getMerchantPromptData } from '../systems/merchants.js';
 import { getActiveDamageNumbers } from '../systems/damageNumbers.js';
 import { getCameraOffset } from '../systems/cameraEffects.js';
+import { getProjectiles } from '../systems/projectiles.js';
 
 function lerp(a, b, t){
   return a + (b - a) * t;
@@ -541,6 +542,50 @@ const POI_STYLES = {
   'bog-sprite': { outer: '#0f3320', inner: '#66e0a0' }
 };
 
+function drawProjectiles(){
+  const projectiles = getProjectiles();
+  if (!projectiles.length) return;
+
+  ctx.save();
+
+  for (const proj of projectiles) {
+    // Simple circle visualization for now
+    const radius = (proj.attackData.projectileSize || 0.5) * 16;
+
+    // Color based on damage type
+    const damageTypeColors = {
+      physical: '#9a9a9a',
+      fire: '#ff4400',
+      poison: '#44ff00',
+      ice: '#00ccff',
+      lightning: '#ffff00',
+      shadow: '#8800ff',
+      holy: '#ffcc00'
+    };
+    const color = damageTypeColors[proj.attackData.damageType] || '#ffffff';
+
+    // Draw outer glow
+    ctx.fillStyle = color + '40'; // 25% opacity
+    ctx.beginPath();
+    ctx.arc(proj.x, proj.y, radius * 1.5, 0, TAU);
+    ctx.fill();
+
+    // Draw projectile
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(proj.x, proj.y, radius, 0, TAU);
+    ctx.fill();
+
+    // Draw center highlight
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.beginPath();
+    ctx.arc(proj.x - radius * 0.3, proj.y - radius * 0.3, radius * 0.4, 0, TAU);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
 function drawWorldScene(){
   const p = state.player;
   const playerGroundY = p.y + 8;
@@ -629,6 +674,8 @@ function drawWorldScene(){
   }
 
   drawInteractionPrompts();
+
+  drawProjectiles();
 
   if (!p.dead){
     const invisible = state.time < p.invisUntil;

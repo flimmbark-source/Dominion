@@ -422,6 +422,15 @@ function drawHUD(){
         ctx.textAlign = 'left';
         ctx.textBaseline = 'alphabetic';
       }
+      // Draw cooldown overlay for attack items
+      if (it.getCooldownPercent){
+        const cooldownPct = it.getCooldownPercent();
+        if (cooldownPct > 0){
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+          const overlayHeight = (slotSize - 8) * cooldownPct;
+          ctx.fillRect(x + 4, slotY + 4 + (slotSize - 8 - overlayHeight), slotSize - 8, overlayHeight);
+        }
+      }
     }
   }
   setInventorySlotRects(slotRects);
