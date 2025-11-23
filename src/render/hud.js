@@ -363,13 +363,13 @@ function drawHUD(){
   drawAbilityBar(centerX, abilitiesY);
 
   // Draw stats below abilities
-  const statsY = baseY + 86;
+  const statsY = baseY + 96; // Moved down from 86
   ctx.fillStyle = '#cfe1ff';
   ctx.font = '11px "Trebuchet MS", system-ui';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  const statSpacing = 68;
+  const statSpacing = 85; // Increased from 68 for more spacing
   const statsStartX = centerX - statSpacing;
 
   // Speed
