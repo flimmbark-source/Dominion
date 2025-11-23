@@ -644,10 +644,9 @@ function update(dt){
 
   let seenBy = 0;
   for (const npc of state.npcs){
-    if (npc.faction === 'monster' || npc.faction === 'darkLord') continue;
-    // Only guards (scouts/militia) should alert when seeing the player
-    // Villagers and merchants should only react if they catch the player stealing
-    if (npc.type === 'villager' || npc.type === 'merchant') continue;
+    // ONLY Dark Lord faction units should detect and chase the player
+    if (npc.faction !== 'darkLord') continue;
+
     if (npcSeesPlayer(npc, p)){
       seenBy++;
       notifyNPCPlayerSpotted(npc, p);
@@ -677,9 +676,13 @@ function update(dt){
   let inc = seen ? (18 * seenBy) : 0;
   if (seen){
     let minD = Infinity;
-    for (const npc of state.npcs) if (npcSeesPlayer(npc,p)) {
-      const dd = Math.hypot(npc.x-p.x, npc.y-p.y);
-      if (dd < minD) minD = dd;
+    for (const npc of state.npcs) {
+      // Only check Dark Lord units for distance calculation
+      if (npc.faction !== 'darkLord') continue;
+      if (npcSeesPlayer(npc,p)) {
+        const dd = Math.hypot(npc.x-p.x, npc.y-p.y);
+        if (dd < minD) minD = dd;
+      }
     }
     const distFactor = clamp(1.6 - (minD / 260), 0.3, 1.6);
     inc *= distFactor;
