@@ -621,7 +621,8 @@ function drawWorldScene(){
   }
 
   for (const npc of state.npcs){
-    if (state.debugCones) drawFOV(npc);
+    // Don't draw FOV cones for peaceful NPCs (villagers/merchants)
+    if (state.debugCones && npc.type !== 'villager' && npc.type !== 'merchant') drawFOV(npc);
     drawNpc3D(npc);
     drawNpcWeaponSwing(npc);
   }

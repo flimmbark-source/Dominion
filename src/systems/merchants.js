@@ -95,14 +95,21 @@ function spawnTownMerchants() {
     // Calculate door position (same logic as in houses.js addHouseWithDoor)
     const { placement, spec } = storeData;
     const village = VILLAGES[villageIndex];
-    const doorW = 22;
-    const doorX = placement.x + Math.round((spec.w - doorW) * Math.max(0.05, Math.min(0.95, placement.doorOffset)));
-    const doorY = spec.side === 'north' ? (placement.y + spec.h - 8) : placement.y; // WALL = 8
-
-    // Position merchant at the door
+    // Position merchant inside the building behind a counter
     // placement coordinates are in WORLD space, convert to LOCAL space for addVillageNPC
-    const merchantWorldX = doorX + doorW / 2;
-    const merchantWorldY = doorY;
+    const buildingCenterX = placement.x + spec.w / 2;
+    let merchantWorldX, merchantWorldY;
+
+    if (spec.side === 'north') {
+      // North-facing: door at bottom, merchant should be deeper inside (lower Y = further back)
+      merchantWorldX = buildingCenterX;
+      merchantWorldY = placement.y + 35; // Position behind counter, 35px from top of building
+    } else {
+      // South-facing: door at top, merchant should be deeper inside (higher Y = further back)
+      merchantWorldX = buildingCenterX;
+      merchantWorldY = placement.y + spec.h - 35; // Position behind counter, 35px from bottom
+    }
+
     const merchantLocalX = merchantWorldX - village.x;
     const merchantLocalY = merchantWorldY - village.y;
     const stationaryRoute = [{ x: merchantLocalX, y: merchantLocalY }];
