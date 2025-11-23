@@ -42,9 +42,11 @@ export class AttackItem {
   }
 
   findTarget(player, enemies) {
+    // Range is in tiles, distance is in pixels, so convert range to pixels (1 tile = 16 pixels)
+    const rangeInPixels = this.range * 16;
     const enemiesInRange = enemies.filter(enemy => {
       const distance = this.getDistance(player, enemy);
-      return distance <= this.range && enemy.hp > 0 && enemy.attackable;
+      return distance <= rangeInPixels && enemy.hp > 0 && enemy.attackable;
     });
 
     if (enemiesInRange.length === 0) return null;
