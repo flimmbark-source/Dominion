@@ -12,6 +12,7 @@ import {
   getVillagerPromptData,
   VILLAGER_PICKPOCKET_DISTANCE
 } from '../systems/villageInteractions.js';
+import { getMerchantPromptData } from '../systems/merchants.js';
 import { getActiveDamageNumbers } from '../systems/damageNumbers.js';
 import { getCameraOffset } from '../systems/cameraEffects.js';
 
@@ -749,6 +750,12 @@ function drawVillageTrapMarkers(){
 }
 
 function drawInteractionPrompts(){
+  const merchantPrompt = getMerchantPromptData();
+  if (merchantPrompt){
+    const { npc } = merchantPrompt;
+    drawInteractionLabel(npc.x, npc.y - 30, 'E: Shop');
+  }
+
   const villagerPrompt = getVillagerPromptData();
   if (villagerPrompt){
     const { npc, canTalk, canPickpocket, pickpocketOnCooldown, dist } = villagerPrompt;

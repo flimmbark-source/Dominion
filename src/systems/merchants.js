@@ -366,15 +366,13 @@ export function getMerchantName(merchantType, villageIndex = null) {
   }
 }
 
-/**
- * Try to interact with a merchant
- * Returns true if a merchant was found and shop opened
- */
-export function tryInteractWithMerchant() {
-  const MERCHANT_INTERACT_DISTANCE = 80;
-  const player = state.player;
+const MERCHANT_INTERACT_DISTANCE = 80;
 
-  // Find nearest merchant NPC
+/**
+ * Get nearby merchant prompt data for UI rendering
+ */
+export function getMerchantPromptData() {
+  const player = state.player;
   let nearest = null;
   let nearestDist = Infinity;
 
@@ -390,9 +388,23 @@ export function tryInteractWithMerchant() {
     }
   }
 
-  if (!nearest) return false;
+  if (!nearest) return null;
+
+  return {
+    npc: nearest,
+    dist: nearestDist
+  };
+}
+
+/**
+ * Try to interact with a merchant
+ * Returns true if a merchant was found and shop opened
+ */
+export function tryInteractWithMerchant() {
+  const promptData = getMerchantPromptData();
+  if (!promptData) return false;
 
   // Open shop with the appropriate merchant type
-  openShop(nearest.merchantType, nearest.villageIndex);
+  openShop(promptData.npc.merchantType, promptData.npc.villageIndex);
   return true;
 }

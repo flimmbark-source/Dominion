@@ -435,17 +435,18 @@ function update(dt){
     interactAvailable = false;
   }
 
-  if (!inTavernInterior && !state.interior && !barkeepDialogueActive){
+  // Allow merchant interaction both outside and inside stores
+  if (!inTavernInterior && !barkeepDialogueActive){
     if (interactPressed){
       const openedShop = tryInteractWithMerchant();
-      if (!openedShop) {
+      if (!openedShop && !state.interior) {
         const spoke = tryTalkToVillager();
         if (!spoke){
           tryDisarmNearbyTrap();
         }
       }
     }
-    if (pickpocketPressed){
+    if (pickpocketPressed && !state.interior){
       tryPickpocketVillager();
     }
   }
