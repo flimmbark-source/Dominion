@@ -461,7 +461,10 @@ function setNPCState(npc, newState, options = {}){
   // Villagers and merchants should never enter ALERT state unless catching player stealing
   if ((npc.type === 'villager' || npc.type === 'merchant') && newState === NPC_STATE.ALERT){
     if (options.reason !== 'caught_stealing'){
+      console.log(`[NPC] Blocked ${npc.type} from entering ALERT state. Reason:`, options.reason || 'none');
       return false; // Block ALERT state for peaceful NPCs
+    } else {
+      console.log(`[NPC] Allowing ${npc.type} to enter ALERT state (caught stealing)`);
     }
   }
 
