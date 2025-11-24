@@ -52,8 +52,8 @@ class Projectile {
       this.updateStraight(deltaTime);
     }
 
-    // Check if out of range
-    if (this.distanceTraveled > this.attackData.range) {
+    // Check if out of range (range is in tiles, distanceTraveled is in pixels)
+    if (this.distanceTraveled > this.attackData.range * 16) {
       this.destroy();
       return;
     }

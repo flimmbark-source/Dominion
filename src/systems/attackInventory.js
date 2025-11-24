@@ -28,7 +28,11 @@ export function initializePlayerAttackInventory(heroType) {
  */
 export function updateAttackInventory(deltaTime) {
   const player = state.player;
-  const enemies = state.npcs;
+
+  // Filter to only hostile NPCs (darkLord and monster factions)
+  const enemies = state.npcs.filter(npc =>
+    npc.faction === 'darkLord' || npc.faction === 'monster'
+  );
 
   // Update each equipped attack item
   for (let i = 0; i < player.inventory.length; i++) {
