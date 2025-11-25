@@ -69,12 +69,15 @@ import {
 import { initMerchants, updateTravelingMerchant, tryInteractWithMerchant } from './systems/merchants.js';
 import { projectileManager } from './systems/projectiles.js';
 import { initializePlayerAttackInventory, updateAttackInventory } from './systems/attackInventory.js';
+import { squadManager } from './npc/npcBehavior.js';
+import { setupNPCBehaviors } from './npc/npcBehaviorSetup.js';
 
 setupInput();
 prepareVillageInstances();
 initHouses();
 generateWorld();
 setupInitialNPCs();
+setupNPCBehaviors(); // Setup schedules, formations, and sentry posts
 initWarState();
 initVillageInteractions();
 initPointsOfInterest();
@@ -258,6 +261,7 @@ function update(dt){
   updateStatusEffects(state.player, dt);
   updateAttackInventory(dt); // Update auto-attack items
   projectileManager.update(dt); // Update projectiles
+  squadManager.update(dt); // Update squad formations
 
   if (state.player.health <= 0 && !state.deathSequence){
     startDeathSequence();
@@ -470,8 +474,22 @@ function update(dt){
     if (!chaseTarget && npc.chasingTarget){
       npc.chasingTarget = null;
     }
-    const target = chaseTarget || npc.activeTarget || npc.waypoints[npc.wpIndex];
+
+    // Priority: chase > formation position > active target > waypoints
+    // Squad members follow formation positions when not chasing
+    const target = chaseTarget ||
+                   npc.formationTarget ||
+                   npc.activeTarget ||
+                   npc.waypoints[npc.wpIndex];
     if (!target) continue;
+
+    // Sentry guards should face their assigned direction when at post
+    if (npc.isSentry && npc.sentryPost && !chaseTarget) {
+      const distToPost = Math.hypot(npc.x - npc.sentryPost.x, npc.y - npc.sentryPost.y);
+      if (distToPost < 4) {
+        npc.facing = npc.sentryPost.facingAngle;
+      }
+    }
     const dx = target.x - npc.x;
     const dy = target.y - npc.y;
     const d = Math.hypot(dx, dy);
