@@ -1,12 +1,17 @@
 /**
- * Projectile System
- * Handles all auto-attack projectiles
+ * Projectile System (Optimized)
+ * Handles all auto-attack projectiles with performance optimizations
  */
 
 import { state } from '../state/gameState.js';
 import { addDamageNumber } from './damageNumbers.js';
 import { addScreenShake } from './cameraEffects.js';
 import { removeNPC } from '../npc/npcManager.js';
+
+// Performance tuning
+const MAX_PROJECTILES = 100; // Hard limit to prevent lag
+const COLLISION_CHECK_RADIUS = 400; // Only check collisions within this radius
+const PROJECTILE_SPEED_MULTIPLIER = 3; // Make projectiles 3x faster
 
 class Projectile {
   constructor(config) {
@@ -17,9 +22,11 @@ class Projectile {
     this.attackData = config.attackData;
     this.owner = config.owner;
 
-    // Calculate velocity
-    this.vx = Math.cos(this.angle) * this.attackData.projectileSpeed;
-    this.vy = Math.sin(this.angle) * this.attackData.projectileSpeed;
+    // Calculate velocity with speed multiplier for performance
+    const speed = this.attackData.projectileSpeed * PROJECTILE_SPEED_MULTIPLIER;
+    this.vx = Math.cos(this.angle) * speed;
+    this.vy = Math.sin(this.angle) * speed;
+    this.speed = speed;
 
     // State
     this.distanceTraveled = 0;
@@ -65,7 +72,7 @@ class Projectile {
   updateStraight(deltaTime) {
     this.x += this.vx * deltaTime;
     this.y += this.vy * deltaTime;
-    this.distanceTraveled += this.attackData.projectileSpeed * deltaTime;
+    this.distanceTraveled += this.speed * deltaTime;
   }
 
   updateHoming(deltaTime) {
@@ -80,14 +87,14 @@ class Projectile {
         const normalizedY = toTargetY / distance;
 
         // Blend current velocity with target direction
-        this.vx = this.vx * (1 - this.homingStrength) + normalizedX * this.attackData.projectileSpeed * this.homingStrength;
-        this.vy = this.vy * (1 - this.homingStrength) + normalizedY * this.attackData.projectileSpeed * this.homingStrength;
+        this.vx = this.vx * (1 - this.homingStrength) + normalizedX * this.speed * this.homingStrength;
+        this.vy = this.vy * (1 - this.homingStrength) + normalizedY * this.speed * this.homingStrength;
 
         // Normalize velocity
-        const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-        if (speed > 0) {
-          this.vx = (this.vx / speed) * this.attackData.projectileSpeed;
-          this.vy = (this.vy / speed) * this.attackData.projectileSpeed;
+        const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+        if (currentSpeed > 0) {
+          this.vx = (this.vx / currentSpeed) * this.speed;
+          this.vy = (this.vy / currentSpeed) * this.speed;
         }
 
         // Update angle for sprite rotation
@@ -97,7 +104,7 @@ class Projectile {
 
     this.x += this.vx * deltaTime;
     this.y += this.vy * deltaTime;
-    this.distanceTraveled += this.attackData.projectileSpeed * deltaTime;
+    this.distanceTraveled += this.speed * deltaTime;
   }
 
   updateArc(deltaTime) {
@@ -106,7 +113,7 @@ class Projectile {
 
     this.x += this.vx * deltaTime;
     this.y += this.vy * deltaTime;
-    this.distanceTraveled += this.attackData.projectileSpeed * deltaTime;
+    this.distanceTraveled += this.speed * deltaTime;
   }
 
   checkCollisions() {
@@ -114,10 +121,14 @@ class Projectile {
     if (this.owner !== state.player) {
       const player = state.player;
       if (!player.dead) {
-        const distance = Math.hypot(player.x - this.x, player.y - this.y);
+        // Use squared distance to avoid expensive sqrt
+        const dx = player.x - this.x;
+        const dy = player.y - this.y;
+        const distSq = dx * dx + dy * dy;
         const collisionRadius = (this.attackData.projectileSize || 0.5) * 16 + (player.r || 10);
+        const collisionRadiusSq = collisionRadius * collisionRadius;
 
-        if (distance < collisionRadius) {
+        if (distSq < collisionRadiusSq) {
           this.onHitPlayer(player);
           this.destroy();
           return;
@@ -127,14 +138,28 @@ class Projectile {
 
     // If projectile is from player, check if it hits NPCs
     if (this.owner === state.player) {
+      const collisionRadius = (this.attackData.projectileSize || 0.5) * 16;
+      const checkRadius = COLLISION_CHECK_RADIUS;
+      const checkRadiusSq = checkRadius * checkRadius;
+
       for (let enemy of state.npcs) {
         if (!enemy.attackable || (enemy.health || enemy.hp) <= 0) continue;
         if (this.hitEnemies.has(enemy.id)) continue; // Already hit with pierce
 
-        const distance = Math.hypot(enemy.x - this.x, enemy.y - this.y);
-        const collisionRadius = (this.attackData.projectileSize || 0.5) * 16 + (enemy.r || 16);
+        // Quick distance check using squared distance (no sqrt)
+        const dx = enemy.x - this.x;
+        const dy = enemy.y - this.y;
+        const distSq = dx * dx + dy * dy;
 
-        if (distance < collisionRadius) {
+        // Early exit if too far away
+        if (distSq > checkRadiusSq) continue;
+
+        // Precise collision check
+        const enemyRadius = (enemy.r || 16);
+        const totalRadius = collisionRadius + enemyRadius;
+        const totalRadiusSq = totalRadius * totalRadius;
+
+        if (distSq < totalRadiusSq) {
           this.onHit(enemy);
           this.hitEnemies.add(enemy.id);
           this.pierceCount++;
@@ -229,12 +254,18 @@ class Projectile {
 
   dealAoEDamage(epicenter) {
     const aoeDamage = this.attackData.damage * (this.attackData.aoeDamage || 0.5);
+    const aoeRadius = this.attackData.aoeRadius * 16;
+    const aoeRadiusSq = aoeRadius * aoeRadius;
 
     for (let enemy of state.npcs) {
       if (!enemy.attackable || (enemy.health || enemy.hp) <= 0) continue;
-      const distance = Math.hypot(enemy.x - epicenter.x, enemy.y - epicenter.y);
 
-      if (distance <= this.attackData.aoeRadius * 16) {
+      // Use squared distance to avoid sqrt
+      const dx = enemy.x - epicenter.x;
+      const dy = enemy.y - epicenter.y;
+      const distSq = dx * dx + dy * dy;
+
+      if (distSq <= aoeRadiusSq) {
         // Apply damage
         if (enemy.health !== undefined) {
           enemy.health -= aoeDamage;
@@ -257,18 +288,23 @@ class Projectile {
 
   chainToNearby(hitEnemy) {
     const chainRange = (this.attackData.chainRange || 5) * 16;
+    const chainRangeSq = chainRange * chainRange;
     let nearest = null;
-    let nearestDist = Infinity;
+    let nearestDistSq = Infinity;
 
     for (let enemy of state.npcs) {
       if (!enemy.attackable || (enemy.health || enemy.hp) <= 0) continue;
       if (enemy === hitEnemy) continue;
       if (this.hitEnemies.has(enemy.id)) continue;
 
-      const distance = Math.hypot(enemy.x - hitEnemy.x, enemy.y - hitEnemy.y);
-      if (distance < chainRange && distance < nearestDist) {
+      // Use squared distance to avoid sqrt
+      const dx = enemy.x - hitEnemy.x;
+      const dy = enemy.y - hitEnemy.y;
+      const distSq = dx * dx + dy * dy;
+
+      if (distSq < chainRangeSq && distSq < nearestDistSq) {
         nearest = enemy;
-        nearestDist = distance;
+        nearestDistSq = distSq;
       }
     }
 
@@ -311,6 +347,12 @@ class ProjectileManager {
   }
 
   add(projectile) {
+    // Enforce projectile limit to prevent lag
+    if (this.projectiles.length >= MAX_PROJECTILES) {
+      // Remove oldest projectile to make room
+      const oldest = this.projectiles[0];
+      if (oldest) oldest.destroy();
+    }
     this.projectiles.push(projectile);
   }
 
