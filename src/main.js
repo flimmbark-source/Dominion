@@ -68,6 +68,7 @@ import {
 } from './systems/barkeepMissions.js';
 import { initMerchants, updateTravelingMerchant, tryInteractWithMerchant } from './systems/merchants.js';
 import { projectileManager } from './systems/projectiles.js';
+import { twoStageProjectileManager } from './systems/twoStageProjectiles.js';
 import { initializePlayerAttackInventory, updateAttackInventory } from './systems/attackInventory.js';
 import { squadManager } from './npc/npcBehavior.js';
 import { setupNPCBehaviors } from './npc/npcBehaviorSetup.js';
@@ -261,6 +262,7 @@ function update(dt){
   updateStatusEffects(state.player, dt);
   updateAttackInventory(dt); // Update auto-attack items
   projectileManager.update(dt); // Update projectiles
+  twoStageProjectileManager.update(dt); // Update two-stage projectiles
   squadManager.update(dt); // Update squad formations
 
   if (state.player.health <= 0 && !state.deathSequence){

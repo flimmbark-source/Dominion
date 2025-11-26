@@ -16,6 +16,7 @@ import { getMerchantPromptData } from '../systems/merchants.js';
 import { getActiveDamageNumbers } from '../systems/damageNumbers.js';
 import { getCameraOffset } from '../systems/cameraEffects.js';
 import { getProjectiles } from '../systems/projectiles.js';
+import { twoStageProjectileManager, STAGE } from '../systems/twoStageProjectiles.js';
 
 function lerp(a, b, t){
   return a + (b - a) * t;
@@ -543,16 +544,19 @@ const POI_STYLES = {
 };
 
 function drawProjectiles(){
-  const projectiles = getProjectiles();
-  if (!projectiles.length) return;
+  // Draw old projectiles
+  const oldProjectiles = getProjectiles();
+  // Draw new two-stage projectiles
+  const newProjectiles = twoStageProjectileManager.getProjectiles();
+
+  if (!oldProjectiles.length && !newProjectiles.length) return;
 
   ctx.save();
 
-  for (const proj of projectiles) {
-    // Simple circle visualization for now
+  // Render old projectiles (single stage)
+  for (const proj of oldProjectiles) {
     const radius = (proj.attackData.projectileSize || 0.5) * 16;
 
-    // Color based on damage type
     const damageTypeColors = {
       physical: '#9a9a9a',
       fire: '#ff4400',
@@ -564,8 +568,61 @@ function drawProjectiles(){
     };
     const color = damageTypeColors[proj.attackData.damageType] || '#ffffff';
 
+    ctx.fillStyle = color + '40';
+    ctx.beginPath();
+    ctx.arc(proj.x, proj.y, radius * 1.5, 0, TAU);
+    ctx.fill();
+
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(proj.x, proj.y, radius, 0, TAU);
+    ctx.fill();
+
+    // Draw center highlight
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.beginPath();
+    ctx.arc(proj.x - radius * 0.3, proj.y - radius * 0.3, radius * 0.4, 0, TAU);
+    ctx.fill();
+  }
+
+  // Render new two-stage projectiles
+  for (const proj of newProjectiles) {
+    const radius = (proj.effectiveData.launch.size || 0.5) * 16;
+    const stage = proj.getStage();
+
+    // Damage type colors
+    const damageTypeColors = {
+      physical: '#9a9a9a',
+      fire: '#ff4400',
+      poison: '#44ff00',
+      ice: '#00ccff',
+      lightning: '#ffff00',
+      shadow: '#8800ff',
+      holy: '#ffcc00'
+    };
+    const baseColor = damageTypeColors[proj.effectiveData.damageType] || '#ffffff';
+
+    // Stage-based color tint
+    let color = baseColor;
+    let borderColor = '#ffffff';
+
+    if (stage === STAGE.LAUNCH) {
+      // Blue tint for LAUNCH stage
+      borderColor = '#4488ff';
+    } else if (stage === STAGE.IMPACT) {
+      // Red tint for IMPACT stage
+      borderColor = '#ff4444';
+    }
+
+    // Draw stage indicator border
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(proj.x, proj.y, radius * 1.8, 0, TAU);
+    ctx.stroke();
+
     // Draw outer glow
-    ctx.fillStyle = color + '40'; // 25% opacity
+    ctx.fillStyle = color + '40';
     ctx.beginPath();
     ctx.arc(proj.x, proj.y, radius * 1.5, 0, TAU);
     ctx.fill();
