@@ -325,8 +325,285 @@ export const ITEMS = [
     icon: 'moonleaf',
     desc: 'Full HP restore + invulnerability 3s',
     flavor: 'Shed when the last phoenix died. In death, there is rebirth. In despair, there is hope.'
+  },
+
+  // ============================================================================
+  // TWO-STAGE ATTACK ITEMS
+  // ============================================================================
+
+  // Goblin Attacks
+  {
+    id: 'throwing_dagger',
+    key: '',
+    name: 'Throwing Dagger',
+    price: 0, // Starter item
+    rarity: RARITY.COMMON,
+    category: 'attack',
+    type: 'attack_item',
+    icon: 'dagger',
+    desc: 'Quick blade that slashes where it lands',
+    flavor: 'A goblin\'s first weapon. Simple, deadly, effective.',
+    heroClass: 'goblin',
+    twoStageItem: true
+  },
+  {
+    id: 'poison_needles',
+    key: '',
+    name: 'Poison Needles',
+    price: 120,
+    rarity: RARITY.COMMON,
+    category: 'attack',
+    type: 'attack_item',
+    icon: 'dagger',
+    desc: 'Tiny needles that release toxic gas on impact',
+    flavor: 'Dipped in venom from the bog sprites. The gas lingers like regret.',
+    heroClass: 'goblin',
+    twoStageItem: true
+  },
+  {
+    id: 'shadow_shuriken',
+    key: '',
+    name: 'Shadow Shuriken',
+    price: 280,
+    rarity: RARITY.RARE,
+    category: 'attack',
+    type: 'attack_item',
+    icon: 'dagger',
+    desc: 'Dark throwing star that splits into shadows on impact',
+    flavor: 'Forged in moonless nights. Where it strikes, darkness follows.',
+    heroClass: 'goblin',
+    twoStageItem: true
+  },
+  {
+    id: 'explosive_coin',
+    key: '',
+    name: 'Explosive Coin',
+    price: 500,
+    rarity: RARITY.LEGENDARY,
+    category: 'attack',
+    type: 'attack_item',
+    icon: 'dagger',
+    desc: 'Gold-plated bomb. Greed is explosive',
+    flavor: 'A merchant\'s last trick. Sometimes the best investment... is in destruction.',
+    heroClass: 'goblin',
+    twoStageItem: true
+  },
+
+  // Knight Attacks
+  {
+    id: 'iron_slash_beam',
+    key: '',
+    name: 'Iron Slash Beam',
+    price: 0, // Starter item
+    rarity: RARITY.COMMON,
+    category: 'attack',
+    type: 'attack_item',
+    icon: 'dagger',
+    desc: 'Channels valor into a blade of light',
+    flavor: 'Steel blessed by faith. Where righteousness strikes, evil trembles.',
+    heroClass: 'knight',
+    twoStageItem: true
+  },
+  {
+    id: 'holy_spear',
+    key: '',
+    name: 'Blessed Spear',
+    price: 350,
+    rarity: RARITY.RARE,
+    category: 'attack',
+    type: 'attack_item',
+    icon: 'dagger',
+    desc: 'Divine lance that radiates holy light',
+    flavor: 'Blessed by the last high priest. Its light purges the unholy.',
+    heroClass: 'knight',
+    twoStageItem: true
+  },
+  {
+    id: 'shield_bash_wave',
+    key: '',
+    name: 'Shield Bash Wave',
+    price: 200,
+    rarity: RARITY.COMMON,
+    category: 'attack',
+    type: 'attack_item',
+    icon: 'dagger',
+    desc: 'Protective force that pushes enemies back',
+    flavor: 'The knight\'s oath made manifest. Push back the darkness.',
+    heroClass: 'knight',
+    twoStageItem: true
+  },
+
+  // Alchemist Attacks
+  {
+    id: 'acid_vial',
+    key: '',
+    name: 'Acid Vial',
+    price: 0, // Starter item
+    rarity: RARITY.COMMON,
+    category: 'attack',
+    type: 'attack_item',
+    icon: 'potion',
+    desc: 'Corrosive liquid that pools on the ground',
+    flavor: 'A simple formula. Effective dissolution of organic matter.',
+    heroClass: 'alchemist',
+    twoStageItem: true
+  },
+  {
+    id: 'flame_flask',
+    key: '',
+    name: 'Flame Flask',
+    price: 180,
+    rarity: RARITY.COMMON,
+    category: 'attack',
+    type: 'attack_item',
+    icon: 'potion',
+    desc: 'Volatile mixture that ignites everything',
+    flavor: 'Fire blossom and sulfur. The recipe for catastrophe.',
+    heroClass: 'alchemist',
+    twoStageItem: true
+  },
+  {
+    id: 'frost_bomb',
+    key: '',
+    name: 'Cryo Bomb',
+    price: 300,
+    rarity: RARITY.RARE,
+    category: 'attack',
+    type: 'attack_item',
+    icon: 'potion',
+    desc: 'Freezes enemies in an icy explosion',
+    flavor: 'Winter\'s wrath, bottled and waiting.',
+    heroClass: 'alchemist',
+    twoStageItem: true
+  },
+
+  // Witch Attacks
+  {
+    id: 'shadow_bolt',
+    key: '',
+    name: 'Shadow Bolt',
+    price: 0, // Starter item
+    rarity: RARITY.COMMON,
+    category: 'attack',
+    type: 'attack_item',
+    icon: 'dagger',
+    desc: 'Bolt of darkness that lingers as a damaging shade',
+    flavor: 'Darkness given form. Where it passes, light dies.',
+    heroClass: 'witch',
+    twoStageItem: true
+  },
+  {
+    id: 'thorn_volley',
+    key: '',
+    name: "Nature's Fury",
+    price: 320,
+    rarity: RARITY.RARE,
+    category: 'attack',
+    type: 'attack_item',
+    icon: 'dagger',
+    desc: 'Summons thorns that strike in a pattern',
+    flavor: 'The forest remembers its wounds. Now it returns them.',
+    heroClass: 'witch',
+    twoStageItem: true
+  },
+
+  // ============================================================================
+  // TWO-STAGE MODIFIERS
+  // ============================================================================
+
+  {
+    id: 'swift_boots',
+    key: '',
+    name: 'Boots of Swiftness',
+    price: 100,
+    rarity: RARITY.COMMON,
+    category: 'modifier',
+    type: 'modifier',
+    icon: 'boots',
+    desc: 'Projectiles fly 40% faster',
+    flavor: 'Enchanted with haste. Your attacks become a blur.',
+    twoStageModifier: true
+  },
+  {
+    id: 'pierce_rune',
+    key: '',
+    name: 'Rune of Penetration',
+    price: 160,
+    rarity: RARITY.COMMON,
+    category: 'modifier',
+    type: 'modifier',
+    icon: 'dagger',
+    desc: 'Projectiles pass through 2 additional enemies',
+    flavor: 'Ancient rune of piercing. Nothing stands in your way.',
+    twoStageModifier: true
+  },
+  {
+    id: 'shatter_bracers',
+    key: '',
+    name: 'Bracers of Shattering',
+    price: 350,
+    rarity: RARITY.RARE,
+    category: 'modifier',
+    type: 'modifier',
+    icon: 'dagger',
+    desc: 'Impact effects explode into 5 sharp fragments',
+    flavor: 'Forged from broken promises. What impacts... shatters.',
+    twoStageModifier: true
+  },
+  {
+    id: 'lingering_ring',
+    key: '',
+    name: 'Ring of Persistence',
+    price: 200,
+    rarity: RARITY.COMMON,
+    category: 'modifier',
+    type: 'modifier',
+    icon: 'dagger',
+    desc: 'Area effects last twice as long',
+    flavor: 'Time bends around this ring. Effects linger like memories.',
+    twoStageModifier: true
+  },
+  {
+    id: 'expansion_gem',
+    key: '',
+    name: 'Gem of Expansion',
+    price: 320,
+    rarity: RARITY.RARE,
+    category: 'modifier',
+    type: 'modifier',
+    icon: 'dagger',
+    desc: 'Impact effects are 50% larger',
+    flavor: 'Space itself warps near this gem. Bigger is better.',
+    twoStageModifier: true
+  },
+  {
+    id: 'flame_enchantment',
+    key: '',
+    name: 'Enchantment of Flame',
+    price: 300,
+    rarity: RARITY.RARE,
+    category: 'modifier',
+    type: 'modifier',
+    icon: 'dagger',
+    desc: 'Converts damage to fire type, +25% damage',
+    flavor: 'Everything burns. Everything.',
+    twoStageModifier: true
+  },
+  {
+    id: 'rapid_fire_spring',
+    key: '',
+    name: 'Coiled Spring',
+    price: 220,
+    rarity: RARITY.COMMON,
+    category: 'modifier',
+    type: 'modifier',
+    icon: 'dagger',
+    desc: 'Attack 35% faster',
+    flavor: 'Wound tight with potential energy. Unleash chaos.',
+    twoStageModifier: true
   }
 ];
+
 
 /**
  * Get items by category

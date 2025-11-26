@@ -31,10 +31,15 @@ const ITEM_POOLS = {
     'invis',          // Potion of Vanishing
     'wrathPotion',    // Draught of Berserker Wrath
     'greaterHealing', // Elixir of Life Eternal
-    'shadowEssence'   // Essence of Shadow
+    'shadowEssence',  // Essence of Shadow
+    // Two-stage items
+    'poison_needles', // Poison Needles
+    'shadow_shuriken',// Shadow Shuriken
+    'swift_boots',    // Boots of Swiftness
+    'pierce_rune'     // Rune of Penetration
   ],
 
-  // Town merchants: basic equipment and common items
+  // Town merchants: basic equipment and common items + two-stage items
   town: [
     'boots',           // Boots of the Whipwind
     'swiftShadowBoots',// Boots of Swift Shadow
@@ -47,7 +52,17 @@ const ITEM_POOLS = {
     'hastePotion',     // Flask of Quicksilver
     'dagger',          // Venom-Barbed Shiv
     'twistedRing',     // Ring of Twisted Thorns
-    'wrathPotion'      // Draught of Berserker Wrath
+    'wrathPotion',     // Draught of Berserker Wrath
+    // Two-stage attack items
+    'poison_needles',  // Poison Needles
+    'flame_flask',     // Flame Flask
+    'shield_bash_wave',// Shield Bash Wave
+    'thorn_volley',    // Nature's Fury
+    // Two-stage modifiers
+    'swift_boots',     // Boots of Swiftness
+    'pierce_rune',     // Rune of Penetration
+    'lingering_ring',  // Ring of Persistence
+    'rapid_fire_spring'// Coiled Spring
   ],
 
   // Traveling merchant: all items with bias toward rare/legendary
